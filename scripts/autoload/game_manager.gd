@@ -780,6 +780,14 @@ func update_effects(dt: float) -> void:
 			perm_speed_buff /= speed_buff_factor
 			speed_buff_factor = 1.0
 
+func _apply_speed_buff(factor: float, duration: float) -> void:
+	# Undo any existing temp buff first
+	if speed_buff_timer > 0:
+		perm_speed_buff /= speed_buff_factor
+	perm_speed_buff *= factor
+	speed_buff_factor = factor
+	speed_buff_timer = duration
+
 # ═══════════════════════════════════════════════════════
 # UTILITY
 # ═══════════════════════════════════════════════════════
