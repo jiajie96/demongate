@@ -87,9 +87,9 @@ var TOWER_DATA := {
 	"pit_brute": {
 		"name": "Pit Brute",
 		"desc": "Massive hits, crushes tanks and bosses",
-		"damage": 12.0,
+		"damage": 18.0,
 		"range": 70.0,
-		"attack_speed": 0.25,
+		"attack_speed": 0.3,
 		"is_aoe": false,
 		"aoe_radius": 0.0,
 		"slow_power": 0.0,
