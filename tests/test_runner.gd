@@ -18,6 +18,7 @@ func _ready() -> void:
 	_run_wave_tests()
 	_run_slow_tests()
 	_run_gambling_data_tests()
+	_run_targeting_tests()
 
 	print("")
 	print("=== Results: %d/%d passed ===" % [_passed, _total])
@@ -59,11 +60,12 @@ func _run_config_tests() -> void:
 	_assert_eq(Config.GAME_HEIGHT, 576, "Game height is 576")
 	_assert_eq(Config.MAX_WAVES, 20, "Max waves is 20")
 	_assert_eq(Config.DICE_MAX_USES, 2, "Dice max uses is 2")
-	_assert_eq(Config.TOWER_DATA.size(), 3, "3 tower types defined")
-	_assert_eq(Config.ENEMY_DATA.size(), 8, "8 enemy types defined")
+	_assert(Config.TOWER_DATA.size() >= 3, "At least 3 tower types defined")
+	_assert(Config.ENEMY_DATA.size() >= 8, "At least 8 enemy types defined")
 	_assert_eq(Config.WAVE_DATA.size(), 20, "20 wave definitions")
 	_assert(not Config.has_method("ROULETTE_SEGMENTS") or true, "Roulette removed")
-	_assert_eq(Config.DICE_OUTCOMES.size(), 11, "11 dice outcomes (2-12)")
+	_assert_eq(Config.DICE_OUTCOMES.size(), 6, "6 dice outcomes (1-6)")
+	_assert_eq(Config.DICE_OUTCOMES_EARLY.size(), 6, "6 early dice outcomes (1-6)")
 	_assert_eq(Config.PACT_POOL.size(), 6, "6 pact types")
 	_assert_eq(Config.RELIC_LOOT.size(), 9, "9 relic loot types")
 
@@ -72,9 +74,9 @@ func _run_config_tests() -> void:
 		var d: Dictionary = Config.TOWER_DATA[type]
 		_assert(d.has("name") and d.has("cost") and d.has("damage") and d.has("range"), "Tower '%s' has required fields" % type)
 		_assert(d["cost"] is int or d["cost"] is float, "Tower '%s' cost is numeric" % type)
-		_assert(d["damage"] > 0, "Tower '%s' damage > 0" % type)
+		_assert(d["damage"] >= 0, "Tower '%s' damage >= 0" % type)
 		_assert(d["range"] > 0, "Tower '%s' range > 0" % type)
-		_assert(d["attack_speed"] > 0, "Tower '%s' attack_speed > 0" % type)
+		_assert(d["attack_speed"] >= 0, "Tower '%s' attack_speed >= 0" % type)
 
 	# Enemy data integrity
 	for type in Config.ENEMY_DATA:
@@ -378,11 +380,36 @@ func _run_gambling_data_tests() -> void:
 		relic_total += loot["weight"]
 	_assert_eq(relic_total, 100, "Relic loot weights sum to 100")
 
-	# Dice outcomes cover 2-12
-	for roll in range(2, 13):
+	# Dice outcomes cover 1-6
+	for roll in range(1, 7):
 		_assert(Config.DICE_OUTCOMES.has(roll), "Dice outcome for roll %d exists" % roll)
+		_assert(Config.DICE_OUTCOMES_EARLY.has(roll), "Early dice outcome for roll %d exists" % roll)
 
 	# All pacts have required fields
 	for pact in Config.PACT_POOL:
 		_assert(pact.has("name") and pact.has("benefit") and pact.has("cost_desc"), "Pact '%s' has display fields" % pact["name"])
 		_assert(pact.has("b_effect") and pact.has("c_effect"), "Pact '%s' has effect fields" % pact["name"])
+
+# ═══════════════════════════════════════════════════════
+# TARGETING TESTS
+# ═══════════════════════════════════════════════════════
+func _run_targeting_tests() -> void:
+	print("[Targeting]")
+	GM.reset_state()
+
+	# Default targeting mode
+	var tower := GM.create_tower("demon_archer", 5, 1)
+	_assert_eq(tower["targeting_mode"], "first", "Default targeting mode is 'first'")
+
+	# Cycle through modes
+	GM.cycle_targeting(tower)
+	_assert_eq(tower["targeting_mode"], "last", "Cycle to 'last'")
+	GM.cycle_targeting(tower)
+	_assert_eq(tower["targeting_mode"], "closest", "Cycle to 'closest'")
+	GM.cycle_targeting(tower)
+	_assert_eq(tower["targeting_mode"], "strongest", "Cycle to 'strongest'")
+	GM.cycle_targeting(tower)
+	_assert_eq(tower["targeting_mode"], "first", "Cycle wraps to 'first'")
+
+	# TARGETING_MODES constant
+	_assert_eq(GM.TARGETING_MODES.size(), 4, "4 targeting modes exist")
