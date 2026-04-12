@@ -153,7 +153,7 @@
     <text x="0" y="28" text-anchor="middle" font-family="monospace" font-size="9" fill="#9944cc">MAG</text>
   </g>
 
-  <g transform="translate(230, 145)" filter="url(#softGlow)">
+  <g transform="translate(215, 145)" filter="url(#softGlow)">
     <!-- Necromancer -->
     <circle cx="0" cy="0" r="15" fill="#0a1a0e" stroke="#33cc66" stroke-width="1.5"/>
     <polygon points="0,-14 6,-3 -6,-3" fill="#1a4422"/>
@@ -165,8 +165,35 @@
     <text x="0" y="28" text-anchor="middle" font-family="monospace" font-size="9" fill="#44cc66">NEC</text>
   </g>
 
+  <g transform="translate(260, 140)" filter="url(#softGlow)">
+    <!-- Lucifer -->
+    <circle cx="0" cy="0" r="15" fill="#1a0800" stroke="#ff6600" stroke-width="1.5"/>
+    <circle cx="0" cy="0" r="18" fill="none" stroke="#ff4400" stroke-width="0.5" opacity="0.4"/>
+    <circle cx="0" cy="-3" r="4" fill="#331005"/>
+    <line x1="-4" y1="-7" x2="-7" y2="-15" stroke="#ff5500" stroke-width="2.5"/>
+    <line x1="4" y1="-7" x2="7" y2="-15" stroke="#ff5500" stroke-width="2.5"/>
+    <circle cx="-2" cy="-4" r="1.2" fill="#ffaa00"/>
+    <circle cx="2" cy="-4" r="1.2" fill="#ffaa00"/>
+    <polygon points="-8,-1 -15,-8 -13,-2 -10,3" fill="#220500" opacity="0.7"/>
+    <polygon points="8,-1 15,-8 13,-2 10,3" fill="#220500" opacity="0.7"/>
+    <text x="0" y="28" text-anchor="middle" font-family="monospace" font-size="9" fill="#ff6600">LUC</text>
+  </g>
+
+  <g transform="translate(305, 148)" filter="url(#softGlow)">
+    <!-- Hades -->
+    <circle cx="0" cy="0" r="15" fill="#080520" stroke="#4433ee" stroke-width="1.5"/>
+    <circle cx="0" cy="-3" r="4" fill="#1a1040"/>
+    <line x1="-3" y1="-7" x2="-4" y2="-15" stroke="#5544ee" stroke-width="2"/>
+    <line x1="3" y1="-7" x2="4" y2="-15" stroke="#5544ee" stroke-width="2"/>
+    <circle cx="-2" cy="-4" r="1.2" fill="#8877ff"/>
+    <circle cx="2" cy="-4" r="1.2" fill="#8877ff"/>
+    <circle cx="7" cy="-10" r="3" fill="#5544ee"/>
+    <circle cx="7" cy="-10" r="5" fill="#5544ee" opacity="0.2"/>
+    <text x="0" y="28" text-anchor="middle" font-family="monospace" font-size="9" fill="#5544ee">HAD</text>
+  </g>
+
   <!-- Enemy icons (right side) -->
-  <g transform="translate(670, 145)" filter="url(#softGlow)">
+  <g transform="translate(635, 145)" filter="url(#softGlow)">
     <!-- Angel Scout -->
     <circle cx="0" cy="0" r="8" fill="#ffdd44"/>
     <polygon points="-8,0 -13,-4 -10,2" fill="#ffee88"/>
@@ -174,14 +201,14 @@
     <ellipse cx="0" cy="-10" rx="4" ry="1.5" fill="none" stroke="#ffff99" stroke-width="1"/>
   </g>
 
-  <g transform="translate(700, 140)" filter="url(#softGlow)">
+  <g transform="translate(665, 140)" filter="url(#softGlow)">
     <!-- Holy Knight -->
     <circle cx="0" cy="0" r="10" fill="#cccccc"/>
     <line x1="0" y1="-4" x2="0" y2="5" stroke="#ccaa33" stroke-width="1.5"/>
     <line x1="-3" y1="1" x2="3" y2="1" stroke="#ccaa33" stroke-width="1.5"/>
   </g>
 
-  <g transform="translate(735, 135)" filter="url(#softGlow)">
+  <g transform="translate(700, 135)" filter="url(#softGlow)">
     <!-- Paladin Boss -->
     <circle cx="0" cy="0" r="14" fill="#ffcc00" stroke="#ffee66" stroke-width="1"/>
     <circle cx="0" cy="0" r="9" fill="#ddaa00"/>
@@ -194,11 +221,33 @@
     <line x1="3" y1="-14" x2="2" y2="-18" stroke="#ffcc44" stroke-width="1.5"/>
   </g>
 
-  <g transform="translate(775, 142)" filter="url(#softGlow)">
+  <g transform="translate(740, 142)" filter="url(#softGlow)">
     <!-- God of War -->
     <circle cx="0" cy="0" r="11" fill="#ff8844"/>
     <polygon points="0,-16 2,-10 -2,-10" fill="#ee6611"/>
     <line x1="4" y1="-3" x2="8" y2="-10" stroke="#ddddee" stroke-width="2"/>
+  </g>
+
+  <g transform="translate(775, 135)" filter="url(#softGlow)">
+    <!-- Michael (Boss) -->
+    <circle cx="0" cy="0" r="13" fill="#fff5dd" stroke="#ffee88" stroke-width="1"/>
+    <circle cx="0" cy="0" r="16" fill="none" stroke="#ffee66" stroke-width="0.5" opacity="0.4"/>
+    <circle cx="0" cy="0" r="8" fill="#eedd88"/>
+    <line x1="0" y1="-6" x2="0" y2="6" stroke="#ffffee" stroke-width="2"/>
+    <line x1="-4" y1="0" x2="4" y2="0" stroke="#ffffee" stroke-width="2"/>
+    <polygon points="-8,-2 -14,-8 -12,-3 -10,2" fill="#ffeecc" opacity="0.8"/>
+    <polygon points="8,-2 14,-8 12,-3 10,2" fill="#ffeecc" opacity="0.8"/>
+    <line x1="4" y1="-2" x2="7" y2="-9" stroke="#ffddaa" stroke-width="1.5"/>
+    <ellipse cx="0" cy="-14" rx="5" ry="2" fill="none" stroke="#ffee88" stroke-width="1"/>
+  </g>
+
+  <g transform="translate(815, 145)" filter="url(#softGlow)">
+    <!-- Zeus -->
+    <circle cx="0" cy="0" r="10" fill="#b3ccff" stroke="#88aaff" stroke-width="1"/>
+    <line x1="-1" y1="-4" x2="2" y2="-1" stroke="#ffff88" stroke-width="2"/>
+    <line x1="2" y1="-1" x2="-1" y2="1" stroke="#ffff88" stroke-width="2"/>
+    <line x1="-1" y1="1" x2="1" y2="4" stroke="#ffff88" stroke-width="2"/>
+    <circle cx="0" cy="0" r="13" fill="none" stroke="#88aaff" stroke-width="0.5" opacity="0.4"/>
   </g>
 
   <!-- "VS" divider ornament -->
@@ -209,11 +258,11 @@
   </g>
 
   <!-- Labels -->
-  <text x="180" y="115" text-anchor="middle" font-family="'Segoe UI', Arial, sans-serif" font-size="10" fill="#cc4444" letter-spacing="2" opacity="0.7">YOUR TOWERS</text>
+  <text x="215" y="115" text-anchor="middle" font-family="'Segoe UI', Arial, sans-serif" font-size="10" fill="#cc4444" letter-spacing="2" opacity="0.7">YOUR TOWERS</text>
   <text x="720" y="115" text-anchor="middle" font-family="'Segoe UI', Arial, sans-serif" font-size="10" fill="#ddaa44" letter-spacing="2" opacity="0.7">DIVINE ENEMIES</text>
 
   <!-- Bottom tagline area -->
-  <text x="450" y="300" text-anchor="middle" font-family="monospace" font-size="10" fill="#553322" letter-spacing="1">Tower Defense  |  Gambling  |  20 Waves  |  Godot 4.6</text>
+  <text x="450" y="300" text-anchor="middle" font-family="monospace" font-size="10" fill="#553322" letter-spacing="1">5 Towers  |  10 Enemies  |  Gambling  |  20 Waves  |  Godot 4.6</text>
 
   <!-- Corner ornaments -->
   <polygon points="20,20 35,20 20,35" fill="#cc2200" opacity="0.3"/>

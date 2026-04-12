@@ -62,8 +62,8 @@ var _templates: Dictionary = {
 		"zh": "{name} (等级{level})",
 	},
 	"tower_stats": {
-		"en": "DMG: {dmg} | RNG: {rng} | SPD: {spd}/s",
-		"zh": "攻击: {dmg} | 射程: {rng} | 速度: {spd}/s",
+		"en": "DMG: {dmg} | RNG: {rng} | SPD: {spd}/s\nDPS: {dps}",
+		"zh": "攻击: {dmg} | 射程: {rng} | 速度: {spd}/s\nDPS: {dps}",
 	},
 	"upgrade_cost": {
 		"en": "Upgrade ({cost})",
@@ -165,7 +165,7 @@ var _zh: Dictionary = {
 	"TOWERS": "塔防",
 	"SEND NEXT WAVE": "发送下一波",
 	"MAX LEVEL": "最高等级",
-	"Right-click: Deselect\nSpace: Skip Timer | Esc: Cancel": "右键：取消选择\n空格：跳过等待 | Esc：取消",
+	"Right-click: Deselect | Tab: Overview\nSpace: Skip Timer | Esc: Cancel": "右键：取消选择 | Tab：总览\n空格：跳过等待 | Esc：取消",
 
 	# --- Dice UI ---
 	"DEVIL'S DICE": "恶魔骰子",
@@ -211,11 +211,15 @@ var _zh: Dictionary = {
 	"Demon Archer": "恶魔弓手",
 	"Hellfire Mage": "地狱火法师",
 	"Necromancer": "死灵法师",
+	"Lucifer": "路西法",
+	"Hades": "哈迪斯",
 
 	# --- Tower descriptions ---
 	"Fast attacks, reliable early damage": "快速攻击，可靠的前期伤害",
 	"AoE blasts, essential vs swarms": "范围爆炸，对付群敌必备",
 	"Slows enemies on hit, force multiplier": "命中减速，战力倍增",
+	"Global pulse damages ALL enemies, slow attack": "全局脉冲伤害所有敌人，攻速慢",
+	"Buffs nearby tower attack speed periodically": "定期提升范围内塔的攻速",
 
 	# --- Enemy names ---
 	"Angel Scout": "天使斥候",
@@ -226,6 +230,8 @@ var _zh: Dictionary = {
 	"Monk": "武僧",
 	"Archangel Commander": "大天使指挥官",
 	"Divine Guardian": "神圣守卫",
+	"Archangel Michael": "大天使米迦勒",
+	"Zeus": "宙斯",
 
 	# --- Wave descriptions ---
 	"The first scouts arrive": "第一批斥候来了",
@@ -239,15 +245,16 @@ var _zh: Dictionary = {
 	"Twin commanders rally the host": "双指挥官集结大军",
 	"BOSS: Paladin with Archangel guard": "首领：圣武士与大天使护卫",
 	"The Guardian's shield descends!": "守卫之盾降临！",
-	"Overwhelming protected numbers": "受保护的压倒性数量",
-	"Shielded heavy hitters": "有护盾的重击者",
+	"Zeus strikes from the storm!": "宙斯从风暴中降临！",
+	"Shielded heavy hitters with lightning": "有护盾的重击者与闪电",
 	"Armored column, double guarded": "重甲纵队，双重守卫",
-	"BOSS: Thunder under divine shield": "首领：神盾下的雷霆",
-	"The flood, commanded and guarded": "洪潮，有指挥有守卫",
-	"Elite forces with full support": "精锐部队全面支援",
+	"BOSS: Michael descends with divine shield!": "首领：米迦勒携神盾降临！",
+	"The flood, lightning and command": "洪潮，闪电与指挥",
+	"Elite forces with Zeus support": "精锐部队与宙斯支援",
 	"Full combined arms": "全兵种联合",
-	"The final onslaught": "最终猛攻",
-	"BOSS: Heaven's last stand": "首领：天堂的最后一战",
+	"The final onslaught — Michael leads": "最终猛攻——米迦勒领军",
+	"BOSS: Heaven's last stand — all heroes": "首领：天堂的最后一战——全英雄出击",
+	"Michael's divine shield protects all!": "米迦勒的神盾保护了所有人！",
 
 	# --- Pact names ---
 	"Blood Rage": "血怒",
@@ -297,4 +304,5 @@ var _zh: Dictionary = {
 	"Prepare your defenses!": "准备你的防御！",
 	"No deal.": "拒绝交易。",
 	"Trojan Relic! Elite enemies spawned!": "特洛伊遗物！精锐敌人出现！",
+	"Only one Lucifer allowed!": "只能拥有一个路西法！",
 }
