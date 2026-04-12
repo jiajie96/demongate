@@ -155,6 +155,22 @@ var WAVE_DATA := [
 # ═══════════════════════════════════════════════════════
 # GAMBLING DATA
 # ═══════════════════════════════════════════════════════
+# Early game (waves 1-4): all outcomes are positive
+var DICE_OUTCOMES_EARLY := {
+	12: {"name": "HELLFIRE APOCALYPSE", "positive": true, "effect": "kill_all", "desc": "All enemies instantly destroyed!"},
+	11: {"name": "Demonic Surge", "positive": true, "effect": "triple_speed", "desc": "All towers 3x attack speed for 20s!"},
+	10: {"name": "Demonic Surge", "positive": true, "effect": "triple_speed", "desc": "All towers 3x attack speed for 20s!"},
+	9: {"name": "Hellstorm", "positive": true, "effect": "aoe_30", "desc": "30% damage to all enemies!"},
+	8: {"name": "Hellstorm", "positive": true, "effect": "aoe_30", "desc": "30% damage to all enemies!"},
+	7: {"name": "Hellstorm", "positive": true, "effect": "aoe_30", "desc": "30% damage to all enemies!"},
+	6: {"name": "Quick Hands", "positive": true, "effect": "speed_boost", "desc": "All towers +50% attack speed for 10s!"},
+	5: {"name": "Quick Hands", "positive": true, "effect": "speed_boost", "desc": "All towers +50% attack speed for 10s!"},
+	4: {"name": "Small Spark", "positive": true, "effect": "aoe_15", "desc": "15% damage to all enemies!"},
+	3: {"name": "Small Spark", "positive": true, "effect": "aoe_15", "desc": "15% damage to all enemies!"},
+	2: {"name": "Minor Blessing", "positive": true, "effect": "bonus_sins", "desc": "Gained 30 bonus Sins!"},
+}
+
+# Late game (waves 5+): negatives appear but are soft
 var DICE_OUTCOMES := {
 	12: {"name": "HELLFIRE APOCALYPSE", "positive": true, "effect": "kill_all", "desc": "All enemies instantly destroyed!"},
 	11: {"name": "Demonic Surge", "positive": true, "effect": "triple_speed", "desc": "All towers 3x attack speed for 20s!"},
@@ -162,12 +178,19 @@ var DICE_OUTCOMES := {
 	9: {"name": "Hellstorm", "positive": true, "effect": "aoe_30", "desc": "30% damage to all enemies!"},
 	8: {"name": "Hellstorm", "positive": true, "effect": "aoe_30", "desc": "30% damage to all enemies!"},
 	7: {"name": "Hellstorm", "positive": true, "effect": "aoe_30", "desc": "30% damage to all enemies!"},
-	6: {"name": "Backfire", "positive": false, "effect": "disable_8s", "desc": "All towers disabled for 8 seconds!"},
-	5: {"name": "Backfire", "positive": false, "effect": "disable_8s", "desc": "All towers disabled for 8 seconds!"},
-	4: {"name": "Earthquake", "positive": false, "effect": "destroy_2", "desc": "2 random towers destroyed!"},
-	3: {"name": "Earthquake", "positive": false, "effect": "destroy_2", "desc": "2 random towers destroyed!"},
-	2: {"name": "DEVIL'S BETRAYAL", "positive": false, "effect": "betray", "desc": "Core -25 HP, best tower destroyed!"},
+	6: {"name": "Slow Curse", "positive": false, "effect": "slow_towers", "desc": "All towers -30% speed for 10s"},
+	5: {"name": "Slow Curse", "positive": false, "effect": "slow_towers", "desc": "All towers -30% speed for 10s"},
+	4: {"name": "Tremor", "positive": false, "effect": "disable_3s", "desc": "All towers disabled for 3 seconds"},
+	3: {"name": "Tremor", "positive": false, "effect": "disable_3s", "desc": "All towers disabled for 3 seconds"},
+	2: {"name": "Devil's Tax", "positive": false, "effect": "tax_sins", "desc": "Lost 15% of current Sins"},
 }
+
+const DICE_NEGATIVE_WAVE := 5  # negatives start at this wave
+
+func get_dice_outcome(total: int, current_wave: int) -> Dictionary:
+	if current_wave < DICE_NEGATIVE_WAVE:
+		return DICE_OUTCOMES_EARLY[total]
+	return DICE_OUTCOMES[total]
 
 var PACT_POOL := [
 	{"name": "Blood Rage", "benefit": "All towers 2x damage for 3 waves", "cost_desc": "Core loses 20 HP", "b_effect": "double_dmg_3", "c_effect": "core_-20"},

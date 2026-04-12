@@ -62,15 +62,15 @@ func _draw_map() -> void:
 			else:
 				_draw_ground_tile(rx, ry, c, r)
 
-	# Spawn marker — portal effect
+	# Spawn marker — portal effect (positioned below top bar)
 	var spawn_cell: Vector2i = Config.MAP_PATH[0]
 	var sx: float = spawn_cell.x * T + T / 2.0
 	var sy: float = spawn_cell.y * T + T / 2.0
 	var sp_pulse: float = 0.5 + 0.5 * sin(GM.game_time * 2.5)
-	draw_circle(Vector2(sx, sy - T * 0.3), 8, Color(0.1, 0.2, 0.6, 0.3 + sp_pulse * 0.2))
-	draw_circle(Vector2(sx, sy - T * 0.3), 5, Config.COLOR_SPAWN)
-	draw_arc(Vector2(sx, sy - T * 0.3), 10, 0, TAU, 16, Color(0.3, 0.5, 1.0, 0.3 + sp_pulse * 0.15), 1.5)
-	draw_string(font, Vector2(sx - 20, sy - T * 0.55), Locale.t("SPAWN"), HORIZONTAL_ALIGNMENT_CENTER, 40, 10, Color(0.7, 0.8, 1.0))
+	draw_circle(Vector2(sx, sy), 8, Color(0.1, 0.2, 0.6, 0.3 + sp_pulse * 0.2))
+	draw_circle(Vector2(sx, sy), 5, Config.COLOR_SPAWN)
+	draw_arc(Vector2(sx, sy), 10, 0, TAU, 16, Color(0.3, 0.5, 1.0, 0.3 + sp_pulse * 0.15), 1.5)
+	draw_string(font, Vector2(sx - 24, sy + T * 0.7), Locale.t("SPAWN"), HORIZONTAL_ALIGNMENT_CENTER, 48, 10, Color(0.7, 0.8, 1.0))
 
 	# Core marker
 	var core_cell: Vector2i = Config.MAP_PATH[Config.MAP_PATH.size() - 1]
@@ -377,19 +377,19 @@ func _draw_placement_preview() -> void:
 # ═══════════════════════════════════════════════════════
 func _draw_notifications() -> void:
 	var W: float = Config.GAME_WIDTH
-	var H: float = Config.GAME_HEIGHT
 	for i in range(GM.notifications.size()):
 		var n: Dictionary = GM.notifications[i]
 		var alpha: float = clampf(n["timer"], 0.0, 1.0)
-		var ny: float = H - 20 - i * 20
+		# Draw at top of game area, below the 50px top bar, stacking downward
+		var ny: float = 65 + i * 20
 
 		# Shadow
 		var shadow_col := Color(0, 0, 0, alpha)
-		draw_string(font, Vector2(W / 2.0 - 150 + 1, ny + 1), n["text"], HORIZONTAL_ALIGNMENT_CENTER, 300, 13, shadow_col)
+		draw_string(font, Vector2(W / 2.0 - 200 + 1, ny + 1), n["text"], HORIZONTAL_ALIGNMENT_CENTER, 400, 13, shadow_col)
 		# Text
 		var text_col: Color = n["color"]
 		text_col.a = alpha
-		draw_string(font, Vector2(W / 2.0 - 150, ny), n["text"], HORIZONTAL_ALIGNMENT_CENTER, 300, 13, text_col)
+		draw_string(font, Vector2(W / 2.0 - 200, ny), n["text"], HORIZONTAL_ALIGNMENT_CENTER, 400, 13, text_col)
 
 # ═══════════════════════════════════════════════════════
 # DICE RESULT OVERLAY

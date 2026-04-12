@@ -55,7 +55,8 @@ var stats: Dictionary = {"enemies_killed": 0, "towers_placed": 0}
 var occupied_tiles: Dictionary = {}
 var notifications: Array = []
 var game_time: float = 0.0
-var triple_speed_timer: float = 0.0
+var speed_buff_timer: float = 0.0
+var speed_buff_factor: float = 1.0  # what was multiplied, divide to undo
 
 var _next_id: int = 0
 
@@ -567,7 +568,7 @@ func roll_dice() -> Dictionary:
 	var d1: int = randi() % 6 + 1
 	var d2: int = randi() % 6 + 1
 	var total: int = d1 + d2
-	var outcome: Dictionary = Config.DICE_OUTCOMES[total]
+	var outcome: Dictionary = Config.get_dice_outcome(total, wave)
 
 	show_dice_result = true
 	dice_result = {"d1": d1, "d2": d2, "total": total, "outcome": outcome}
@@ -600,37 +601,32 @@ func roll_dice() -> Dictionary:
 						stats["enemies_killed"] += 1
 						earn_from_kill(e["type"], true)
 			add_effect("screen_flash", 0, 0, 0, Color(1.0, 0.4, 0.0))
-		"disable_8s":
+		"aoe_15":
+			for e in enemies:
+				if e["alive"]:
+					var dmg: float = e["max_hp"] * 0.15
+					e["hp"] -= dmg
+					e["flash_timer"] = 0.15
+					if e["hp"] <= 0:
+						e["alive"] = false
+						stats["enemies_killed"] += 1
+						earn_from_kill(e["type"], true)
+			add_effect("screen_flash", 0, 0, 0, Color(1.0, 0.6, 0.2))
+		"speed_boost":
+			perm_speed_buff *= 1.5
+			triple_speed_timer = 10.0
+		"bonus_sins":
+			earn(30)
+		"slow_towers":
+			perm_speed_buff *= 0.7
+			triple_speed_timer = 10.0
+		"disable_3s":
 			for t in towers:
 				t["is_disabled"] = true
-				t["disable_timer"] = 8.0
-		"destroy_2":
-			var shuffled := towers.duplicate()
-			shuffled.shuffle()
-			var count := mini(2, shuffled.size())
-			for j in range(count):
-				var t: Dictionary = shuffled[j]
-				occupied_tiles.erase(str(t["col"]) + "," + str(t["row"]))
-				for k in range(towers.size() - 1, -1, -1):
-					if towers[k]["id"] == t["id"]:
-						towers.remove_at(k)
-						break
-				add_effect("death", t["x"], t["y"], 15.0, t["color"])
-		"betray":
-			core_hp = maxf(0, core_hp - 25)
-			if core_hp <= 0:
-				phase = "gameover"
-			if towers.size() > 0:
-				var best: Dictionary = towers[0]
-				for t in towers:
-					if t["level"] > best["level"]:
-						best = t
-				occupied_tiles.erase(str(best["col"]) + "," + str(best["row"]))
-				for k in range(towers.size() - 1, -1, -1):
-					if towers[k]["id"] == best["id"]:
-						towers.remove_at(k)
-						break
-				add_effect("death", best["x"], best["y"], 15.0, best["color"])
+				t["disable_timer"] = 3.0
+		"tax_sins":
+			var lost: int = roundi(sins * 0.15)
+			sins -= lost
 
 	return dice_result
 
