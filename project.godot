@@ -22,6 +22,8 @@ config/features=PackedStringArray("4.6")
 
 Config="*res://scripts/autoload/game_config.gd"
 GM="*res://scripts/autoload/game_manager.gd"
+Audio="*res://scripts/autoload/audio_manager.gd"
+Locale="*res://scripts/autoload/locale.gd"
 
 [display]
 
@@ -31,4 +33,4 @@ window/stretch/mode="canvas_items"
 
 [rendering]
 
-environment/defaults/default_clear_color=Color(0.102, 0.039, 0.102, 1)
+environment/defaults/default_clear_color=Color(0.055, 0.022, 0.055, 1)
