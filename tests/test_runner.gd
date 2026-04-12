@@ -127,7 +127,7 @@ func _run_map_tests() -> void:
 func _run_economy_tests() -> void:
 	print("[Economy]")
 	GM.reset_state()
-	_assert_eq(GM.sins, 60, "Starting sins is 60")
+	_assert_eq(GM.sins, 80, "Starting sins is 80")
 
 	GM.earn(50)
 	_assert_eq(GM.sins, 110, "Earn 50 -> 110")

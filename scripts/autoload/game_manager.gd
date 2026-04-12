@@ -15,7 +15,7 @@ var core_hp: float = 100.0
 var core_max_hp: float = 100.0
 var wave: int = 0
 
-var sins: int = 60
+var sins: int = 50
 
 var towers: Array = []
 var enemies: Array = []
@@ -68,7 +68,7 @@ func reset_state() -> void:
 	core_hp = Config.CORE_MAX_HP
 	core_max_hp = Config.CORE_MAX_HP
 	wave = 0
-	sins = 60
+	sins = 50
 	towers.clear()
 	enemies.clear()
 	projectiles.clear()
@@ -528,7 +528,7 @@ func update_waves(dt: float) -> void:
 
 func complete_wave() -> void:
 	wave_active = false
-	var wave_bonus: int = 10 + wave * 2
+	var wave_bonus: int = 25 + wave * 3
 	earn(wave_bonus)
 	notify(Locale.tf("wave_complete_notify", {"wave": wave, "bonus": wave_bonus}), Color(0.8, 0.267, 1.0))
 	Audio.play_sfx("wave_complete")

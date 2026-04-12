@@ -17,5 +17,8 @@ Thumbs.db
 # Environment secrets
 .env
 
+# Python
+__pycache__/
+
 # Claude Code
 .claude/
