@@ -59,8 +59,8 @@ func _run_config_tests() -> void:
 	_assert_eq(Config.GAME_HEIGHT, 576, "Game height is 576")
 	_assert_eq(Config.MAX_WAVES, 20, "Max waves is 20")
 	_assert_eq(Config.DICE_MAX_USES, 2, "Dice max uses is 2")
-	_assert_eq(Config.TOWER_DATA.size(), 4, "4 tower types defined")
-	_assert_eq(Config.ENEMY_DATA.size(), 6, "6 enemy types defined")
+	_assert_eq(Config.TOWER_DATA.size(), 3, "3 tower types defined")
+	_assert_eq(Config.ENEMY_DATA.size(), 8, "8 enemy types defined")
 	_assert_eq(Config.WAVE_DATA.size(), 20, "20 wave definitions")
 	_assert(not Config.has_method("ROULETTE_SEGMENTS") or true, "Roulette removed")
 	_assert_eq(Config.DICE_OUTCOMES.size(), 11, "11 dice outcomes (2-12)")
@@ -165,7 +165,7 @@ func _run_tower_tests() -> void:
 	_assert_eq(tower["type"], "demon_archer", "Tower type is demon_archer")
 	_assert_eq(tower["level"], 1, "Tower starts at level 1")
 	_assert_eq(tower["damage"], 2.0, "Demon archer damage is 2.0")
-	_assert_eq(tower["range"], 100.0, "Demon archer range is 100")
+	_assert_eq(tower["range"], 120.0, "Demon archer range is 120")
 	_assert(tower.has("id"), "Tower has unique id")
 
 	# Buildable checks
@@ -211,8 +211,8 @@ func _run_enemy_tests() -> void:
 	GM.reset_state()
 
 	var scout := GM.create_enemy("angel_scout")
-	_assert_eq(scout["hp"], 10.0, "Angel scout has 10 HP")
-	_assert_eq(scout["max_hp"], 10.0, "Angel scout max HP is 10")
+	_assert_eq(scout["hp"], 14.0, "Angel scout has 14 HP")
+	_assert_eq(scout["max_hp"], 14.0, "Angel scout max HP is 14")
 	_assert(scout["alive"], "Enemy starts alive")
 	_assert_eq(scout["path_index"], 0, "Enemy starts at path index 0")
 	_assert(scout.has("id"), "Enemy has unique id")
@@ -220,12 +220,29 @@ func _run_enemy_tests() -> void:
 	_assert_eq(scout["slow_timer"], 0.0, "Enemy starts with no slow timer")
 
 	var paladin := GM.create_enemy("paladin")
-	_assert_eq(paladin["hp"], 200.0, "Paladin has 200 HP")
+	_assert_eq(paladin["hp"], 280.0, "Paladin has 280 HP")
 	_assert(paladin["is_boss"], "Paladin is a boss")
-	_assert_eq(paladin["core_dmg"], 25, "Paladin core damage is 25")
+	_assert_eq(paladin["core_dmg"], 30, "Paladin core damage is 30")
 
 	var knight := GM.create_enemy("holy_knight")
-	_assert_eq(knight["hp"], 35.0, "Holy knight has 35 HP")
+	_assert_eq(knight["hp"], 45.0, "Holy knight has 45 HP")
+
+	# New enemy types
+	var arch := GM.create_enemy("archangel")
+	_assert_eq(arch["hp"], 55.0, "Archangel has 55 HP")
+	_assert_eq(arch["type"], "archangel", "Archangel type correct")
+
+	var guard := GM.create_enemy("divine_guardian")
+	_assert_eq(guard["hp"], 65.0, "Divine Guardian has 65 HP")
+	_assert_eq(guard["type"], "divine_guardian", "Divine Guardian type correct")
+
+	# Wave scaling: enemies get tougher each wave (starts after SCALE_START_WAVE)
+	GM.wave = 10
+	var scaled_scout := GM.create_enemy("angel_scout")
+	_assert(scaled_scout["hp"] > 14.0, "Wave 10 scouts have scaled HP")
+	_assert(scaled_scout["speed"] > 80.0, "Wave 10 scouts have scaled speed")
+	var expected_hp: float = 14.0 * (1.0 + (10 - Config.SCALE_START_WAVE) * Config.WAVE_HP_SCALE)
+	_assert_eq(scaled_scout["hp"], expected_hp, "Wave 10 scout HP matches scaling formula")
 
 	GM.reset_state()
 
@@ -241,8 +258,8 @@ func _run_combat_tests() -> void:
 
 	# Hit without killing
 	GM.combat_hit(enemy, 3.0, null)
-	_assert_eq(enemy["hp"], 7.0, "After 3 damage, 7 HP remains")
-	_assert(enemy["alive"], "Enemy still alive at 7 HP")
+	_assert_eq(enemy["hp"], 11.0, "After 3 damage, 11 HP remains")
+	_assert(enemy["alive"], "Enemy still alive at 11 HP")
 	_assert(enemy["flash_timer"] > 0, "Flash timer set on hit")
 
 	# Lethal hit
@@ -298,7 +315,7 @@ func _run_wave_tests() -> void:
 			all_scouts = false
 			break
 	_assert(all_scouts, "Wave 1 only has angel scouts")
-	_assert_eq(GM.spawn_queue.size(), 5, "Wave 1 has 5 enemies")
+	_assert_eq(GM.spawn_queue.size(), 3, "Wave 1 has 3 enemies")
 
 	# Wave 2 should have tougher enemies
 	GM.wave_active = false
@@ -331,7 +348,6 @@ func _run_slow_tests() -> void:
 	# Other towers should not slow
 	_assert_eq(Config.TOWER_DATA["demon_archer"]["slow_power"], 0.0, "Demon Archer has no slow")
 	_assert_eq(Config.TOWER_DATA["hellfire_mage"]["slow_power"], 0.0, "Hellfire Mage has no slow")
-	_assert_eq(Config.TOWER_DATA["pit_brute"]["slow_power"], 0.0, "Pit Brute has no slow")
 
 	# NEC tower applies slow on hit
 	var nec := GM.create_tower("necromancer", 5, 5)

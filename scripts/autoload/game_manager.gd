@@ -10,6 +10,7 @@ signal pact_offered(choices: Array)
 # GAME STATE
 # ═══════════════════════════════════════════════════════
 var phase: String = "menu"
+var paused: bool = false
 var core_hp: float = 100.0
 var core_max_hp: float = 100.0
 var wave: int = 0
@@ -63,6 +64,7 @@ var _next_id: int = 0
 # ═══════════════════════════════════════════════════════
 func reset_state() -> void:
 	phase = "playing"
+	paused = false
 	core_hp = Config.CORE_MAX_HP
 	core_max_hp = Config.CORE_MAX_HP
 	wave = 0
@@ -78,7 +80,7 @@ func reset_state() -> void:
 	spawn_queue.clear()
 	spawn_timer = 0.0
 	between_wave_timer = Config.FIRST_WAVE_DELAY
-	wave_desc = "Prepare your defenses!"
+	wave_desc = "Prepare your defenses!"  # translated at display point
 	dice_uses_left = Config.DICE_MAX_USES
 	show_pact = false
 	pact_choices.clear()
@@ -133,7 +135,7 @@ func add_to_hero_pool(amount: int) -> void:
 	if fallen_hero_pool >= threshold:
 		fallen_hero_pool -= threshold
 		fallen_heroes_spawned += 1
-		notify("A Fallen Hero has joined your cause!", Color(1.0, 0.8, 0.0))
+		notify(Locale.t("A Fallen Hero has joined your cause!"), Color(1.0, 0.8, 0.0))
 
 func hero_threshold() -> int:
 	if fallen_heroes_spawned == 0:
@@ -143,7 +145,7 @@ func hero_threshold() -> int:
 	return 1000 + (fallen_heroes_spawned - 2) * 500
 
 func format_cost(cost: int) -> String:
-	return str(cost) + " Sins"
+	return Locale.tf("cost_format", {"cost": cost})
 
 # ═══════════════════════════════════════════════════════
 # TOWER
@@ -184,7 +186,7 @@ func upgrade_tower(tower: Dictionary) -> bool:
 	tower["damage"] *= Config.UPGRADE_MULT
 	tower["range"] *= 1.1
 	tower["attack_speed"] *= 1.15
-	notify(tower["name"] + " upgraded to Lv." + str(tower["level"]), tower["color"])
+	notify(Locale.tf("tower_upgraded", {"name": Locale.t(tower["name"]), "level": tower["level"]}), tower["color"])
 	return true
 
 func sell_tower(tower: Dictionary) -> void:
@@ -198,7 +200,7 @@ func sell_tower(tower: Dictionary) -> void:
 	occupied_tiles.erase(str(tower["col"]) + "," + str(tower["row"]))
 	if selected_tower != null and selected_tower["id"] == tower["id"]:
 		selected_tower = null
-	notify("Sold " + tower["name"], Color(0.667, 0.667, 0.667))
+	notify(Locale.tf("sold_tower", {"name": Locale.t(tower["name"])}), Color(0.667, 0.667, 0.667))
 
 func is_buildable(col: int, row: int) -> bool:
 	if col < 0 or col >= Config.GRID_COLS or row < 0 or row >= Config.GRID_ROWS:
@@ -216,12 +218,15 @@ func create_enemy(type: String) -> Dictionary:
 	var data: Dictionary = Config.ENEMY_DATA[type]
 	var sp := Config.spawn_pixel()
 	_next_id += 1
+	var w := maxf(0, wave - Config.SCALE_START_WAVE)
+	var scaled_hp: float = data["hp"] * (1.0 + w * Config.WAVE_HP_SCALE)
+	var scaled_speed: float = data["speed"] * (1.0 + w * Config.WAVE_SPD_SCALE)
 	return {
 		"id": _next_id,
 		"type": type,
-		"hp": data["hp"],
-		"max_hp": data["hp"],
-		"speed": data["speed"],
+		"hp": scaled_hp,
+		"max_hp": scaled_hp,
+		"speed": scaled_speed,
 		"core_dmg": data["core_dmg"],
 		"is_boss": data["is_boss"],
 		"color": data["color"],
@@ -239,8 +244,22 @@ func create_enemy(type: String) -> Dictionary:
 		"flash_timer": 0.0,
 	}
 
+func _has_alive_type(etype: String) -> bool:
+	for e in enemies:
+		if e["alive"] and e["type"] == etype:
+			return true
+	return false
+
+func _is_guardian_protected(enemy: Dictionary) -> bool:
+	if enemy["type"] == "divine_guardian":
+		return false
+	if not _has_alive_type("divine_guardian"):
+		return false
+	return enemy.get("path_index", 0) < Config.path_pixels.size() / 2
+
 func update_enemies(dt: float) -> void:
 	var path_px: Array[Vector2] = Config.path_pixels
+	var has_commander := _has_alive_type("archangel")
 	var i := enemies.size() - 1
 	while i >= 0:
 		var e: Dictionary = enemies[i]
@@ -271,6 +290,9 @@ func update_enemies(dt: float) -> void:
 			spd *= (1.0 - e["slow_amount"])
 		if fast_enemy_waves > 0:
 			spd *= 1.3
+		# Archangel Commander aura: +25% speed to allies
+		if has_commander and e["type"] != "archangel":
+			spd *= 1.25
 
 		if e["path_index"] >= path_px.size():
 			e["alive"] = false
@@ -278,6 +300,7 @@ func update_enemies(dt: float) -> void:
 			core_hp = maxf(0, core_hp - e["core_dmg"])
 			var last_pt: Vector2 = path_px[path_px.size() - 1]
 			add_effect("core_hit", last_pt.x, last_pt.y, 10.0, Color.RED)
+			Audio.play_sfx("core_hit")
 			if core_hp <= 0:
 				phase = "gameover"
 			i -= 1
@@ -400,10 +423,17 @@ func calc_damage(base_dmg: float, tower, enemy: Dictionary) -> float:
 		dmg *= (1.0 - enemy["shield"])
 	if enemy.get("shield_buff", false):
 		dmg *= 0.7
+	# Archangel Commander aura: 25% damage reduction for allies
+	if _has_alive_type("archangel") and enemy.get("type", "") != "archangel":
+		dmg *= 0.75
 	return maxf(1.0, dmg)
 
 func combat_hit(enemy: Dictionary, base_dmg: float, tower) -> void:
 	if not enemy.get("alive", false):
+		return
+	# Divine Guardian protection: enemies in first half of path are invulnerable
+	if _is_guardian_protected(enemy):
+		enemy["flash_timer"] = 0.05
 		return
 	var dmg := calc_damage(base_dmg, tower, enemy)
 	enemy["hp"] -= dmg
@@ -431,6 +461,7 @@ func combat_kill(enemy: Dictionary, tower) -> void:
 		drop_relic(enemy["x"], enemy["y"])
 
 	add_effect("death", enemy["x"], enemy["y"], enemy["radius"], enemy["color"])
+	Audio.play_sfx("enemy_death")
 
 # ═══════════════════════════════════════════════════════
 # TOWER UPDATE
@@ -455,6 +486,7 @@ func update_towers(dt: float) -> void:
 
 		t["cooldown"] = 1.0 / effective_speed
 		projectiles.append(create_projectile(t, target))
+		Audio.play_shoot(t["type"])
 
 # ═══════════════════════════════════════════════════════
 # WAVE MANAGER
@@ -474,7 +506,8 @@ func start_wave() -> void:
 			spawn_queue.append(entry["type"])
 	spawn_timer = 0.5
 
-	notify("Wave " + str(wave) + ": " + wave_desc, Color(1.0, 0.8, 0.0))
+	notify(Locale.tf("wave_start_notify", {"wave": wave, "desc": Locale.t(wave_desc)}), Color(1.0, 0.8, 0.0))
+	Audio.play_sfx("wave_start")
 
 func update_waves(dt: float) -> void:
 	if wave_active:
@@ -495,9 +528,10 @@ func update_waves(dt: float) -> void:
 
 func complete_wave() -> void:
 	wave_active = false
-	var wave_bonus: int = 10 + wave * 3
+	var wave_bonus: int = 10 + wave * 2
 	earn(wave_bonus)
-	notify("Wave " + str(wave) + " complete! +" + str(wave_bonus) + " Sins", Color(0.8, 0.267, 1.0))
+	notify(Locale.tf("wave_complete_notify", {"wave": wave, "bonus": wave_bonus}), Color(0.8, 0.267, 1.0))
+	Audio.play_sfx("wave_complete")
 
 	if double_damage > 0:
 		double_damage -= 1
@@ -507,6 +541,11 @@ func complete_wave() -> void:
 			sin_multiplier = 1.0
 	if fast_enemy_waves > 0:
 		fast_enemy_waves -= 1
+
+	# Replenish 1 die per wave (capped at max)
+	if dice_uses_left < Config.DICE_MAX_USES:
+		dice_uses_left += 1
+		notify(Locale.tf("dice_replenish", {"count": dice_uses_left, "max": Config.DICE_MAX_USES}), Color(1.0, 0.6, 0.2))
 
 	if wave >= Config.MAX_WAVES:
 		phase = "victory"
@@ -532,10 +571,11 @@ func roll_dice() -> Dictionary:
 
 	show_dice_result = true
 	dice_result = {"d1": d1, "d2": d2, "total": total, "outcome": outcome}
-	dice_result_timer = 3.0
+	dice_result_timer = 5.0
+	Audio.play_sfx("dice_roll")
 
 	var msg_color := Color(0.267, 1.0, 0.267) if outcome["positive"] else Color(1.0, 0.267, 0.267)
-	notify(outcome["name"] + " (" + str(d1) + "+" + str(d2) + ")", msg_color)
+	notify(Locale.t(outcome["name"]) + " (" + str(d1) + "+" + str(d2) + ")", msg_color)
 
 	match outcome["effect"]:
 		"kill_all":
@@ -609,7 +649,7 @@ func should_drop_relic(enemy_type: String) -> bool:
 
 func drop_relic(rx: float, ry: float) -> void:
 	var loot: Dictionary = _weighted_pick(Config.RELIC_LOOT)
-	notify("Relic: " + loot["name"], Color(1.0, 0.8, 0.0))
+	notify(Locale.tf("relic_drop", {"name": Locale.t(loot["name"])}), Color(1.0, 0.8, 0.0))
 	add_effect("relic", rx, ry, 15.0, Color(1.0, 0.8, 0.0))
 
 	match loot["type"]:
@@ -619,7 +659,7 @@ func drop_relic(rx: float, ry: float) -> void:
 		"random_sins":
 			var amt: int = 50 + randi() % 100
 			earn(amt)
-			notify("+" + str(amt) + " Sins", Color(0.8, 0.267, 1.0))
+			notify(Locale.tf("sins_gained", {"amount": amt}), Color(0.8, 0.267, 1.0))
 		"tower_buff":
 			var nearest = null
 			var best_dist := INF
@@ -630,7 +670,7 @@ func drop_relic(rx: float, ry: float) -> void:
 					nearest = t
 			if nearest != null:
 				nearest["damage_mult"] += 0.25
-				notify(nearest["name"] + " +25% damage!", Color(0.267, 1.0, 0.267))
+				notify(Locale.tf("tower_buff", {"name": Locale.t(nearest["name"])}), Color(0.267, 1.0, 0.267))
 		"curse":
 			if towers.size() > 0:
 				var strongest: Dictionary = towers[0]
@@ -639,11 +679,11 @@ func drop_relic(rx: float, ry: float) -> void:
 						strongest = t
 				strongest["is_disabled"] = true
 				strongest["disable_timer"] = 30.0
-				notify(strongest["name"] + " cursed!", Color(0.8, 0.2, 0.2))
+				notify(Locale.tf("tower_cursed", {"name": Locale.t(strongest["name"])}), Color(0.8, 0.2, 0.2))
 		"trap":
 			enemies.append(create_enemy("god_of_war"))
 			enemies.append(create_enemy("god_of_war"))
-			notify("Trojan Relic! Elite enemies spawned!", Color(0.8, 0.2, 0.2))
+			notify(Locale.t("Trojan Relic! Elite enemies spawned!"), Color(0.8, 0.2, 0.2))
 		_:
 			earn(30)
 
@@ -698,14 +738,15 @@ func accept_pact(pact: Dictionary) -> void:
 		"halve_sins":
 			sins = sins / 2
 
-	notify("Pact accepted: " + pact["name"], Color(0.8, 0.267, 1.0))
+	notify(Locale.tf("pact_accepted_notify", {"name": Locale.t(pact["name"])}), Color(0.8, 0.267, 1.0))
+	Audio.play_sfx("pact_accept")
 	show_pact = false
 	between_wave_timer = Config.BETWEEN_WAVE_DELAY
 
 func decline_pact() -> void:
 	show_pact = false
 	between_wave_timer = Config.BETWEEN_WAVE_DELAY
-	notify("No deal.", Color(0.533, 0.533, 0.533))
+	notify(Locale.t("No deal."), Color(0.533, 0.533, 0.533))
 
 # ═══════════════════════════════════════════════════════
 # EFFECTS & NOTIFICATIONS
