@@ -100,7 +100,8 @@ func reset_state() -> void:
 	occupied_tiles.clear()
 	notifications.clear()
 	game_time = 0.0
-	triple_speed_timer = 0.0
+	speed_buff_timer = 0.0
+	speed_buff_factor = 1.0
 	_next_id = 0
 
 # ═══════════════════════════════════════════════════════
@@ -588,8 +589,7 @@ func roll_dice() -> Dictionary:
 					stats["enemies_killed"] += 1
 			add_effect("screen_flash", 0, 0, 0, Color(1.0, 0.267, 0.0))
 		"triple_speed":
-			perm_speed_buff *= 3.0
-			triple_speed_timer = 20.0
+			_apply_speed_buff(3.0, 20.0)
 		"aoe_30":
 			for e in enemies:
 				if e["alive"]:
@@ -613,13 +613,11 @@ func roll_dice() -> Dictionary:
 						earn_from_kill(e["type"], true)
 			add_effect("screen_flash", 0, 0, 0, Color(1.0, 0.6, 0.2))
 		"speed_boost":
-			perm_speed_buff *= 1.5
-			triple_speed_timer = 10.0
+			_apply_speed_buff(1.5, 10.0)
 		"bonus_sins":
 			earn(30)
 		"slow_towers":
-			perm_speed_buff *= 0.7
-			triple_speed_timer = 10.0
+			_apply_speed_buff(0.7, 10.0)
 		"disable_3s":
 			for t in towers:
 				t["is_disabled"] = true
@@ -776,10 +774,11 @@ func update_effects(dt: float) -> void:
 		if dice_result_timer <= 0:
 			show_dice_result = false
 
-	if triple_speed_timer > 0:
-		triple_speed_timer -= dt
-		if triple_speed_timer <= 0:
-			perm_speed_buff /= 3.0
+	if speed_buff_timer > 0:
+		speed_buff_timer -= dt
+		if speed_buff_timer <= 0:
+			perm_speed_buff /= speed_buff_factor
+			speed_buff_factor = 1.0
 
 # ═══════════════════════════════════════════════════════
 # UTILITY
