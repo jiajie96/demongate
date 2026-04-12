@@ -1,0 +1,47 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  validate-and-test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Download Godot 4.6.2
+        run: |
+          wget -q https://github.com/godotengine/godot/releases/download/4.6.2-stable/Godot_v4.6.2-stable_linux.x86_64.zip
+          unzip -q Godot_v4.6.2-stable_linux.x86_64.zip
+          chmod +x Godot_v4.6.2-stable_linux.x86_64
+          sudo mv Godot_v4.6.2-stable_linux.x86_64 /usr/local/bin/godot
+
+      - name: Import project (generate .godot cache)
+        run: godot --headless --import 2>&1 || true
+
+      - name: Validate GDScript (no parse errors)
+        run: |
+          OUTPUT=$(godot --headless --quit 2>&1)
+          echo "$OUTPUT"
+          if echo "$OUTPUT" | grep -q "SCRIPT ERROR"; then
+            echo "::error::GDScript parse errors found"
+            exit 1
+          fi
+          echo "All scripts validated successfully"
+
+      - name: Run test suite
+        run: |
+          cp project.godot project.godot.bak
+          sed 's|run/main_scene=.*|run/main_scene="res://tests/test_runner.tscn"|' project.godot.bak > project.godot
+          OUTPUT=$(godot --headless 2>&1)
+          echo "$OUTPUT"
+          mv project.godot.bak project.godot
+          if echo "$OUTPUT" | grep -q "ALL TESTS PASSED"; then
+            echo "Test suite passed"
+          else
+            echo "::error::Test suite failed"
+            exit 1
+          fi

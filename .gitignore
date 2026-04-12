@@ -1,0 +1,18 @@
+# Godot
+.godot/
+export_presets.cfg
+
+# macOS
+.DS_Store
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*~
+
+# OS
+Thumbs.db
+
+# Claude Code
+.claude/
