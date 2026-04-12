@@ -23,10 +23,12 @@ var ti_name: Label
 var ti_stats: Label
 var btn_upgrade: Button
 var btn_sell: Button
+var btn_targeting: Button
 var btn_next_wave: Button
 var hero_pool_label: Label
 var towers_title: Label
 var help_label: Label
+var speed_buttons: Array = []
 
 # Overlays
 var menu_overlay: Control
@@ -76,6 +78,7 @@ func _ready() -> void:
 	_create_overlays()
 	_create_settings_overlay()
 	_update_overlay_visibility()
+	_disable_focus(self)
 
 # ═══════════════════════════════════════════════════════
 # TOP BAR
@@ -142,6 +145,27 @@ func _create_top_bar() -> void:
 	enemies_label.add_theme_color_override("font_color", Color(0.8, 0.8, 0.8))
 	enemies_label.custom_minimum_size = Vector2(120, 40)
 	hbox.add_child(enemies_label)
+
+	# Speed buttons
+	var speed_container := HBoxContainer.new()
+	speed_container.add_theme_constant_override("separation", 2)
+	for spd in [0.5, 1.0, 2.0]:
+		var sbtn := Button.new()
+		sbtn.text = str(spd) + "x"
+		sbtn.custom_minimum_size = Vector2(38, 28)
+		sbtn.add_theme_font_size_override("font_size", 10)
+		var s := StyleBoxFlat.new()
+		s.bg_color = Color(0.2, 0.1, 0.2)
+		s.border_color = Color(0.4, 0.2, 0.4)
+		s.set_border_width_all(1)
+		s.set_corner_radius_all(3)
+		s.set_content_margin_all(2)
+		sbtn.add_theme_stylebox_override("normal", s)
+		sbtn.add_theme_color_override("font_color", Color(0.9, 0.9, 0.9))
+		sbtn.pressed.connect(_on_speed_pressed.bind(spd))
+		speed_container.add_child(sbtn)
+		speed_buttons.append(sbtn)
+	hbox.add_child(speed_container)
 
 	# Menu button (☰)
 	menu_btn = Button.new()
@@ -285,6 +309,13 @@ func _create_side_panel() -> void:
 	btn_sell.pressed.connect(_on_sell_pressed)
 	btn_row.add_child(btn_sell)
 
+	btn_targeting = Button.new()
+	btn_targeting.text = "Target: First"
+	btn_targeting.custom_minimum_size = Vector2(268, 28)
+	btn_targeting.add_theme_font_size_override("font_size", 11)
+	btn_targeting.pressed.connect(_on_targeting_pressed)
+	ti_vbox.add_child(btn_targeting)
+
 	# Next wave button
 	btn_next_wave = Button.new()
 	btn_next_wave.text = Locale.t("SEND NEXT WAVE")
@@ -365,7 +396,7 @@ func _create_side_panel() -> void:
 
 	# Controls help
 	help_label = Label.new()
-	help_label.text = Locale.t("Right-click: Deselect\nSpace: Skip Timer | Esc: Cancel")
+	help_label.text = Locale.t("Right-click: Deselect | Tab: Overview\nSpace: Skip Timer | Esc: Cancel")
 	help_label.add_theme_font_size_override("font_size", 10)
 	help_label.add_theme_color_override("font_color", Color(0.4, 0.4, 0.4))
 	vbox.add_child(help_label)
@@ -560,6 +591,11 @@ func _process(_dt: float) -> void:
 	wave_label.text = Locale.tf("wave_progress", {"wave": GM.wave, "max": Config.MAX_WAVES})
 	enemies_label.text = Locale.tf("enemies_count", {"count": GM.enemies.size()})
 
+	# Speed button highlight
+	var spd_vals := [0.5, 1.0, 2.0]
+	for i in range(speed_buttons.size()):
+		speed_buttons[i].modulate = Color.WHITE if GM.game_speed == spd_vals[i] else Color(0.5, 0.5, 0.5)
+
 	if GM.wave_active:
 		wave_desc_label.text = Locale.t(GM.wave_desc)
 	elif GM.show_pact:
@@ -588,10 +624,18 @@ func _process(_dt: float) -> void:
 		var tw: Dictionary = GM.selected_tower
 		var data: Dictionary = Config.TOWER_DATA[tw["type"]]
 		ti_name.text = Locale.tf("tower_level", {"name": Locale.t(tw["name"]), "level": tw["level"]})
+		var effective_dmg: float = tw["damage"] * tw["damage_mult"]
+		if GM.double_damage > 0:
+			effective_dmg *= 2.0
+		var effective_spd: float = tw["attack_speed"] * GM.perm_speed_buff
+		if tw["hades_buffed"]:
+			effective_spd *= 1.5
+		var dps: float = effective_dmg * effective_spd
 		ti_stats.text = Locale.tf("tower_stats", {
-			"dmg": snappedf(tw["damage"] * tw["damage_mult"], 0.1),
+			"dmg": snappedf(effective_dmg, 0.1),
 			"rng": roundi(tw["range"]),
-			"spd": snappedf(tw["attack_speed"], 0.1),
+			"spd": snappedf(effective_spd, 0.1),
+			"dps": snappedf(dps, 0.1),
 		})
 
 		if tw["level"] >= Config.MAX_TOWER_LEVEL:
@@ -604,6 +648,10 @@ func _process(_dt: float) -> void:
 
 		var refund: int = roundi(data["cost"] * Config.SELL_REFUND * tw["level"])
 		btn_sell.text = Locale.tf("sell_refund", {"cost": GM.format_cost(refund)})
+
+		var mode: String = tw.get("targeting_mode", "first")
+		btn_targeting.text = Locale.t("Target") + ": " + mode.capitalize()
+		btn_targeting.visible = not tw["is_support"]
 	else:
 		tower_info_panel.visible = false
 
@@ -638,7 +686,7 @@ func _process(_dt: float) -> void:
 func _update_locale_text() -> void:
 	towers_title.text = Locale.t("TOWERS")
 	btn_next_wave.text = Locale.t("SEND NEXT WAVE")
-	help_label.text = Locale.t("Right-click: Deselect\nSpace: Skip Timer | Esc: Cancel")
+	help_label.text = Locale.t("Right-click: Deselect | Tab: Overview\nSpace: Skip Timer | Esc: Cancel")
 
 	# Menu overlay
 	menu_title.text = Locale.t("HELLGATE DEFENDERS")
@@ -713,6 +761,7 @@ func _populate_pact_choices() -> void:
 		btn.add_theme_color_override("font_color", Color(0.85, 0.85, 0.85))
 
 		var p: Dictionary = pact
+		btn.focus_mode = Control.FOCUS_NONE
 		btn.pressed.connect(_on_pact_accepted.bind(p))
 		pact_container.add_child(btn)
 
@@ -738,6 +787,15 @@ func _on_sell_pressed() -> void:
 	Audio.play_sfx("ui_click")
 	if GM.selected_tower != null:
 		GM.sell_tower(GM.selected_tower)
+
+func _on_targeting_pressed() -> void:
+	Audio.play_sfx("ui_click")
+	if GM.selected_tower != null:
+		GM.cycle_targeting(GM.selected_tower)
+
+func _on_speed_pressed(speed: float) -> void:
+	Audio.play_sfx("ui_click")
+	GM.set_game_speed(speed)
 
 func _on_next_wave_pressed() -> void:
 	Audio.play_sfx("ui_click")
@@ -831,6 +889,7 @@ func _make_centered_panel(w: float, h: float) -> PanelContainer:
 func _make_action_button(text: String, color: Color) -> Button:
 	var btn := Button.new()
 	btn.text = text
+	btn.focus_mode = Control.FOCUS_NONE
 	btn.custom_minimum_size = Vector2(250, 40)
 	var style := StyleBoxFlat.new()
 	style.bg_color = color
@@ -843,3 +902,9 @@ func _make_action_button(text: String, color: Color) -> Button:
 	btn.add_theme_font_size_override("font_size", 14)
 	btn.add_theme_color_override("font_color", Color.WHITE)
 	return btn
+
+func _disable_focus(node: Node) -> void:
+	if node is Control:
+		node.focus_mode = Control.FOCUS_NONE
+	for child in node.get_children():
+		_disable_focus(child)

@@ -54,6 +54,8 @@ func _generate_sounds() -> void:
 	_sounds["ui_click"] = _make_ui_click()
 	_sounds["dice_roll"] = _make_dice_roll()
 	_sounds["pact_accept"] = _make_pact_accept()
+	_sounds["hades_buff"] = _make_hades_buff()
+	_sounds["lucifer_pulse"] = _make_lucifer_pulse()
 	_sounds["music"] = _make_music()
 
 # ═══════════════════════════════════════════════════════
@@ -161,6 +163,39 @@ func _make_core_hit() -> AudioStreamWAV:
 		var s := sin(t * 50.0 * TAU) * 0.5 + sin(t * 75.0 * TAU) * 0.2
 		s = _saturate(s * 1.5)
 		_pack(buf, i, s * env * 0.35)
+	return _make_wav(buf)
+
+func _make_hades_buff() -> AudioStreamWAV:
+	# Very gentle shimmer — barely-there ambient chime
+	var n := _n_samples(0.25)
+	var buf := PackedByteArray()
+	buf.resize(n * 2)
+	var freq := 660.0  # E5 — softer than A5
+	for i in range(n):
+		var t := float(i) / SAMPLE_RATE
+		var env := _env_ad(i, n, 0.01)  # instant attack, long fade
+		env *= env * env  # cubed envelope — very fast decay, whisper tail
+		var s := sin(t * freq * TAU) * 0.06
+		s += sin(t * freq * 2.0 * TAU) * 0.02
+		_pack(buf, i, s * env)
+	return _make_wav(buf)
+
+func _make_lucifer_pulse() -> AudioStreamWAV:
+	# Deep rumbling pulse — low frequency sweep outward
+	var n := _n_samples(0.35)
+	var buf := PackedByteArray()
+	buf.resize(n * 2)
+	var phase := 0.0
+	for i in range(n):
+		var t := float(i) / SAMPLE_RATE
+		var env := _env_ad(i, n, 0.05)
+		# Low rumble sweeping from 120Hz down to 60Hz
+		var freq := lerpf(120.0, 60.0, float(i) / n)
+		phase += freq / SAMPLE_RATE
+		var s := sin(phase * TAU) * 0.3
+		s += sin(phase * TAU * 2.0) * 0.1  # slight harmonic warmth
+		s += _noise(i) * 0.03 * env  # subtle texture
+		_pack(buf, i, _saturate(s * env * 0.5))
 	return _make_wav(buf)
 
 func _make_wave_start() -> AudioStreamWAV:
