@@ -171,6 +171,10 @@ func _draw_enemies() -> void:
 		if e["shield_buff"]:
 			draw_arc(Vector2(ex, ey), er + 4, 0, TAU, 24, Color(0.39, 0.59, 1.0, 0.6), 2.0)
 
+		# Slow indicator (blue ring)
+		if e.get("slow_timer", 0.0) > 0:
+			draw_arc(Vector2(ex, ey), er + 3, 0, TAU, 16, Color(0.3, 0.5, 1.0, 0.6), 1.5)
+
 		# Health bar (only when damaged)
 		if e["hp"] < e["max_hp"]:
 			var bar_w: float = er * 2 + 4
@@ -582,7 +586,7 @@ func _unhandled_input(event: InputEvent) -> void:
 				if GM.wave_active:
 					GM.roll_dice()
 			KEY_SPACE, KEY_ENTER:
-				if not GM.wave_active and not GM.show_roulette and not GM.show_pact:
+				if not GM.wave_active and not GM.show_pact:
 					GM.between_wave_timer = 0
 
 func _handle_left_click(pos: Vector2) -> void:

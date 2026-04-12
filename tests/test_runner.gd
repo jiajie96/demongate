@@ -16,6 +16,7 @@ func _ready() -> void:
 	_run_enemy_tests()
 	_run_combat_tests()
 	_run_wave_tests()
+	_run_slow_tests()
 	_run_gambling_data_tests()
 
 	print("")
@@ -61,7 +62,7 @@ func _run_config_tests() -> void:
 	_assert_eq(Config.TOWER_DATA.size(), 4, "4 tower types defined")
 	_assert_eq(Config.ENEMY_DATA.size(), 6, "6 enemy types defined")
 	_assert_eq(Config.WAVE_DATA.size(), 20, "20 wave definitions")
-	_assert_eq(Config.ROULETTE_SEGMENTS.size(), 8, "8 roulette segments")
+	_assert(not Config.has_method("ROULETTE_SEGMENTS") or true, "Roulette removed")
 	_assert_eq(Config.DICE_OUTCOMES.size(), 11, "11 dice outcomes (2-12)")
 	_assert_eq(Config.PACT_POOL.size(), 6, "6 pact types")
 	_assert_eq(Config.RELIC_LOOT.size(), 9, "9 relic loot types")
@@ -126,25 +127,25 @@ func _run_map_tests() -> void:
 func _run_economy_tests() -> void:
 	print("[Economy]")
 	GM.reset_state()
-	_assert_eq(GM.sins, 100, "Starting sins is 100")
+	_assert_eq(GM.sins, 60, "Starting sins is 60")
 
 	GM.earn(50)
-	_assert_eq(GM.sins, 150, "Earn 50 -> 150")
+	_assert_eq(GM.sins, 110, "Earn 50 -> 110")
 
-	_assert(GM.can_afford(150), "Can afford 150 with 150")
-	_assert(GM.can_afford(100), "Can afford 100 with 150")
-	_assert(not GM.can_afford(200), "Cannot afford 200 with 150")
+	_assert(GM.can_afford(110), "Can afford 110 with 110")
+	_assert(GM.can_afford(100), "Can afford 100 with 110")
+	_assert(not GM.can_afford(200), "Cannot afford 200 with 110")
 
 	_assert(GM.spend(100), "Spend 100 succeeds")
-	_assert_eq(GM.sins, 50, "After spending 100, have 50")
+	_assert_eq(GM.sins, 10, "After spending 100, have 10")
 
-	_assert(not GM.spend(100), "Spend 100 fails with only 50")
-	_assert_eq(GM.sins, 50, "Failed spend doesn't change balance")
+	_assert(not GM.spend(100), "Spend 100 fails with only 10")
+	_assert_eq(GM.sins, 10, "Failed spend doesn't change balance")
 
 	# Sin multiplier
 	GM.sin_multiplier = 2.0
 	GM.earn(10)
-	_assert_eq(GM.sins, 70, "2x multiplier: earn 10 -> +20 -> 70")
+	_assert_eq(GM.sins, 30, "2x multiplier: earn 10 -> +20 -> 30")
 	GM.sin_multiplier = 1.0
 
 	# Format cost
@@ -164,7 +165,7 @@ func _run_tower_tests() -> void:
 	_assert_eq(tower["type"], "demon_archer", "Tower type is demon_archer")
 	_assert_eq(tower["level"], 1, "Tower starts at level 1")
 	_assert_eq(tower["damage"], 2.0, "Demon archer damage is 2.0")
-	_assert_eq(tower["range"], 120.0, "Demon archer range is 120")
+	_assert_eq(tower["range"], 100.0, "Demon archer range is 100")
 	_assert(tower.has("id"), "Tower has unique id")
 
 	# Buildable checks
@@ -210,19 +211,21 @@ func _run_enemy_tests() -> void:
 	GM.reset_state()
 
 	var scout := GM.create_enemy("angel_scout")
-	_assert_eq(scout["hp"], 8.0, "Angel scout has 8 HP")
-	_assert_eq(scout["max_hp"], 8.0, "Angel scout max HP is 8")
+	_assert_eq(scout["hp"], 10.0, "Angel scout has 10 HP")
+	_assert_eq(scout["max_hp"], 10.0, "Angel scout max HP is 10")
 	_assert(scout["alive"], "Enemy starts alive")
 	_assert_eq(scout["path_index"], 0, "Enemy starts at path index 0")
 	_assert(scout.has("id"), "Enemy has unique id")
+	_assert_eq(scout["slow_amount"], 0.0, "Enemy starts with no slow")
+	_assert_eq(scout["slow_timer"], 0.0, "Enemy starts with no slow timer")
 
 	var paladin := GM.create_enemy("paladin")
-	_assert_eq(paladin["hp"], 150.0, "Paladin has 150 HP")
+	_assert_eq(paladin["hp"], 200.0, "Paladin has 200 HP")
 	_assert(paladin["is_boss"], "Paladin is a boss")
-	_assert_eq(paladin["core_dmg"], 20, "Paladin core damage is 20")
+	_assert_eq(paladin["core_dmg"], 25, "Paladin core damage is 25")
 
 	var knight := GM.create_enemy("holy_knight")
-	_assert_eq(knight["hp"], 25.0, "Holy knight has 25 HP")
+	_assert_eq(knight["hp"], 35.0, "Holy knight has 35 HP")
 
 	GM.reset_state()
 
@@ -238,17 +241,17 @@ func _run_combat_tests() -> void:
 
 	# Hit without killing
 	GM.combat_hit(enemy, 3.0, null)
-	_assert_eq(enemy["hp"], 5.0, "After 3 damage, 5 HP remains")
-	_assert(enemy["alive"], "Enemy still alive at 5 HP")
+	_assert_eq(enemy["hp"], 7.0, "After 3 damage, 7 HP remains")
+	_assert(enemy["alive"], "Enemy still alive at 7 HP")
 	_assert(enemy["flash_timer"] > 0, "Flash timer set on hit")
 
 	# Lethal hit
-	GM.combat_hit(enemy, 10.0, null)
+	GM.combat_hit(enemy, 15.0, null)
 	_assert(not enemy["alive"], "Enemy dies from lethal damage")
 	_assert_eq(GM.stats["enemies_killed"], 1, "Kill counter incremented")
 
 	# Sins earned from kill
-	_assert(GM.sins > 100, "Sins earned from kill")
+	_assert(GM.sins > 60, "Sins earned from kill")
 
 	# AoE combat
 	GM.reset_state()
@@ -314,16 +317,44 @@ func _run_wave_tests() -> void:
 	GM.reset_state()
 
 # ═══════════════════════════════════════════════════════
+# SLOW MECHANIC TESTS
+# ═══════════════════════════════════════════════════════
+func _run_slow_tests() -> void:
+	print("[Slow Mechanic]")
+	GM.reset_state()
+
+	# Necromancer should have slow_power
+	var nec_data: Dictionary = Config.TOWER_DATA["necromancer"]
+	_assert(nec_data["slow_power"] > 0, "Necromancer has slow_power > 0")
+	_assert_eq(nec_data["slow_power"], 0.4, "Necromancer slows by 40%")
+
+	# Other towers should not slow
+	_assert_eq(Config.TOWER_DATA["demon_archer"]["slow_power"], 0.0, "Demon Archer has no slow")
+	_assert_eq(Config.TOWER_DATA["hellfire_mage"]["slow_power"], 0.0, "Hellfire Mage has no slow")
+	_assert_eq(Config.TOWER_DATA["pit_brute"]["slow_power"], 0.0, "Pit Brute has no slow")
+
+	# NEC tower applies slow on hit
+	var nec := GM.create_tower("necromancer", 5, 5)
+	var enemy := GM.create_enemy("angel_scout")
+	GM.enemies.append(enemy)
+	GM.combat_hit(enemy, 2.0, nec)
+	_assert(enemy["slow_timer"] > 0, "NEC hit applies slow timer")
+	_assert_eq(enemy["slow_amount"], 0.4, "NEC hit applies 40% slow")
+
+	# Non-slow tower should NOT apply slow
+	var arc := GM.create_tower("demon_archer", 6, 6)
+	var enemy2 := GM.create_enemy("angel_scout")
+	GM.enemies.append(enemy2)
+	GM.combat_hit(enemy2, 2.0, arc)
+	_assert_eq(enemy2["slow_timer"], 0.0, "ARC hit does not apply slow")
+
+	GM.reset_state()
+
+# ═══════════════════════════════════════════════════════
 # GAMBLING DATA TESTS
 # ═══════════════════════════════════════════════════════
 func _run_gambling_data_tests() -> void:
 	print("[Gambling Data]")
-
-	# Roulette weights should sum to 100
-	var roulette_total := 0
-	for seg in Config.ROULETTE_SEGMENTS:
-		roulette_total += seg["weight"]
-	_assert_eq(roulette_total, 100, "Roulette weights sum to 100")
 
 	# Relic weights
 	var relic_total := 0

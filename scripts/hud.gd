@@ -26,12 +26,10 @@ var hero_pool_label: Label
 var menu_overlay: Control
 var gameover_overlay: Control
 var victory_overlay: Control
-var roulette_overlay: Control
 var pact_overlay: Control
 
 var go_stats_label: Label
 var vic_stats_label: Label
-var roulette_amount_input: LineEdit
 var pact_container: VBoxContainer
 
 var _last_phase: String = ""
@@ -366,65 +364,6 @@ func _create_overlays() -> void:
 	play_again_btn.pressed.connect(_on_start_pressed)
 	vic_vbox.add_child(play_again_btn)
 
-	# --- Roulette ---
-	roulette_overlay = _make_overlay_bg()
-	roulette_overlay.visible = false
-	add_child(roulette_overlay)
-
-	var rl_panel := _make_centered_panel(380, 280)
-	roulette_overlay.add_child(rl_panel)
-
-	var rl_vbox := VBoxContainer.new()
-	rl_vbox.alignment = BoxContainer.ALIGNMENT_CENTER
-	rl_vbox.add_theme_constant_override("separation", 10)
-	rl_panel.add_child(rl_vbox)
-
-	var rl_title := Label.new()
-	rl_title.text = "SOUL ROULETTE"
-	rl_title.add_theme_font_size_override("font_size", 20)
-	rl_title.add_theme_color_override("font_color", Color(1, 0.8, 0))
-	rl_title.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-	rl_vbox.add_child(rl_title)
-
-	var rl_desc := Label.new()
-	rl_desc.text = "Gamble your sins for a chance at riches!\nEnter an amount to bet."
-	rl_desc.add_theme_font_size_override("font_size", 11)
-	rl_desc.add_theme_color_override("font_color", Color(0.6, 0.6, 0.6))
-	rl_desc.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-	rl_vbox.add_child(rl_desc)
-
-	var amt_row := HBoxContainer.new()
-	amt_row.alignment = BoxContainer.ALIGNMENT_CENTER
-	amt_row.add_theme_constant_override("separation", 8)
-	rl_vbox.add_child(amt_row)
-
-	var amt_label := Label.new()
-	amt_label.text = "Bet Amount:"
-	amt_label.add_theme_font_size_override("font_size", 12)
-	amt_label.add_theme_color_override("font_color", Color(0.8, 0.8, 0.8))
-	amt_row.add_child(amt_label)
-
-	roulette_amount_input = LineEdit.new()
-	roulette_amount_input.custom_minimum_size = Vector2(100, 30)
-	roulette_amount_input.placeholder_text = "10"
-	roulette_amount_input.add_theme_font_size_override("font_size", 12)
-	amt_row.add_child(roulette_amount_input)
-
-	var rl_btn_row := HBoxContainer.new()
-	rl_btn_row.alignment = BoxContainer.ALIGNMENT_CENTER
-	rl_btn_row.add_theme_constant_override("separation", 12)
-	rl_vbox.add_child(rl_btn_row)
-
-	var spin_btn := _make_action_button("SPIN!", Color(0.8, 0.6, 0))
-	spin_btn.custom_minimum_size = Vector2(120, 35)
-	spin_btn.pressed.connect(_on_spin_pressed)
-	rl_btn_row.add_child(spin_btn)
-
-	var skip_btn := _make_action_button("Skip", Color(0.4, 0.4, 0.4))
-	skip_btn.custom_minimum_size = Vector2(120, 35)
-	skip_btn.pressed.connect(_on_skip_roulette_pressed)
-	rl_btn_row.add_child(skip_btn)
-
 	# --- Pact ---
 	pact_overlay = _make_overlay_bg()
 	pact_overlay.visible = false
@@ -479,8 +418,8 @@ func _process(_dt: float) -> void:
 
 	if GM.wave_active:
 		wave_desc_label.text = GM.wave_desc
-	elif GM.show_roulette or GM.show_pact:
-		wave_desc_label.text = "Soul Roulette!" if GM.show_roulette else "Demonic Pact offered!"
+	elif GM.show_pact:
+		wave_desc_label.text = "Demonic Pact offered!"
 	else:
 		var t := ceili(GM.between_wave_timer)
 		wave_desc_label.text = "Next wave in " + str(t) + "s... (Space to skip)" if t > 0 else ""
@@ -496,7 +435,7 @@ func _process(_dt: float) -> void:
 			tower_buttons[type].modulate.a = 1.0 if can_buy else 0.5
 
 	# Next wave button
-	btn_next_wave.visible = not GM.wave_active and not GM.show_roulette and not GM.show_pact and GM.phase == "playing"
+	btn_next_wave.visible = not GM.wave_active and not GM.show_pact and GM.phase == "playing"
 
 	# Tower info
 	if GM.selected_tower != null:
@@ -526,7 +465,7 @@ func _process(_dt: float) -> void:
 	if GM.phase == "gameover":
 		go_stats_label.text = "Wave: " + str(GM.wave) + " | Kills: " + str(GM.stats["enemies_killed"]) + " | Towers: " + str(GM.stats["towers_placed"])
 	elif GM.phase == "victory":
-		vic_stats_label.text = "Kills: " + str(GM.stats["enemies_killed"]) + " | Towers: " + str(GM.stats["towers_placed"]) + " | Corruptions: " + str(GM.stats["corruptions"])
+		vic_stats_label.text = "Kills: " + str(GM.stats["enemies_killed"]) + " | Towers: " + str(GM.stats["towers_placed"])
 
 # ═══════════════════════════════════════════════════════
 # OVERLAY VISIBILITY
@@ -535,7 +474,6 @@ func _update_overlay_visibility() -> void:
 	menu_overlay.visible = GM.phase == "menu"
 	gameover_overlay.visible = GM.phase == "gameover"
 	victory_overlay.visible = GM.phase == "victory"
-	roulette_overlay.visible = GM.show_roulette
 	pact_overlay.visible = GM.show_pact
 
 	# Populate pact choices when shown
@@ -543,9 +481,6 @@ func _update_overlay_visibility() -> void:
 		_populate_pact_choices()
 
 	# Clean up when hidden
-	if not GM.show_roulette:
-		roulette_amount_input.text = ""
-
 	if not GM.show_pact and pact_container.get_child_count() > 0:
 		for child in pact_container.get_children():
 			child.queue_free()
@@ -598,18 +533,8 @@ func _on_sell_pressed() -> void:
 		GM.sell_tower(GM.selected_tower)
 
 func _on_next_wave_pressed() -> void:
-	if GM.phase == "playing" and not GM.wave_active and not GM.show_roulette and not GM.show_pact:
+	if GM.phase == "playing" and not GM.wave_active and not GM.show_pact:
 		GM.between_wave_timer = 0
-
-func _on_spin_pressed() -> void:
-	var amt := roulette_amount_input.text.to_int()
-	if amt <= 0:
-		GM.notify("Enter a bet amount!", Color(1, 0.2, 0.2))
-		return
-	GM.spin_roulette(amt)
-
-func _on_skip_roulette_pressed() -> void:
-	GM.skip_roulette()
 
 func _on_pact_accepted(pact: Dictionary) -> void:
 	GM.accept_pact(pact)

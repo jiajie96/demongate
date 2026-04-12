@@ -20,16 +20,8 @@ const UPGRADE_MULT := 1.4
 const MAX_TOWER_LEVEL := 3
 const SELL_REFUND := 0.5
 
-const CORRUPTION_BASE_CHANCE := 0.15
-const CORRUPTED_HP_RATIO := 0.5
-const CORRUPTED_LIFETIME := 15.0
-
-const PRAYER_DURATION := 3.0
-const PRAYER_VULNERABILITY := 1.5
-
 const PROJECTILE_SPEED := 280.0
 
-const ROULETTE_EVERY := 3
 const PACT_EVERY := 5
 
 # ═══════════════════════════════════════════════════════
@@ -59,61 +51,63 @@ const COLOR_PREVIEW_BAD := Color(0.86, 0.24, 0.24, 0.45)
 const COLOR_SINS := Color(0.8, 0.267, 1.0)
 
 # ═══════════════════════════════════════════════════════
-# TOWER DATA — cost is a single int (Sins currency)
+# TOWER DATA — each tower fills an irreplaceable role
+# ARC: cheap starter, falls off late. BRT: boss killer.
+# MAG: swarm clearer. NEC: slows enemies, force multiplier.
 # ═══════════════════════════════════════════════════════
 var TOWER_DATA := {
 	"demon_archer": {
 		"name": "Demon Archer",
-		"desc": "Fast attacks, consistent single-target damage",
+		"desc": "Fast attacks, reliable early damage",
 		"damage": 2.0,
-		"range": 120.0,
-		"attack_speed": 2.0,
+		"range": 100.0,
+		"attack_speed": 1.8,
 		"is_aoe": false,
 		"aoe_radius": 0.0,
-		"corruption_power": 0.0,
+		"slow_power": 0.0,
 		"cost": 50,
-		"upgrade_cost": 30,
+		"upgrade_cost": 40,
 		"color": Color(0.8, 0.2, 0.2),
 		"symbol": "ARC",
 	},
 	"hellfire_mage": {
 		"name": "Hellfire Mage",
-		"desc": "Slow AoE damage, crowd control",
-		"damage": 4.0,
-		"range": 110.0,
-		"attack_speed": 0.5,
+		"desc": "AoE blasts, essential vs swarms",
+		"damage": 3.0,
+		"range": 100.0,
+		"attack_speed": 0.8,
 		"is_aoe": true,
-		"aoe_radius": 55.0,
-		"corruption_power": 0.0,
-		"cost": 75,
+		"aoe_radius": 60.0,
+		"slow_power": 0.0,
+		"cost": 80,
 		"upgrade_cost": 60,
 		"color": Color(0.6, 0.2, 0.8),
 		"symbol": "MAG",
 	},
 	"pit_brute": {
 		"name": "Pit Brute",
-		"desc": "Massive melee damage, very slow",
-		"damage": 6.0,
-		"range": 55.0,
-		"attack_speed": 0.3,
+		"desc": "Massive hits, crushes tanks and bosses",
+		"damage": 12.0,
+		"range": 70.0,
+		"attack_speed": 0.25,
 		"is_aoe": false,
 		"aoe_radius": 0.0,
-		"corruption_power": 0.0,
-		"cost": 100,
+		"slow_power": 0.0,
+		"cost": 120,
 		"upgrade_cost": 80,
 		"color": Color(0.545, 0.412, 0.078),
 		"symbol": "BRT",
 	},
 	"necromancer": {
 		"name": "Necromancer",
-		"desc": "Corrupts dying enemies into minions",
-		"damage": 1.5,
-		"range": 100.0,
-		"attack_speed": 1.0,
+		"desc": "Slows enemies on hit, force multiplier",
+		"damage": 2.0,
+		"range": 110.0,
+		"attack_speed": 1.2,
 		"is_aoe": false,
 		"aoe_radius": 0.0,
-		"corruption_power": 1.0,
-		"cost": 150,
+		"slow_power": 0.4,
+		"cost": 100,
 		"upgrade_cost": 70,
 		"color": Color(0.2, 0.8, 0.4),
 		"symbol": "NEC",
@@ -124,12 +118,12 @@ var TOWER_DATA := {
 # ENEMY DATA
 # ═══════════════════════════════════════════════════════
 var ENEMY_DATA := {
-	"angel_scout": {"name": "Angel Scout", "hp": 8.0, "speed": 70.0, "core_dmg": 2, "is_boss": false, "color": Color(1.0, 0.867, 0.267), "radius": 7.0, "sin_reward": 10},
-	"holy_knight": {"name": "Holy Knight", "hp": 25.0, "speed": 50.0, "core_dmg": 4, "is_boss": false, "color": Color(0.91, 0.91, 0.91), "radius": 9.0, "sin_reward": 15},
-	"divine_hunter": {"name": "Divine Hunter", "hp": 18.0, "speed": 110.0, "core_dmg": 5, "is_boss": false, "color": Color(0.267, 0.867, 1.0), "radius": 8.0, "sin_reward": 12},
-	"god_of_war": {"name": "God of War", "hp": 60.0, "speed": 40.0, "core_dmg": 10, "is_boss": false, "color": Color(1.0, 0.533, 0.267), "radius": 11.0, "sin_reward": 25},
-	"paladin": {"name": "Paladin", "hp": 150.0, "speed": 45.0, "core_dmg": 20, "is_boss": true, "color": Color(1.0, 0.8, 0.0), "radius": 13.0, "sin_reward": 50},
-	"monk": {"name": "Monk", "hp": 20.0, "speed": 55.0, "core_dmg": 2, "is_boss": false, "color": Color(0.533, 1.0, 0.533), "radius": 8.0, "sin_reward": 15},
+	"angel_scout": {"name": "Angel Scout", "hp": 10.0, "speed": 75.0, "core_dmg": 2, "is_boss": false, "color": Color(1.0, 0.867, 0.267), "radius": 7.0, "sin_reward": 5},
+	"holy_knight": {"name": "Holy Knight", "hp": 35.0, "speed": 50.0, "core_dmg": 5, "is_boss": false, "color": Color(0.91, 0.91, 0.91), "radius": 9.0, "sin_reward": 8},
+	"divine_hunter": {"name": "Divine Hunter", "hp": 20.0, "speed": 120.0, "core_dmg": 4, "is_boss": false, "color": Color(0.267, 0.867, 1.0), "radius": 8.0, "sin_reward": 6},
+	"god_of_war": {"name": "God of War", "hp": 80.0, "speed": 35.0, "core_dmg": 12, "is_boss": false, "color": Color(1.0, 0.533, 0.267), "radius": 11.0, "sin_reward": 15},
+	"paladin": {"name": "Paladin", "hp": 200.0, "speed": 40.0, "core_dmg": 25, "is_boss": true, "color": Color(1.0, 0.8, 0.0), "radius": 13.0, "sin_reward": 30},
+	"monk": {"name": "Monk", "hp": 25.0, "speed": 55.0, "core_dmg": 3, "is_boss": false, "color": Color(0.533, 1.0, 0.533), "radius": 8.0, "sin_reward": 8},
 }
 
 # ═══════════════════════════════════════════════════════
@@ -161,17 +155,6 @@ var WAVE_DATA := [
 # ═══════════════════════════════════════════════════════
 # GAMBLING DATA
 # ═══════════════════════════════════════════════════════
-var ROULETTE_SEGMENTS := [
-	{"name": "Jackpot", "weight": 3, "mult": 10.0, "bonus": "legendary", "color": Color(1.0, 0.8, 0.0)},
-	{"name": "Big Win", "weight": 10, "mult": 5.0, "bonus": "", "color": Color(0.267, 1.0, 0.267)},
-	{"name": "Win", "weight": 20, "mult": 3.0, "bonus": "", "color": Color(0.2, 0.8, 0.2)},
-	{"name": "Break Even", "weight": 15, "mult": 1.0, "bonus": "", "color": Color(0.533, 0.533, 0.533)},
-	{"name": "Small Loss", "weight": 25, "mult": 0.5, "bonus": "", "color": Color(0.8, 0.4, 0.2)},
-	{"name": "Big Loss", "weight": 17, "mult": 0.0, "bonus": "", "color": Color(0.8, 0.2, 0.2)},
-	{"name": "Catastrophe", "weight": 5, "mult": 0.0, "bonus": "curse", "color": Color(0.6, 0.0, 0.0)},
-	{"name": "Divine Theft", "weight": 5, "mult": 0.0, "bonus": "elite", "color": Color(0.4, 0.0, 0.2)},
-]
-
 var DICE_OUTCOMES := {
 	12: {"name": "HELLFIRE APOCALYPSE", "positive": true, "effect": "kill_all"},
 	11: {"name": "Demonic Surge", "positive": true, "effect": "triple_speed"},
@@ -189,7 +172,7 @@ var DICE_OUTCOMES := {
 var PACT_POOL := [
 	{"name": "Blood Rage", "benefit": "All towers 2x damage for 3 waves", "cost_desc": "Core loses 20 HP", "b_effect": "double_dmg_3", "c_effect": "core_-20"},
 	{"name": "Infernal Discount", "benefit": "Next 3 towers are free", "cost_desc": "Enemies 30% faster for 2 waves", "b_effect": "free_towers_3", "c_effect": "fast_enemy_2"},
-	{"name": "Soul Harvest", "benefit": "Triple sin income for 1 wave", "cost_desc": "No corruption for 2 waves", "b_effect": "triple_sins_1", "c_effect": "no_corrupt_2"},
+	{"name": "Soul Harvest", "benefit": "Triple sin income for 1 wave", "cost_desc": "Enemies 20% faster for 2 waves", "b_effect": "triple_sins_1", "c_effect": "fast_enemy_2"},
 	{"name": "Hellfire Rain", "benefit": "Instant massive AoE to all enemies", "cost_desc": "All towers disabled 10 seconds", "b_effect": "massive_aoe", "c_effect": "disable_10s"},
 	{"name": "Demonic Fervor", "benefit": "All towers +50% attack speed (perm)", "cost_desc": "Core max HP reduced by 25", "b_effect": "speed_50_perm", "c_effect": "core_max_-25"},
 	{"name": "Sin Amplifier", "benefit": "All sin earnings doubled for 5 waves", "cost_desc": "All current sins halved", "b_effect": "double_earn_5", "c_effect": "halve_sins"},

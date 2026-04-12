@@ -5,7 +5,6 @@ extends Node
 # ═══════════════════════════════════════════════════════
 signal notification_added(text: String, color: Color)
 signal pact_offered(choices: Array)
-signal roulette_offered()
 
 # ═══════════════════════════════════════════════════════
 # GAME STATE
@@ -15,7 +14,7 @@ var core_hp: float = 100.0
 var core_max_hp: float = 100.0
 var wave: int = 0
 
-var sins: int = 100
+var sins: int = 60
 
 var towers: Array = []
 var enemies: Array = []
@@ -35,14 +34,12 @@ var wave_desc: String = ""
 
 var dice_uses_left: int = 2
 
-var show_roulette: bool = false
 var show_pact: bool = false
 var pact_choices: Array = []
 var show_dice_result: bool = false
 var dice_result: Dictionary = {}
 var dice_result_timer: float = 0.0
 
-var corruption_blocked: int = 0
 var sin_multiplier: float = 1.0
 var sin_mult_waves: int = 0
 var free_towers: int = 0
@@ -53,7 +50,7 @@ var fast_enemy_waves: int = 0
 var fallen_hero_pool: int = 0
 var fallen_heroes_spawned: int = 0
 
-var stats: Dictionary = {"enemies_killed": 0, "towers_placed": 0, "corruptions": 0}
+var stats: Dictionary = {"enemies_killed": 0, "towers_placed": 0}
 var occupied_tiles: Dictionary = {}
 var notifications: Array = []
 var game_time: float = 0.0
@@ -69,7 +66,7 @@ func reset_state() -> void:
 	core_hp = Config.CORE_MAX_HP
 	core_max_hp = Config.CORE_MAX_HP
 	wave = 0
-	sins = 100
+	sins = 60
 	towers.clear()
 	enemies.clear()
 	projectiles.clear()
@@ -83,13 +80,11 @@ func reset_state() -> void:
 	between_wave_timer = Config.FIRST_WAVE_DELAY
 	wave_desc = "Prepare your defenses!"
 	dice_uses_left = Config.DICE_MAX_USES
-	show_roulette = false
 	show_pact = false
 	pact_choices.clear()
 	show_dice_result = false
 	dice_result = {}
 	dice_result_timer = 0.0
-	corruption_blocked = 0
 	sin_multiplier = 1.0
 	sin_mult_waves = 0
 	free_towers = 0
@@ -98,7 +93,7 @@ func reset_state() -> void:
 	fast_enemy_waves = 0
 	fallen_hero_pool = 0
 	fallen_heroes_spawned = 0
-	stats = {"enemies_killed": 0, "towers_placed": 0, "corruptions": 0}
+	stats = {"enemies_killed": 0, "towers_placed": 0}
 	occupied_tiles.clear()
 	notifications.clear()
 	game_time = 0.0
@@ -118,7 +113,7 @@ func earn_from_kill(enemy_type: String, was_aoe: bool) -> void:
 		return
 	earn(data["sin_reward"])
 	if was_aoe:
-		earn(2)
+		earn(1)
 
 func can_afford(cost: int) -> bool:
 	return sins >= cost
@@ -171,7 +166,7 @@ func create_tower(type: String, col: int, row: int) -> Dictionary:
 		"is_disabled": false,
 		"disable_timer": 0.0,
 		"damage_mult": 1.0,
-		"corruption_power": data["corruption_power"],
+		"slow_power": data["slow_power"],
 		"is_aoe": data["is_aoe"],
 		"aoe_radius": data["aoe_radius"],
 		"color": data["color"],
@@ -236,14 +231,9 @@ func create_enemy(type: String) -> Dictionary:
 		"path_index": 0,
 		"alive": true,
 		"reached_core": false,
+		"slow_amount": 0.0,
+		"slow_timer": 0.0,
 		"shield": 0.0,
-		"purified_timer": 0.0,
-		"is_praying": false,
-		"prayer_timer": 0.0,
-		"speed_buff": 0.0,
-		"speed_buff_timer": 0.0,
-		"heal_per_sec": 0.0,
-		"heal_timer": 0.0,
 		"shield_buff": false,
 		"shield_buff_timer": 0.0,
 		"flash_timer": 0.0,
@@ -263,25 +253,22 @@ func update_enemies(dt: float) -> void:
 		if e["flash_timer"] > 0:
 			e["flash_timer"] -= dt
 
-		# Buff timers
-		if e["speed_buff_timer"] > 0:
-			e["speed_buff_timer"] -= dt
-			if e["speed_buff_timer"] <= 0:
-				e["speed_buff"] = 0.0
-		if e["heal_timer"] > 0:
-			e["hp"] = minf(e["max_hp"], e["hp"] + e["heal_per_sec"] * dt)
-			e["heal_timer"] -= dt
-			if e["heal_timer"] <= 0:
-				e["heal_per_sec"] = 0.0
+		# Slow timer
+		if e["slow_timer"] > 0:
+			e["slow_timer"] -= dt
+			if e["slow_timer"] <= 0:
+				e["slow_amount"] = 0.0
+
+		# Shield buff timer
 		if e["shield_buff_timer"] > 0:
 			e["shield_buff_timer"] -= dt
 			if e["shield_buff_timer"] <= 0:
 				e["shield_buff"] = false
-		if e["purified_timer"] > 0:
-			e["purified_timer"] -= dt
 
 		# Movement
-		var spd: float = e["speed"] * (1.0 + e["speed_buff"])
+		var spd: float = e["speed"]
+		if e["slow_amount"] > 0:
+			spd *= (1.0 - e["slow_amount"])
 		if fast_enemy_waves > 0:
 			spd *= 1.3
 
@@ -413,8 +400,6 @@ func calc_damage(base_dmg: float, tower, enemy: Dictionary) -> float:
 		dmg *= (1.0 - enemy["shield"])
 	if enemy.get("shield_buff", false):
 		dmg *= 0.7
-	if enemy.get("is_praying", false):
-		dmg *= Config.PRAYER_VULNERABILITY
 	return maxf(1.0, dmg)
 
 func combat_hit(enemy: Dictionary, base_dmg: float, tower) -> void:
@@ -423,6 +408,12 @@ func combat_hit(enemy: Dictionary, base_dmg: float, tower) -> void:
 	var dmg := calc_damage(base_dmg, tower, enemy)
 	enemy["hp"] -= dmg
 	enemy["flash_timer"] = 0.12
+
+	# Apply slow from Necromancer
+	if tower != null and tower is Dictionary and tower.get("slow_power", 0.0) > 0:
+		enemy["slow_amount"] = tower["slow_power"]
+		enemy["slow_timer"] = 2.0
+
 	if enemy["hp"] <= 0:
 		combat_kill(enemy, tower)
 
@@ -435,9 +426,6 @@ func combat_kill(enemy: Dictionary, tower) -> void:
 	enemy["alive"] = false
 	stats["enemies_killed"] += 1
 	earn_from_kill(enemy["type"], tower != null and tower is Dictionary and tower.get("is_aoe", false))
-
-	if tower != null and tower is Dictionary and tower.get("corruption_power", 0.0) > 0:
-		corruption_attempt(enemy, tower["corruption_power"])
 
 	if should_drop_relic(enemy["type"]):
 		drop_relic(enemy["x"], enemy["y"])
@@ -500,21 +488,19 @@ func update_waves(dt: float) -> void:
 		if spawn_queue.size() == 0 and enemies.size() == 0:
 			complete_wave()
 	else:
-		if phase == "playing" and not show_roulette and not show_pact:
+		if phase == "playing" and not show_pact:
 			between_wave_timer -= dt
 			if between_wave_timer <= 0:
 				start_wave()
 
 func complete_wave() -> void:
 	wave_active = false
-	var wave_bonus: int = 20 + wave * 5
+	var wave_bonus: int = 10 + wave * 3
 	earn(wave_bonus)
 	notify("Wave " + str(wave) + " complete! +" + str(wave_bonus) + " Sins", Color(0.8, 0.267, 1.0))
 
 	if double_damage > 0:
 		double_damage -= 1
-	if corruption_blocked > 0:
-		corruption_blocked -= 1
 	if sin_mult_waves > 0:
 		sin_mult_waves -= 1
 		if sin_mult_waves <= 0:
@@ -526,98 +512,9 @@ func complete_wave() -> void:
 		phase = "victory"
 		return
 
-	if wave % Config.ROULETTE_EVERY == 0:
-		show_roulette = true
-		roulette_offered.emit()
-	elif wave % Config.PACT_EVERY == 0:
+	if wave % Config.PACT_EVERY == 0:
 		offer_pact()
 
-	between_wave_timer = Config.BETWEEN_WAVE_DELAY
-
-# ═══════════════════════════════════════════════════════
-# CORRUPTION
-# ═══════════════════════════════════════════════════════
-func corruption_attempt(enemy: Dictionary, power: float) -> bool:
-	if enemy.get("is_boss", false):
-		return false
-	if enemy.get("purified_timer", 0.0) > 0:
-		return false
-	if corruption_blocked > 0:
-		return false
-	var chance: float = Config.CORRUPTION_BASE_CHANCE * power
-	if randf() > chance:
-		return false
-	stats["corruptions"] += 1
-	notify("Enemy corrupted!", Color(0.8, 0.267, 1.0))
-	add_effect("corrupt", enemy["x"], enemy["y"], 20.0, Color(0.8, 0.267, 1.0))
-	return true
-
-# ═══════════════════════════════════════════════════════
-# PRAYER
-# ═══════════════════════════════════════════════════════
-func prayer_count_nearby(enemy: Dictionary) -> int:
-	var count := 0
-	for e in enemies:
-		if e["id"] == enemy["id"] or not e["alive"]:
-			continue
-		var dx: float = e["x"] - enemy["x"]
-		var dy: float = e["y"] - enemy["y"]
-		if dx * dx + dy * dy < 100 * 100:
-			count += 1
-	return count
-
-func prayer_complete(enemy: Dictionary) -> void:
-	for e in enemies:
-		if e["id"] == enemy["id"] or not e["alive"]:
-			continue
-		var dx: float = e["x"] - enemy["x"]
-		var dy: float = e["y"] - enemy["y"]
-		if dx * dx + dy * dy > 80 * 80:
-			continue
-		match enemy["prayer_type"]:
-			"healing":
-				e["heal_per_sec"] = 1.0
-				e["heal_timer"] = 5.0
-			"shield":
-				e["shield_buff"] = true
-				e["shield_buff_timer"] = 8.0
-			"speed":
-				e["speed_buff"] = 0.15
-				e["speed_buff_timer"] = 10.0
-
-# ═══════════════════════════════════════════════════════
-# GAMBLING — ROULETTE
-# ═══════════════════════════════════════════════════════
-func spin_roulette(bet_amount: int) -> Dictionary:
-	if sins < bet_amount:
-		return {}
-	sins -= bet_amount
-
-	var segment: Dictionary = _weighted_pick(Config.ROULETTE_SEGMENTS)
-	var winnings: int = roundi(bet_amount * segment["mult"])
-	if winnings > 0:
-		earn(winnings)
-
-	show_roulette = false
-	between_wave_timer = Config.BETWEEN_WAVE_DELAY
-
-	var net: int = winnings - bet_amount
-	var sign_str := "+" if net >= 0 else ""
-	notify(segment["name"] + "! " + sign_str + str(net) + " Sins", segment["color"])
-
-	if segment["bonus"] == "curse":
-		if towers.size() > 0:
-			var t: Dictionary = towers[randi() % towers.size()]
-			t["damage_mult"] *= 0.5
-			notify(t["name"] + " cursed! 50% damage", Color(0.6, 0.0, 0.0))
-	elif segment["bonus"] == "elite":
-		enemies.append(create_enemy("god_of_war"))
-		notify("Bonus elite enemy spawned!", Color(0.4, 0.0, 0.2))
-
-	return {"segment": segment["name"], "winnings": winnings, "net": net}
-
-func skip_roulette() -> void:
-	show_roulette = false
 	between_wave_timer = Config.BETWEEN_WAVE_DELAY
 
 # ═══════════════════════════════════════════════════════
@@ -791,8 +688,6 @@ func accept_pact(pact: Dictionary) -> void:
 				phase = "gameover"
 		"fast_enemy_2":
 			fast_enemy_waves = 2
-		"no_corrupt_2":
-			corruption_blocked = 2
 		"disable_10s":
 			for t in towers:
 				t["is_disabled"] = true
