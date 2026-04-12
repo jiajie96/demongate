@@ -178,9 +178,20 @@ var _zh: Dictionary = {
 	"All enemies instantly destroyed!": "所有敌人瞬间毁灭！",
 	"All towers 3x attack speed for 20s!": "所有塔攻速3倍，持续20秒！",
 	"30% damage to all enemies!": "对所有敌人造成30%伤害！",
-	"All towers disabled for 8 seconds!": "所有塔禁用8秒！",
-	"2 random towers destroyed!": "2座随机塔被摧毁！",
-	"Core -25 HP, best tower destroyed!": "核心-25生命值，最强塔被摧毁！",
+	"15% damage to all enemies!": "对所有敌人造成15%伤害！",
+	"All towers +50% attack speed for 10s!": "所有塔攻速+50%，持续10秒！",
+	"Gained 30 bonus Sins!": "获得30额外罪孽！",
+	"All towers -30% speed for 10s": "所有塔速度-30%，持续10秒",
+	"All towers disabled for 3 seconds": "所有塔禁用3秒",
+	"Lost 15% of current Sins": "失去当前15%的罪孽",
+
+	# --- Dice outcome names (new) ---
+	"Quick Hands": "快手",
+	"Small Spark": "小火花",
+	"Minor Blessing": "小祝福",
+	"Slow Curse": "减速诅咒",
+	"Tremor": "微震",
+	"Devil's Tax": "恶魔税",
 	"Demonic Pact offered!": "恶魔契约来了！",
 
 	# --- Settings popup ---

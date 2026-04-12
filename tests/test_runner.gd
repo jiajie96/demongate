@@ -127,25 +127,25 @@ func _run_map_tests() -> void:
 func _run_economy_tests() -> void:
 	print("[Economy]")
 	GM.reset_state()
-	_assert_eq(GM.sins, 80, "Starting sins is 80")
+	_assert_eq(GM.sins, 50, "Starting sins is 50")
 
 	GM.earn(50)
-	_assert_eq(GM.sins, 110, "Earn 50 -> 110")
+	_assert_eq(GM.sins, 100, "Earn 50 -> 100")
 
-	_assert(GM.can_afford(110), "Can afford 110 with 110")
-	_assert(GM.can_afford(100), "Can afford 100 with 110")
-	_assert(not GM.can_afford(200), "Cannot afford 200 with 110")
+	_assert(GM.can_afford(100), "Can afford 100 with 100")
+	_assert(GM.can_afford(80), "Can afford 80 with 100")
+	_assert(not GM.can_afford(200), "Cannot afford 200 with 100")
 
-	_assert(GM.spend(100), "Spend 100 succeeds")
-	_assert_eq(GM.sins, 10, "After spending 100, have 10")
+	_assert(GM.spend(80), "Spend 80 succeeds")
+	_assert_eq(GM.sins, 20, "After spending 80, have 20")
 
-	_assert(not GM.spend(100), "Spend 100 fails with only 10")
-	_assert_eq(GM.sins, 10, "Failed spend doesn't change balance")
+	_assert(not GM.spend(100), "Spend 100 fails with only 20")
+	_assert_eq(GM.sins, 20, "Failed spend doesn't change balance")
 
 	# Sin multiplier
 	GM.sin_multiplier = 2.0
 	GM.earn(10)
-	_assert_eq(GM.sins, 30, "2x multiplier: earn 10 -> +20 -> 30")
+	_assert_eq(GM.sins, 40, "2x multiplier: earn 10 -> +20 -> 40")
 	GM.sin_multiplier = 1.0
 
 	# Format cost
@@ -268,7 +268,7 @@ func _run_combat_tests() -> void:
 	_assert_eq(GM.stats["enemies_killed"], 1, "Kill counter incremented")
 
 	# Sins earned from kill
-	_assert(GM.sins > 60, "Sins earned from kill")
+	_assert(GM.sins > 50, "Sins earned from kill")
 
 	# AoE combat
 	GM.reset_state()
