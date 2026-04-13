@@ -1018,31 +1018,95 @@ func _draw_dice_result() -> void:
 	var outcome: Dictionary = r["outcome"]
 	var is_good: bool = outcome["positive"]
 
-	# Background overlay — larger, tinted by outcome
+	# Background overlay
 	var bg_col := Color(0.05, 0.12, 0.0, 0.7 * alpha) if is_good else Color(0.15, 0.02, 0.02, 0.7 * alpha)
-	draw_rect(Rect2(W / 2 - 180, H / 2 - 80, 360, 170), bg_col)
+	draw_rect(Rect2(W / 2 - 180, H / 2 - 90, 360, 190), bg_col)
 
 	# Border glow
 	var border_col := Color(0.3, 0.9, 0.3, 0.5 * alpha) if is_good else Color(0.9, 0.2, 0.2, 0.5 * alpha)
-	draw_rect(Rect2(W / 2 - 180, H / 2 - 80, 360, 170), border_col, false, 2.0)
+	draw_rect(Rect2(W / 2 - 180, H / 2 - 90, 360, 190), border_col, false, 2.0)
 
-	# Dice values — big and centered
-	var dice_text: String = str(r["d1"])
-	draw_string(font, Vector2(W / 2 - 150, H / 2 - 35), dice_text, HORIZONTAL_ALIGNMENT_CENTER, 300, 32, Color(1, 1, 1, alpha))
+	# Draw the die face — centered in top portion of overlay
+	var die_cx: float = W / 2.0
+	var die_cy: float = H / 2.0 - 40.0
+	_draw_die_face(die_cx, die_cy, r["d1"], 50.0, alpha, is_good)
 
-	# Outcome name — colored
+	# Outcome name — colored, below die
 	var name_col := Color(0.3, 1.0, 0.3, alpha) if is_good else Color(1.0, 0.3, 0.3, alpha)
-	draw_string(font, Vector2(W / 2 - 150, H / 2 + 10), Locale.t(outcome["name"]), HORIZONTAL_ALIGNMENT_CENTER, 300, 20, name_col)
+	draw_string(font, Vector2(W / 2 - 150, H / 2 + 30), Locale.t(outcome["name"]), HORIZONTAL_ALIGNMENT_CENTER, 300, 20, name_col)
 
-	# Effect description — tells the player what actually happened
+	# Effect description
 	var desc_text: String = Locale.t(outcome.get("desc", ""))
 	var desc_col := Color(0.85, 0.95, 0.85, alpha * 0.9) if is_good else Color(0.95, 0.75, 0.75, alpha * 0.9)
-	draw_string(font, Vector2(W / 2 - 150, H / 2 + 45), desc_text, HORIZONTAL_ALIGNMENT_CENTER, 300, 13, desc_col)
+	draw_string(font, Vector2(W / 2 - 150, H / 2 + 60), desc_text, HORIZONTAL_ALIGNMENT_CENTER, 300, 13, desc_col)
 
-	# Good/bad indicator icon
+	# Devil's Dice label at bottom
 	var icon_text := "+" if is_good else "!"
 	var icon_col := Color(0.3, 1.0, 0.3, alpha) if is_good else Color(1.0, 0.3, 0.15, alpha)
-	draw_string(font, Vector2(W / 2 - 150, H / 2 + 72), icon_text + " " + (Locale.t("DEVIL'S DICE") if Locale.current_lang == "zh" else "DEVIL'S DICE"), HORIZONTAL_ALIGNMENT_CENTER, 300, 10, icon_col * 0.6)
+	draw_string(font, Vector2(W / 2 - 150, H / 2 + 82), icon_text + " " + (Locale.t("DEVIL'S DICE") if Locale.current_lang == "zh" else "DEVIL'S DICE"), HORIZONTAL_ALIGNMENT_CENTER, 300, 10, icon_col * 0.6)
+
+func _draw_die_face(cx: float, cy: float, value: int, size: float, alpha: float, is_good: bool) -> void:
+	var half: float = size / 2.0
+	var r: float = size * 0.15  # corner radius
+
+	# Slight tumble based on game time for a landed-dice feel
+	var tumble: float = sin(GM.dice_result_timer * 8.0) * 1.5 * clampf(GM.dice_result_timer - 4.0, 0.0, 1.0)
+
+	# Die body shadow
+	draw_rect(Rect2(cx - half + 2, cy - half + 2, size, size), Color(0.0, 0.0, 0.0, alpha * 0.4), true, -1.0, r)
+
+	# Die body — dark with colored tint
+	var body_col := Color(0.12, 0.06, 0.06, alpha) if not is_good else Color(0.06, 0.1, 0.06, alpha)
+	draw_rect(Rect2(cx - half, cy - half, size, size), body_col, true, -1.0, r)
+
+	# Inner face — slightly lighter
+	var face_col := Color(0.18, 0.08, 0.08, alpha) if not is_good else Color(0.1, 0.16, 0.1, alpha)
+	draw_rect(Rect2(cx - half + 3, cy - half + 3, size - 6, size - 6), face_col, true, -1.0, r * 0.7)
+
+	# Glowing border
+	var edge_col := Color(0.9, 0.25, 0.15, alpha * 0.6) if not is_good else Color(0.25, 0.9, 0.25, alpha * 0.6)
+	draw_rect(Rect2(cx - half, cy - half, size, size), edge_col, false, 1.5, r)
+
+	# Corner fire wisps
+	var wisp_a: float = alpha * 0.3 * (0.5 + 0.5 * sin(GM.game_time * 4.0))
+	var wisp_col := Color(1.0, 0.4, 0.1, wisp_a) if not is_good else Color(0.3, 1.0, 0.4, wisp_a)
+	draw_circle(Vector2(cx - half, cy - half), 4, wisp_col)
+	draw_circle(Vector2(cx + half, cy - half), 4, wisp_col)
+	draw_circle(Vector2(cx - half, cy + half), 4, wisp_col)
+	draw_circle(Vector2(cx + half, cy + half), 4, wisp_col)
+
+	# Pip positions for standard die faces
+	var pip_r: float = size * 0.075
+	var pip_glow_r: float = pip_r * 2.0
+	var pip_col := Color(1.0, 0.85, 0.65, alpha)
+	var pip_glow := Color(1.0, 0.6, 0.2, alpha * 0.3) if not is_good else Color(0.4, 1.0, 0.5, alpha * 0.3)
+	var d: float = size * 0.28  # offset from center for pip grid
+
+	var pips: Array[Vector2] = []
+	match value:
+		1:
+			pips = [Vector2(cx, cy)]
+		2:
+			pips = [Vector2(cx - d, cy - d), Vector2(cx + d, cy + d)]
+		3:
+			pips = [Vector2(cx - d, cy - d), Vector2(cx, cy), Vector2(cx + d, cy + d)]
+		4:
+			pips = [Vector2(cx - d, cy - d), Vector2(cx + d, cy - d),
+					Vector2(cx - d, cy + d), Vector2(cx + d, cy + d)]
+		5:
+			pips = [Vector2(cx - d, cy - d), Vector2(cx + d, cy - d),
+					Vector2(cx, cy),
+					Vector2(cx - d, cy + d), Vector2(cx + d, cy + d)]
+		6:
+			pips = [Vector2(cx - d, cy - d), Vector2(cx + d, cy - d),
+					Vector2(cx - d, cy), Vector2(cx + d, cy),
+					Vector2(cx - d, cy + d), Vector2(cx + d, cy + d)]
+
+	# Draw pips with glow
+	for p in pips:
+		draw_circle(p, pip_glow_r, pip_glow)
+		draw_circle(p, pip_r, pip_col)
+		draw_circle(p, pip_r * 0.5, Color(1, 1, 1, alpha * 0.6))
 
 # ═══════════════════════════════════════════════════════
 # TOWER AVATARS
