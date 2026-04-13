@@ -106,6 +106,12 @@ TOWER_DATA = {
         is_global=False, is_support=True,
         buff_multiplier=1.5, buff_cooldown=5.0, buff_duration=2.0,
     ),
+    "cocytus": dict(
+        name="COC", damage=8.0, range=140.0, attack_speed=0.4,
+        is_aoe=False, aoe_radius=0.0, slow_power=0.0,
+        cost=180, upgrade_cost=130,
+        is_global=False, is_support=False, is_beam=True,
+    ),
 }
 
 # ════════════════════════════════════════════════════════════
@@ -122,6 +128,7 @@ ENEMY_DATA = {
     "divine_guardian": dict(hp=65.0,  speed=38.0,  core_dmg=8,  is_boss=False, sin_reward=25),
     "michael":         dict(hp=200.0, speed=35.0,  core_dmg=25, is_boss=True,  sin_reward=25),
     "zeus":            dict(hp=80.0,  speed=45.0,  core_dmg=12, is_boss=False, sin_reward=18),
+    "raphael":         dict(hp=70.0,  speed=40.0,  core_dmg=8,  is_boss=False, sin_reward=20),
 }
 
 # ════════════════════════════════════════════════════════════
@@ -137,17 +144,17 @@ WAVE_DATA = [
     dict(enemies=[("holy_knight",8),("god_of_war",3),("monk",2),("archangel",1)], interval=0.8),
     dict(enemies=[("divine_hunter",10),("god_of_war",4),("monk",3),("archangel",1)], interval=0.6),
     dict(enemies=[("angel_scout",15),("holy_knight",8),("god_of_war",4),("archangel",2)], interval=0.5),
-    dict(enemies=[("holy_knight",6),("god_of_war",4),("monk",3),("paladin",1),("archangel",2)], interval=0.7),
+    dict(enemies=[("holy_knight",6),("god_of_war",4),("monk",3),("paladin",1),("archangel",2),("raphael",1)], interval=0.7),
     dict(enemies=[("divine_hunter",12),("god_of_war",6),("monk",3),("archangel",1),("divine_guardian",1)], interval=0.5),
     dict(enemies=[("angel_scout",20),("holy_knight",10),("divine_hunter",4),("archangel",2),("divine_guardian",1),("zeus",1)], interval=0.4),
     dict(enemies=[("god_of_war",8),("divine_hunter",10),("monk",4),("archangel",2),("divine_guardian",1),("zeus",1)], interval=0.5),
     dict(enemies=[("holy_knight",12),("god_of_war",6),("divine_hunter",6),("archangel",2),("divine_guardian",2),("zeus",1)], interval=0.4),
-    dict(enemies=[("divine_hunter",15),("god_of_war",6),("monk",4),("paladin",1),("archangel",2),("divine_guardian",2),("michael",1)], interval=0.4),
+    dict(enemies=[("divine_hunter",15),("god_of_war",6),("monk",4),("paladin",1),("archangel",2),("divine_guardian",2),("michael",1),("raphael",1)], interval=0.4),
     dict(enemies=[("angel_scout",25),("holy_knight",12),("divine_hunter",6),("archangel",3),("divine_guardian",2),("zeus",2)], interval=0.3),
     dict(enemies=[("god_of_war",10),("divine_hunter",12),("monk",5),("archangel",2),("divine_guardian",2),("zeus",2)], interval=0.4),
     dict(enemies=[("holy_knight",15),("god_of_war",8),("divine_hunter",10),("monk",4),("archangel",3),("divine_guardian",2),("zeus",2)], interval=0.3),
-    dict(enemies=[("angel_scout",30),("god_of_war",10),("monk",6),("archangel",3),("divine_guardian",3),("michael",1),("zeus",2)], interval=0.25),
-    dict(enemies=[("holy_knight",18),("god_of_war",10),("monk",6),("paladin",2),("archangel",3),("divine_guardian",3),("michael",1),("zeus",2)], interval=0.3),
+    dict(enemies=[("angel_scout",30),("god_of_war",10),("monk",6),("archangel",3),("divine_guardian",3),("michael",1),("zeus",2),("raphael",2)], interval=0.25),
+    dict(enemies=[("holy_knight",18),("god_of_war",10),("monk",6),("paladin",2),("archangel",3),("divine_guardian",3),("michael",1),("zeus",2),("raphael",2)], interval=0.3),
 ]
 
 
@@ -300,6 +307,8 @@ def print_dps_plan():
     print("        Zeus: every 6s disables 1-2 nearest towers for 2s.")
     print("        Lucifer: global pulse damages ALL enemies (no range limit).")
     print("        Hades: every 5s buffs nearby towers +50% attack speed for 2s.")
+    print("        Cocytus: ice spike, damage ramps 1x→1.5x→2x→3x on same target.")
+    print("        Raphael: every 6s heals most damaged ally for 20% max HP.")
     print(f"        Effective DPS multiplier vs archangel waves: ×0.75")
     print(f"        Path length: {PATH_LEN_TILES} tiles = {PATH_LEN_PX} px")
 
@@ -318,10 +327,11 @@ class Tower:
         "damage","range","attack_speed","cooldown",
         "is_disabled","disable_timer","damage_mult",
         "slow_power","is_aoe","aoe_radius",
-        "is_global","is_support",
+        "is_global","is_support","is_beam",
         "buff_timer","buff_active_timer","buff_multiplier",
         "buff_cooldown","buff_duration",
         "hades_buffed","hades_buff_timer",
+        "beam_target_id","beam_stacks",
     )
     def __init__(self, ttype: str, col: int, row: int):
         d = TOWER_DATA[ttype]
@@ -350,6 +360,9 @@ class Tower:
         self.buff_active_timer = 0.0
         self.hades_buffed = False
         self.hades_buff_timer = 0.0
+        self.is_beam = d.get("is_beam", False)
+        self.beam_target_id = -1
+        self.beam_stacks = 0
 
     def get_upgrade_cost(self) -> int:
         return round(TOWER_DATA[self.type]["upgrade_cost"] * (1.5 ** (self.level - 1)))
@@ -532,6 +545,49 @@ class GameState:
             candidates[i][1].is_disabled = True
             candidates[i][1].disable_timer = 2.0
 
+    def raphael_heal(self, raphael: Enemy) -> None:
+        raphael.ability_timer = 6.0
+        best = None
+        best_missing = 0.0
+        for e in self.enemies:
+            if not e.alive or e.type == "raphael":
+                continue
+            missing = e.max_hp - e.hp
+            if missing > best_missing:
+                best_missing = missing
+                best = e
+        if best is not None and best_missing > 0:
+            heal = best.max_hp * 0.15
+            best.hp = min(best.hp + heal, best.max_hp)
+
+    def cocytus_beam(self, tower: Tower) -> None:
+        # Target highest HP enemy in range
+        best = None
+        best_hp = -1.0
+        r2 = tower.range * tower.range
+        for e in self.enemies:
+            if not e.alive:
+                continue
+            if (e.x - tower.x)**2 + (e.y - tower.y)**2 > r2:
+                continue
+            if e.hp > best_hp:
+                best_hp = e.hp
+                best = e
+        if best is None:
+            tower.beam_target_id = -1
+            tower.beam_stacks = 0
+            return
+        # Track stacks
+        if best.id != tower.beam_target_id:
+            tower.beam_target_id = best.id
+            tower.beam_stacks = 0
+        tower.beam_stacks = min(tower.beam_stacks + 1, 3)
+        stack_mult = [1.0, 1.5, 2.0, 3.0]
+        mult = stack_mult[tower.beam_stacks]
+        dmg_mult = 2.0 if self.double_damage > 0 else 1.0
+        base_dmg = tower.damage * tower.damage_mult * dmg_mult * mult
+        self.combat_hit(best, base_dmg, tower)
+
 
 # ════════════════════════════════════════════════════════════
 # POSITION SCORING
@@ -600,16 +656,18 @@ def simulate_wave(state: GameState, wave_num: int, strategy_fn=None) -> dict:
             elif e.type == "divine_guardian": state._grd = True
             if state._cmd and state._grd: break
 
-        # Michael / Zeus abilities
+        # Michael / Zeus / Raphael abilities
         for e in state.enemies:
             if not e.alive: continue
-            if e.type == "michael" or e.type == "zeus":
+            if e.type in ("michael", "zeus", "raphael"):
                 e.ability_timer -= DT
                 if e.ability_timer <= 0:
                     if e.type == "michael":
                         state.michael_shield(e)
-                    else:
+                    elif e.type == "zeus":
                         state.zeus_lightning(e)
+                    elif e.type == "raphael":
+                        state.raphael_heal(e)
 
         # move enemies
         for e in state.enemies:
@@ -681,6 +739,18 @@ def simulate_wave(state: GameState, wave_num: int, strategy_fn=None) -> dict:
                 if not state.enemies: continue
                 t.cooldown = 1.0 / eff_spd
                 state.lucifer_pulse(t)
+                continue
+
+            # Beelzebub: instant beam targeting highest HP
+            if t.is_beam:
+                eff_spd = t.attack_speed * state.perm_speed_buff
+                if t.hades_buffed:
+                    eff_spd *= 1.5
+                t.cooldown -= DT
+                if t.cooldown > 0: continue
+                if not state.enemies: continue
+                t.cooldown = 1.0 / eff_spd
+                state.cocytus_beam(t)
                 continue
 
             t.cooldown -= DT
@@ -853,6 +923,7 @@ _HAD_ZONES  = _greedy_zone_positions(TOWER_DATA["hades"]["range"], 4)
 # Lucifer is global — any buildable tile works; pick center of map for aesthetics
 _LUC_ZONES  = [(col, row) for col in range(GRID_COLS) for row in range(GRID_ROWS)
                if (col, row) not in PATH_SET][:10]
+_COC_ZONES  = _greedy_zone_positions(TOWER_DATA["cocytus"]["range"], 6)
 
 
 # ── Placement / upgrade helpers ───────────────────────────
@@ -968,6 +1039,7 @@ def strat_optimal(s, ph):
     nec_n = sum(1 for t in s.towers if t.type == "necromancer")
     luc_n = sum(1 for t in s.towers if t.type == "lucifer")
     had_n = sum(1 for t in s.towers if t.type == "hades")
+    coc_n = sum(1 for t in s.towers if t.type == "cocytus")
 
     # Phase 1: spread 3 ARCs across bends
     if arc_n < 3:
@@ -982,12 +1054,14 @@ def strat_optimal(s, ph):
         _place_at_zones(s, "demon_archer", _ARC_ZONES, 1)
         return
 
-    # Phase 3: MAG for AoE, Hades to boost cluster, keep upgrading
+    # Phase 3: MAG for AoE, Hades to boost cluster, Beelzebub for bosses
     if mag_n < 1 and s.sins >= 90:
         _place_at_zones(s, "hellfire_mage", _MAG_ZONES, 1)
     _upgrade_cheapest(s, reserve=50)
     if had_n < 1 and s.sins >= 160 and w >= 6:
         _place_at_zones(s, "hades", _HAD_ZONES, 1)
+    if coc_n < 1 and s.sins >= 180 and w >= 7:
+        _place_at_zones(s, "cocytus", _COC_ZONES, 1)
 
     # Phase 4: Lucifer for global damage, max upgrades, expand
     if w >= 8:
