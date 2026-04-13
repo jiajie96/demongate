@@ -684,7 +684,7 @@ func update_towers(dt: float) -> void:
 			_lucifer_pulse(t)
 			continue
 
-		# Beelzebub beam tower: instant hit, ramping damage on same target
+		# Beam tower: lock onto target, keep attacking even out of range, re-target only on death
 		if t["is_beam"]:
 			var effective_speed: float = t["attack_speed"] * perm_speed_buff
 			if t["hades_buffed"]:
@@ -692,27 +692,37 @@ func update_towers(dt: float) -> void:
 			t["cooldown"] -= dt
 			if t["cooldown"] > 0:
 				continue
-			# Target highest HP enemy in range (boss seeker)
-			var best = null
-			var best_hp := -1.0
-			var r2: float = t["range"] * t["range"]
-			for e in enemies:
-				if not e["alive"]:
-					continue
-				var dx: float = e["x"] - t["x"]
-				var dy: float = e["y"] - t["y"]
-				if dx * dx + dy * dy > r2:
-					continue
-				if e["hp"] > best_hp:
-					best_hp = e["hp"]
-					best = e
-			t["target"] = best
-			if best == null:
+
+			# Try to keep current locked target
+			var locked_target = null
+			if t["beam_target_id"] >= 0:
+				for e in enemies:
+					if e["id"] == t["beam_target_id"] and e["alive"]:
+						locked_target = e
+						break
+
+			# If locked target is dead or none, find new target in range
+			if locked_target == null:
 				t["beam_target_id"] = -1
 				t["beam_stacks"] = 0
+				var best_hp := -1.0
+				var r2: float = t["range"] * t["range"]
+				for e in enemies:
+					if not e["alive"]:
+						continue
+					var dx: float = e["x"] - t["x"]
+					var dy: float = e["y"] - t["y"]
+					if dx * dx + dy * dy > r2:
+						continue
+					if e["hp"] > best_hp:
+						best_hp = e["hp"]
+						locked_target = e
+
+			t["target"] = locked_target
+			if locked_target == null:
 				continue
 			t["cooldown"] = 1.0 / effective_speed
-			_cocytus_spike(t, best)
+			_cocytus_spike(t, locked_target)
 			continue
 
 		var effective_speed: float = t["attack_speed"] * perm_speed_buff

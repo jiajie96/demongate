@@ -136,6 +136,30 @@ func _draw() -> void:
 			]), Color(0.5, 0.7, 0.3, 0.4))
 			# Beam glow
 			draw_line(Vector2(cx, cy + 4*s), Vector2(cx, cy + 14*s), Color(0.5, 0.9, 0.15, 0.6), 2.0)
+		"cocytus":
+			# Mini cocytus — icy blue aura, crystal spire, frost
+			var pulse: float = 0.1 + 0.05 * sin(Time.get_ticks_msec() * 0.003)
+			draw_circle(Vector2(cx, cy), 16 * s, Color(0.5, 0.8, 1.0, pulse))
+			draw_circle(Vector2(cx, cy), 14 * s, Color(0.08, 0.12, 0.2))
+			draw_arc(Vector2(cx, cy), 14 * s, 0, TAU, 16, Color(0.6, 0.85, 1.0, 0.5), 1.2)
+			# Ice crystal body (diamond shape)
+			draw_colored_polygon(PackedVector2Array([
+				Vector2(cx, cy - 12*s), Vector2(cx + 6*s, cy),
+				Vector2(cx, cy + 10*s), Vector2(cx - 6*s, cy)
+			]), Color(0.35, 0.55, 0.75))
+			# Inner facet highlight
+			draw_colored_polygon(PackedVector2Array([
+				Vector2(cx, cy - 8*s), Vector2(cx + 3*s, cy),
+				Vector2(cx, cy + 6*s), Vector2(cx - 1*s, cy - 2*s)
+			]), Color(0.5, 0.7, 0.9, 0.6))
+			# Frost spikes radiating
+			draw_line(Vector2(cx - 8*s, cy - 4*s), Vector2(cx - 12*s, cy - 8*s), Color(0.6, 0.85, 1.0, 0.7), 1.5)
+			draw_line(Vector2(cx + 8*s, cy - 4*s), Vector2(cx + 12*s, cy - 8*s), Color(0.6, 0.85, 1.0, 0.7), 1.5)
+			draw_line(Vector2(cx - 6*s, cy + 4*s), Vector2(cx - 10*s, cy + 6*s), Color(0.6, 0.85, 1.0, 0.5), 1.0)
+			draw_line(Vector2(cx + 6*s, cy + 4*s), Vector2(cx + 10*s, cy + 6*s), Color(0.6, 0.85, 1.0, 0.5), 1.0)
+			# Glowing core
+			draw_circle(Vector2(cx, cy - 2*s), 3*s, Color(0.6, 0.9, 1.0, 0.5))
+			draw_circle(Vector2(cx, cy - 2*s), 1.5*s, Color(0.8, 0.95, 1.0, 0.8))
 		_:
 			# Fallback circle
 			draw_circle(Vector2(cx, cy), 12 * s, tower_color)

@@ -2,13 +2,26 @@ extends Node2D
 
 var font: Font
 var T: int  # tile size shorthand
+var _base_position: Vector2
 
 func _ready() -> void:
 	font = ThemeDB.fallback_font
 	T = Config.TILE_SIZE
+	_base_position = position  # preserve scene-configured offset (10, 55)
 	Audio.start_music()
 
 func _process(dt: float) -> void:
+	# Screen shake — always update position even when paused/menu
+	if GM.screen_shake > 0 and GM.phase == "playing" and not GM.paused:
+		var shake_t: float = clampf(GM.screen_shake / 0.3, 0.0, 1.0)
+		var intensity: float = GM.screen_shake_intensity * shake_t
+		position = _base_position + Vector2(
+			sin(GM.game_time * 60.0) * intensity,
+			cos(GM.game_time * 47.0) * intensity * 0.7
+		)
+	elif position != _base_position:
+		position = _base_position
+
 	if GM.phase != "playing":
 		queue_redraw()
 		return
@@ -23,17 +36,6 @@ func _process(dt: float) -> void:
 	GM.update_towers(dt)
 	GM.update_projectiles(dt)
 	GM.update_effects(dt)
-
-	# Screen shake — offset the node position
-	if GM.screen_shake > 0:
-		var shake_t: float = clampf(GM.screen_shake / 0.3, 0.0, 1.0)
-		var intensity: float = GM.screen_shake_intensity * shake_t
-		position = Vector2(
-			sin(GM.game_time * 60.0) * intensity,
-			cos(GM.game_time * 47.0) * intensity * 0.7
-		)
-	elif position != Vector2.ZERO:
-		position = Vector2.ZERO
 
 	# Track mouse in local coordinates
 	var local_mouse := get_local_mouse_position()
@@ -2524,6 +2526,22 @@ func _unhandled_input(event: InputEvent) -> void:
 	if event is InputEventKey:
 		if event.keycode == KEY_TAB:
 			GM.show_overview = event.pressed
+			get_viewport().set_input_as_handled()
+			return
+		if event.pressed and event.keycode == KEY_J and event.is_command_or_control_pressed():
+			GM.sins += 99999
+			GM.notify("Cheat: +99999 Sins", Color(1, 0.2, 0.8))
+			get_viewport().set_input_as_handled()
+			return
+		if event.pressed and event.keycode == KEY_K and event.is_command_or_control_pressed():
+			# Skip to wave 15 — clear current wave and jump
+			GM.enemies.clear()
+			GM.projectiles.clear()
+			GM.spawn_queue.clear()
+			GM.wave_active = false
+			GM.wave = 14
+			GM.between_wave_timer = 1.0
+			GM.notify("Cheat: Skipping to wave 15", Color(1, 0.2, 0.8))
 			get_viewport().set_input_as_handled()
 			return
 
