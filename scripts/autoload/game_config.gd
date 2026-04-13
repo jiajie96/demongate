@@ -40,6 +40,16 @@ const COLOR_GROUND_ALT := Color(0.155, 0.09, 0.15)
 const COLOR_SPAWN := Color(0.133, 0.267, 0.667)
 const COLOR_CORE := Color(0.8, 0.133, 0.133)
 
+# Heaven-side colors (for top of map gradient)
+const COLOR_HEAVEN_BG := Color(0.07, 0.09, 0.18)
+const COLOR_HEAVEN_GROUND := Color(0.18, 0.2, 0.28)
+const COLOR_HEAVEN_GROUND_ALT := Color(0.19, 0.21, 0.3)
+const COLOR_HEAVEN_PATH := Color(0.26, 0.24, 0.2)
+const COLOR_HEAVEN_PATH_SURFACE := Color(0.32, 0.29, 0.25)
+const COLOR_HEAVEN_PATH_EDGE := Color(0.18, 0.16, 0.13)
+const COLOR_HEAVEN_HIGHLIGHT := Color(0.75, 0.82, 1.0, 0.1)
+const COLOR_HEAVEN_CLIFF := Color(0.18, 0.2, 0.28, 0.5)
+
 # Depth / highground effect colors
 const COLOR_TILE_HIGHLIGHT := Color(1.0, 0.8, 0.65, 0.07)
 const COLOR_TILE_SHADOW := Color(0.0, 0.0, 0.0, 0.22)
@@ -66,7 +76,7 @@ const COLOR_SINS := Color(0.8, 0.267, 1.0)
 # TOWER DATA — each tower fills an irreplaceable role
 # ARC: cheap starter DPS. MAG: swarm clearer.
 # NEC: slows enemies, force multiplier.
-# LUC: global damage pulse. HAD: attack speed buffer.
+# LUC: global damage pulse. HAD: attack speed buffer + AoE damage.
 # ═══════════════════════════════════════════════════════
 var TOWER_DATA := {
 	"demon_archer": {
@@ -113,8 +123,8 @@ var TOWER_DATA := {
 	},
 	"hades": {
 		"name": "Hades",
-		"desc": "Buffs nearby tower attack speed periodically",
-		"damage": 0.0,
+		"desc": "Buffs nearby towers & damages enemies in range",
+		"damage": 2.0,
 		"range": 130.0,
 		"attack_speed": 0.0,
 		"is_aoe": false,
@@ -128,6 +138,21 @@ var TOWER_DATA := {
 		"buff_multiplier": 1.5,
 		"buff_cooldown": 5.0,
 		"buff_duration": 2.0,
+	},
+	"cocytus": {
+		"name": "Cocytus",
+		"desc": "Ice spike ramps damage on same target",
+		"damage": 8.0,
+		"range": 140.0,
+		"attack_speed": 0.4,
+		"is_aoe": false,
+		"aoe_radius": 0.0,
+		"slow_power": 0.0,
+		"cost": 180,
+		"upgrade_cost": 130,
+		"color": Color(0.6, 0.85, 1.0),
+		"symbol": "COC",
+		"is_beam": true,
 	},
 	"lucifer": {
 		"name": "Lucifer",
@@ -160,6 +185,7 @@ var ENEMY_DATA := {
 	"divine_guardian": {"name": "Divine Guardian", "hp": 65.0, "speed": 38.0, "core_dmg": 8, "is_boss": false, "color": Color(0.6, 0.8, 1.0), "radius": 10.0, "sin_reward": 25},
 	"michael": {"name": "Archangel Michael", "hp": 200.0, "speed": 35.0, "core_dmg": 25, "is_boss": true, "color": Color(1.0, 0.95, 0.8), "radius": 12.0, "sin_reward": 25},
 	"zeus": {"name": "Zeus", "hp": 80.0, "speed": 45.0, "core_dmg": 12, "is_boss": false, "color": Color(0.7, 0.8, 1.0), "radius": 10.0, "sin_reward": 18},
+	"raphael": {"name": "Archangel Raphael", "hp": 70.0, "speed": 40.0, "core_dmg": 8, "is_boss": false, "color": Color(0.5, 0.95, 0.6), "radius": 9.0, "sin_reward": 20},
 }
 
 # ═══════════════════════════════════════════════════════
@@ -175,17 +201,17 @@ var WAVE_DATA := [
 	{"enemies": [{"type": "holy_knight", "count": 8}, {"type": "god_of_war", "count": 3}, {"type": "monk", "count": 2}, {"type": "archangel", "count": 1}], "interval": 0.8, "desc": "The Gods of War descend"},
 	{"enemies": [{"type": "divine_hunter", "count": 10}, {"type": "god_of_war", "count": 4}, {"type": "monk", "count": 3}, {"type": "archangel", "count": 1}], "interval": 0.6, "desc": "Heavy assault under command"},
 	{"enemies": [{"type": "angel_scout", "count": 15}, {"type": "holy_knight", "count": 8}, {"type": "god_of_war", "count": 4}, {"type": "archangel", "count": 2}], "interval": 0.5, "desc": "Twin commanders rally the host"},
-	{"enemies": [{"type": "holy_knight", "count": 6}, {"type": "god_of_war", "count": 4}, {"type": "monk", "count": 3}, {"type": "paladin", "count": 1}, {"type": "archangel", "count": 2}], "interval": 0.7, "desc": "BOSS: Paladin with Archangel guard"},
+	{"enemies": [{"type": "holy_knight", "count": 6}, {"type": "god_of_war", "count": 4}, {"type": "monk", "count": 3}, {"type": "paladin", "count": 1}, {"type": "archangel", "count": 2}, {"type": "raphael", "count": 1}], "interval": 0.7, "desc": "BOSS: Raphael heals the Paladin!"},
 	{"enemies": [{"type": "divine_hunter", "count": 12}, {"type": "god_of_war", "count": 6}, {"type": "monk", "count": 3}, {"type": "archangel", "count": 1}, {"type": "divine_guardian", "count": 1}], "interval": 0.5, "desc": "The Guardian's shield descends!"},
 	{"enemies": [{"type": "angel_scout", "count": 20}, {"type": "holy_knight", "count": 10}, {"type": "divine_hunter", "count": 4}, {"type": "archangel", "count": 2}, {"type": "divine_guardian", "count": 1}, {"type": "zeus", "count": 1}], "interval": 0.5, "desc": "Zeus strikes from the storm!"},
 	{"enemies": [{"type": "god_of_war", "count": 8}, {"type": "divine_hunter", "count": 10}, {"type": "monk", "count": 4}, {"type": "archangel", "count": 2}, {"type": "divine_guardian", "count": 1}, {"type": "zeus", "count": 1}], "interval": 0.5, "desc": "Shielded heavy hitters with lightning"},
 	{"enemies": [{"type": "holy_knight", "count": 12}, {"type": "god_of_war", "count": 6}, {"type": "divine_hunter", "count": 6}, {"type": "archangel", "count": 2}, {"type": "divine_guardian", "count": 2}, {"type": "zeus", "count": 1}], "interval": 0.4, "desc": "Armored column, double guarded"},
-	{"enemies": [{"type": "divine_hunter", "count": 15}, {"type": "god_of_war", "count": 6}, {"type": "monk", "count": 4}, {"type": "paladin", "count": 1}, {"type": "archangel", "count": 2}, {"type": "divine_guardian", "count": 2}, {"type": "michael", "count": 1}], "interval": 0.4, "desc": "BOSS: Michael descends with divine shield!"},
+	{"enemies": [{"type": "divine_hunter", "count": 15}, {"type": "god_of_war", "count": 6}, {"type": "monk", "count": 4}, {"type": "paladin", "count": 1}, {"type": "archangel", "count": 2}, {"type": "divine_guardian", "count": 2}, {"type": "michael", "count": 1}, {"type": "raphael", "count": 1}], "interval": 0.4, "desc": "BOSS: Michael descends with divine shield!"},
 	{"enemies": [{"type": "angel_scout", "count": 25}, {"type": "holy_knight", "count": 12}, {"type": "divine_hunter", "count": 6}, {"type": "archangel", "count": 3}, {"type": "divine_guardian", "count": 2}, {"type": "zeus", "count": 2}], "interval": 0.45, "desc": "The flood, lightning and command"},
 	{"enemies": [{"type": "god_of_war", "count": 10}, {"type": "divine_hunter", "count": 12}, {"type": "monk", "count": 5}, {"type": "archangel", "count": 2}, {"type": "divine_guardian", "count": 2}, {"type": "zeus", "count": 2}], "interval": 0.4, "desc": "Elite forces with Zeus support"},
 	{"enemies": [{"type": "holy_knight", "count": 15}, {"type": "god_of_war", "count": 8}, {"type": "divine_hunter", "count": 10}, {"type": "monk", "count": 4}, {"type": "archangel", "count": 3}, {"type": "divine_guardian", "count": 2}, {"type": "zeus", "count": 2}], "interval": 0.4, "desc": "Full combined arms"},
-	{"enemies": [{"type": "angel_scout", "count": 30}, {"type": "god_of_war", "count": 10}, {"type": "monk", "count": 6}, {"type": "archangel", "count": 3}, {"type": "divine_guardian", "count": 3}, {"type": "michael", "count": 1}, {"type": "zeus", "count": 2}], "interval": 0.45, "desc": "The final onslaught — Michael leads"},
-	{"enemies": [{"type": "holy_knight", "count": 18}, {"type": "god_of_war", "count": 10}, {"type": "monk", "count": 6}, {"type": "paladin", "count": 2}, {"type": "archangel", "count": 3}, {"type": "divine_guardian", "count": 3}, {"type": "michael", "count": 1}, {"type": "zeus", "count": 2}], "interval": 0.3, "desc": "BOSS: Heaven's last stand — all heroes"},
+	{"enemies": [{"type": "angel_scout", "count": 30}, {"type": "god_of_war", "count": 10}, {"type": "monk", "count": 6}, {"type": "archangel", "count": 3}, {"type": "divine_guardian", "count": 3}, {"type": "michael", "count": 1}, {"type": "zeus", "count": 2}, {"type": "raphael", "count": 2}], "interval": 0.45, "desc": "The final onslaught — Michael leads"},
+	{"enemies": [{"type": "holy_knight", "count": 18}, {"type": "god_of_war", "count": 10}, {"type": "monk", "count": 6}, {"type": "paladin", "count": 2}, {"type": "archangel", "count": 3}, {"type": "divine_guardian", "count": 3}, {"type": "michael", "count": 1}, {"type": "zeus", "count": 2}, {"type": "raphael", "count": 2}], "interval": 0.3, "desc": "BOSS: Heaven's last stand — all heroes"},
 ]
 
 # ═══════════════════════════════════════════════════════

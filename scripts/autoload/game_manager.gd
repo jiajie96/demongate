@@ -56,6 +56,8 @@ var occupied_tiles: Dictionary = {}
 var notifications: Array = []
 var game_time: float = 0.0
 var show_overview: bool = false
+var screen_shake: float = 0.0
+var screen_shake_intensity: float = 0.0
 var speed_buff_timer: float = 0.0
 var speed_buff_factor: float = 1.0  # what was multiplied, divide to undo
 var game_speed: float = 1.0
@@ -103,6 +105,9 @@ func reset_state() -> void:
 	occupied_tiles.clear()
 	notifications.clear()
 	game_time = 0.0
+	show_overview = false
+	screen_shake = 0.0
+	screen_shake_intensity = 0.0
 	speed_buff_timer = 0.0
 	speed_buff_factor = 1.0
 	game_speed = 1.0
@@ -187,6 +192,7 @@ func create_tower(type: String, col: int, row: int) -> Dictionary:
 		"name": data["name"],
 		"is_global": data.get("is_global", false),
 		"is_support": data.get("is_support", false),
+		"is_beam": data.get("is_beam", false),
 		"buff_cooldown": data.get("buff_cooldown", 0.0),
 		"buff_duration": data.get("buff_duration", 0.0),
 		"buff_multiplier": data.get("buff_multiplier", 1.0),
@@ -198,6 +204,10 @@ func create_tower(type: String, col: int, row: int) -> Dictionary:
 		"total_damage": 0.0,
 		"kill_count": 0,
 		"targeting_mode": "first",
+		"beam_target_id": -1,
+		"beam_stacks": 0,
+		"beam_flash": 0.0,
+		"build_timer": 0.3,
 	}
 	if tower["is_support"]:
 		tower["buff_timer"] = tower["buff_cooldown"]
@@ -276,6 +286,7 @@ func create_enemy(type: String) -> Dictionary:
 		"shield_buff": false,
 		"shield_buff_timer": 0.0,
 		"flash_timer": 0.0,
+		"spawn_timer": 0.4,
 		"ability_timer": 0.0,
 	}
 
@@ -299,7 +310,8 @@ func _michael_shield(michael: Dictionary) -> void:
 		if e["alive"] and e["type"] != "michael":
 			e["shield_buff"] = true
 			e["shield_buff_timer"] = 2.0
-	add_effect("screen_flash", 0, 0, 0, Color(1.0, 0.95, 0.7, 0.12))
+	# Golden shield dome from Michael's position
+	effects.append({"type": "michael_shield", "x": michael["x"], "y": michael["y"], "radius": 0, "color": Color(1.0, 0.95, 0.6), "timer": 0.8})
 	notify(Locale.t("Michael's divine shield protects all!"), Color(1.0, 0.95, 0.8))
 
 func _zeus_lightning(zeus: Dictionary) -> void:
@@ -320,25 +332,46 @@ func _zeus_lightning(zeus: Dictionary) -> void:
 		var t: Dictionary = candidates[j]["tower"]
 		t["is_disabled"] = true
 		t["disable_timer"] = 2.0
+		# Lightning bolt from Zeus to tower
+		effects.append({"type": "zeus_bolt", "x": zx, "y": zy, "x2": t["x"], "y2": t["y"], "radius": 0, "color": Color(0.8, 0.9, 1.0), "timer": 0.4})
 	if count > 0:
-		add_effect("aoe", zx, zy, 60.0, Color(0.7, 0.8, 1.0, 0.3))
 		Audio.play_sfx("core_hit")
+
+func _raphael_heal(raphael: Dictionary) -> void:
+	# Every 6 seconds, heal the most damaged ally for 20% max HP
+	raphael["ability_timer"] = 6.0
+	var best = null
+	var best_missing := 0.0
+	for e in enemies:
+		if not e["alive"] or e["type"] == "raphael":
+			continue
+		var missing: float = e["max_hp"] - e["hp"]
+		if missing > best_missing:
+			best_missing = missing
+			best = e
+	if best != null and best_missing > 0:
+		var heal: float = best["max_hp"] * 0.15
+		best["hp"] = minf(best["hp"] + heal, best["max_hp"])
+		effects.append({"type": "heal_beam", "x": raphael["x"], "y": raphael["y"], "x2": best["x"], "y2": best["y"], "radius": 0, "color": Color(0.4, 1.0, 0.5), "timer": 0.3})
+		add_effect("heal_pulse", best["x"], best["y"], best.get("radius", 8.0), Color(0.4, 1.0, 0.5))
 
 func update_enemies(dt: float) -> void:
 	var path_px: Array[Vector2] = Config.path_pixels
 	var has_commander := _has_alive_type("archangel")
 
-	# Process Michael and Zeus abilities
+	# Process Michael, Zeus, and Raphael abilities
 	for e in enemies:
 		if not e["alive"]:
 			continue
-		if e["type"] == "michael" or e["type"] == "zeus":
+		if e["type"] == "michael" or e["type"] == "zeus" or e["type"] == "raphael":
 			e["ability_timer"] -= dt
 			if e["ability_timer"] <= 0:
 				if e["type"] == "michael":
 					_michael_shield(e)
 				elif e["type"] == "zeus":
 					_zeus_lightning(e)
+				elif e["type"] == "raphael":
+					_raphael_heal(e)
 
 	var i := enemies.size() - 1
 	while i >= 0:
@@ -347,6 +380,21 @@ func update_enemies(dt: float) -> void:
 			enemies.remove_at(i)
 			i -= 1
 			continue
+
+		# Safety: kill any enemy that has HP <= 0 but is still alive
+		if e["hp"] <= 0:
+			e["alive"] = false
+			stats["enemies_killed"] += 1
+			earn_from_kill(e["type"], false)
+			add_effect("death", e["x"], e["y"], e["radius"], e["color"])
+			Audio.play_sfx("enemy_death")
+			enemies.remove_at(i)
+			i -= 1
+			continue
+
+		# Spawn fade-in timer
+		if e["spawn_timer"] > 0:
+			e["spawn_timer"] -= dt
 
 		# Flash timer
 		if e["flash_timer"] > 0:
@@ -384,7 +432,9 @@ func update_enemies(dt: float) -> void:
 			var last_pt: Vector2 = path_px[path_px.size() - 1]
 			add_effect("core_hit", last_pt.x, last_pt.y, 10.0, Color.RED)
 			Audio.play_sfx("core_hit")
+			shake(4.0, 0.2)
 			if core_hp <= 0:
+				shake(8.0, 0.4)
 				phase = "gameover"
 			i -= 1
 			continue
@@ -598,6 +648,8 @@ func update_towers(dt: float) -> void:
 	for t in towers:
 		if t["fire_flash"] > 0:
 			t["fire_flash"] -= dt
+		if t["build_timer"] > 0:
+			t["build_timer"] -= dt
 
 		if t["is_disabled"]:
 			t["disable_timer"] -= dt
@@ -605,7 +657,7 @@ func update_towers(dt: float) -> void:
 				t["is_disabled"] = false
 			continue
 
-		# Hades support tower: buff nearby towers periodically
+		# Hades support tower: buff nearby towers and damage enemies periodically
 		if t["is_support"]:
 			t["buff_timer"] -= dt
 			if t["buff_active_timer"] > 0:
@@ -614,6 +666,7 @@ func update_towers(dt: float) -> void:
 				t["buff_timer"] = t["buff_cooldown"]
 				t["buff_active_timer"] = t["buff_duration"]
 				_apply_hades_buff(t)
+				_hades_damage(t)
 				Audio.play_sfx("hades_buff", -18.0)
 			continue
 
@@ -629,6 +682,37 @@ func update_towers(dt: float) -> void:
 				continue
 			t["cooldown"] = 1.0 / effective_speed
 			_lucifer_pulse(t)
+			continue
+
+		# Beelzebub beam tower: instant hit, ramping damage on same target
+		if t["is_beam"]:
+			var effective_speed: float = t["attack_speed"] * perm_speed_buff
+			if t["hades_buffed"]:
+				effective_speed *= 1.5
+			t["cooldown"] -= dt
+			if t["cooldown"] > 0:
+				continue
+			# Target highest HP enemy in range (boss seeker)
+			var best = null
+			var best_hp := -1.0
+			var r2: float = t["range"] * t["range"]
+			for e in enemies:
+				if not e["alive"]:
+					continue
+				var dx: float = e["x"] - t["x"]
+				var dy: float = e["y"] - t["y"]
+				if dx * dx + dy * dy > r2:
+					continue
+				if e["hp"] > best_hp:
+					best_hp = e["hp"]
+					best = e
+			t["target"] = best
+			if best == null:
+				t["beam_target_id"] = -1
+				t["beam_stacks"] = 0
+				continue
+			t["cooldown"] = 1.0 / effective_speed
+			_cocytus_spike(t, best)
 			continue
 
 		var effective_speed: float = t["attack_speed"] * perm_speed_buff
@@ -656,8 +740,43 @@ func _lucifer_pulse(tower: Dictionary) -> void:
 	for e in enemies:
 		if e["alive"]:
 			combat_hit(e, base_dmg, tower)
+			add_effect("lucifer_hit", e["x"], e["y"], e.get("radius", 8.0), tower["color"])
 	add_effect("lucifer_wave", tower["x"], tower["y"], 0, tower["color"])
 	Audio.play_sfx("lucifer_pulse", -6.0)
+
+func _cocytus_spike(tower: Dictionary, target: Dictionary) -> void:
+	# Track stacks: same target = ramp, new target = reset
+	if target["id"] != tower["beam_target_id"]:
+		tower["beam_target_id"] = target["id"]
+		tower["beam_stacks"] = 0
+	tower["beam_stacks"] = mini(tower["beam_stacks"] + 1, 3)
+	# Damage ramps: 1x / 1.5x / 2x / 3x
+	var stack_mult: Array = [1.0, 1.5, 2.0, 3.0]
+	var mult: float = stack_mult[tower["beam_stacks"]]
+	var dmg_mult := 1.0
+	if double_damage > 0:
+		dmg_mult = 2.0
+	var base_dmg: float = tower["damage"] * tower["damage_mult"] * dmg_mult * mult
+	combat_hit(target, base_dmg, tower)
+	tower["beam_flash"] = 0.15
+	# Visual: ice spike flying from tower to target
+	effects.append({
+		"type": "frost_spike",
+		"x": tower["x"], "y": tower["y"],
+		"x2": target["x"], "y2": target["y"],
+		"radius": float(tower["beam_stacks"]),
+		"color": Color(0.6, 0.85, 1.0),
+		"timer": 0.18,
+	})
+	# Ice burst at impact (grows with stacks)
+	effects.append({
+		"type": "ice_burst",
+		"x": target["x"], "y": target["y"],
+		"radius": target.get("radius", 8.0) + tower["beam_stacks"] * 3.0,
+		"color": Color(0.7, 0.9, 1.0),
+		"timer": 0.35,
+	})
+	Audio.play_sfx("core_hit")
 
 func _apply_hades_buff(hades_tower: Dictionary) -> void:
 	var r2: float = hades_tower["range"] * hades_tower["range"]
@@ -673,6 +792,25 @@ func _apply_hades_buff(hades_tower: Dictionary) -> void:
 			t["hades_buffed"] = true
 			t["hades_buff_timer"] = buff_dur
 
+func _hades_damage(hades_tower: Dictionary) -> void:
+	var base_dmg: float = hades_tower["damage"] * hades_tower["damage_mult"]
+	if base_dmg <= 0:
+		return
+	if double_damage > 0:
+		base_dmg *= 2.0
+	var r2: float = hades_tower["range"] * hades_tower["range"]
+	var hit_any := false
+	for e in enemies:
+		if not e["alive"]:
+			continue
+		var dx: float = e["x"] - hades_tower["x"]
+		var dy: float = e["y"] - hades_tower["y"]
+		if dx * dx + dy * dy <= r2:
+			combat_hit(e, base_dmg, hades_tower)
+			hit_any = true
+	if hit_any:
+		add_effect("hades_wave", hades_tower["x"], hades_tower["y"], hades_tower["range"], hades_tower["color"])
+
 # ═══════════════════════════════════════════════════════
 # WAVE MANAGER
 # ═══════════════════════════════════════════════════════
@@ -686,13 +824,43 @@ func start_wave() -> void:
 	wave_desc = wave_def["desc"]
 
 	spawn_queue.clear()
+	# Separate regular enemies from special ones (bosses, commanders, guardians)
+	var regular: Array = []  # interleaved
+	var specials: Array = [] # appended at end in small groups
 	for entry in wave_def["enemies"]:
+		var etype: String = entry["type"]
+		var edata: Dictionary = Config.ENEMY_DATA.get(etype, {})
+		var is_special: bool = edata.get("is_boss", false) or etype in ["archangel", "divine_guardian", "michael", "zeus"]
 		for j in range(entry["count"]):
-			spawn_queue.append(entry["type"])
+			if is_special:
+				specials.append(etype)
+			else:
+				regular.append(etype)
+	# Interleave regular enemies by round-robin from each type pool
+	var pools: Dictionary = {}
+	for etype in regular:
+		if not pools.has(etype):
+			pools[etype] = 0
+		pools[etype] += 1
+	var mixed: Array = []
+	var remaining := regular.size()
+	while remaining > 0:
+		for etype in pools:
+			if pools[etype] > 0:
+				mixed.append(etype)
+				pools[etype] -= 1
+				remaining -= 1
+	spawn_queue = mixed
+	# Sprinkle specials in the back half of the wave
+	var insert_start: int = maxi(spawn_queue.size() / 2, spawn_queue.size() - specials.size() * 3)
+	for i in range(specials.size()):
+		var idx: int = mini(insert_start + i * 2, spawn_queue.size())
+		spawn_queue.insert(idx, specials[i])
 	spawn_timer = 0.5
 
 	notify(Locale.tf("wave_start_notify", {"wave": wave, "desc": Locale.t(wave_desc)}), Color(1.0, 0.8, 0.0))
 	Audio.play_sfx("wave_start")
+	shake(2.0, 0.15)
 
 func update_waves(dt: float) -> void:
 	if wave_active:
@@ -771,6 +939,7 @@ func roll_dice() -> Dictionary:
 	dice_result = {"d1": d1, "total": total, "outcome": outcome}
 	dice_result_timer = 5.0
 	Audio.play_sfx("dice_roll")
+	shake(3.0, 0.15)
 
 	var msg_color := Color(0.267, 1.0, 0.267) if outcome["positive"] else Color(1.0, 0.267, 0.267)
 	notify(Locale.t(outcome["name"]) + " (" + str(d1) + ")", msg_color)
@@ -940,6 +1109,10 @@ func add_effect(type: String, ex: float, ey: float, radius: float = 10.0, color:
 		duration = 0.2
 	elif type == "lucifer_wave":
 		duration = 0.8
+	elif type == "lucifer_hit":
+		duration = 0.4
+	elif type == "hades_wave":
+		duration = 0.6
 	effects.append({"type": type, "x": ex, "y": ey, "radius": radius, "color": color, "timer": duration})
 
 func add_dmg_number(ex: float, ey: float, dmg: float, color: Color) -> void:
@@ -976,6 +1149,15 @@ func update_effects(dt: float) -> void:
 		if speed_buff_timer <= 0:
 			perm_speed_buff /= speed_buff_factor
 			speed_buff_factor = 1.0
+
+	if screen_shake > 0:
+		screen_shake -= dt
+		if screen_shake <= 0:
+			screen_shake_intensity = 0.0
+
+func shake(intensity: float, duration: float) -> void:
+	screen_shake = duration
+	screen_shake_intensity = intensity
 
 func _apply_speed_buff(factor: float, duration: float) -> void:
 	# Undo any existing temp buff first

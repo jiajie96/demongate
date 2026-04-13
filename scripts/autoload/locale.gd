@@ -93,6 +93,10 @@ var _templates: Dictionary = {
 		"en": "{name} [{symbol}]\n{desc}\n{cost}",
 		"zh": "{name} [{symbol}]\n{desc}\n{cost}",
 	},
+	"tower_button_compact": {
+		"en": "{name}\n{cost}",
+		"zh": "{name}\n{cost}",
+	},
 	# Notification templates
 	"wave_start_notify": {
 		"en": "Wave {wave}: {desc}",
@@ -142,6 +146,14 @@ var _templates: Dictionary = {
 	"dice_replenish": {
 		"en": "Dice restored! ({count}/{max})",
 		"zh": "骰子恢复！({count}/{max})",
+	},
+	"overview_kills": {
+		"en": "{count} kills",
+		"zh": "{count} 击杀",
+	},
+	"free_tower_notify": {
+		"en": "Free tower! ({count} left)",
+		"zh": "免费建塔！(剩余{count})",
 	},
 }
 
@@ -213,6 +225,7 @@ var _zh: Dictionary = {
 	"Necromancer": "死灵法师",
 	"Lucifer": "路西法",
 	"Hades": "哈迪斯",
+	"Cocytus": "科赛特斯",
 
 	# --- Tower descriptions ---
 	"Fast attacks, reliable early damage": "快速攻击，可靠的前期伤害",
@@ -220,6 +233,7 @@ var _zh: Dictionary = {
 	"Slows enemies on hit, force multiplier": "命中减速，战力倍增",
 	"Global pulse damages ALL enemies, slow attack": "全局脉冲伤害所有敌人，攻速慢",
 	"Buffs nearby tower attack speed periodically": "定期提升范围内塔的攻速",
+	"Ice spike ramps damage on same target": "冰锥射击，对同一目标伤害递增",
 
 	# --- Enemy names ---
 	"Angel Scout": "天使斥候",
@@ -232,6 +246,7 @@ var _zh: Dictionary = {
 	"Divine Guardian": "神圣守卫",
 	"Archangel Michael": "大天使米迦勒",
 	"Zeus": "宙斯",
+	"Archangel Raphael": "大天使拉斐尔",
 
 	# --- Wave descriptions ---
 	"The first scouts arrive": "第一批斥候来了",
@@ -243,7 +258,7 @@ var _zh: Dictionary = {
 	"The Gods of War descend": "战神降临",
 	"Heavy assault under command": "指挥下的猛攻",
 	"Twin commanders rally the host": "双指挥官集结大军",
-	"BOSS: Paladin with Archangel guard": "首领：圣武士与大天使护卫",
+	"BOSS: Raphael heals the Paladin!": "首领：拉斐尔治愈圣武士！",
 	"The Guardian's shield descends!": "守卫之盾降临！",
 	"Zeus strikes from the storm!": "宙斯从风暴中降临！",
 	"Shielded heavy hitters with lightning": "有护盾的重击者与闪电",
@@ -305,4 +320,14 @@ var _zh: Dictionary = {
 	"No deal.": "拒绝交易。",
 	"Trojan Relic! Elite enemies spawned!": "特洛伊遗物！精锐敌人出现！",
 	"Only one Lucifer allowed!": "只能拥有一个路西法！",
+	"Not enough sins!": "罪孽不足！",
+
+	# --- HUD buttons ---
+	"Upgrade": "升级",
+	"Sell": "出售",
+	"Target": "目标",
+
+	# --- Overview labels ---
+	"GLOBAL": "全局",
+	"SUPPORT": "辅助",
 }
