@@ -233,9 +233,24 @@ func _create_side_panel() -> void:
 	# Tower buttons
 	for type in Config.TOWER_DATA:
 		var data: Dictionary = Config.TOWER_DATA[type]
+
+		var row := HBoxContainer.new()
+		row.custom_minimum_size = Vector2(280, 0)
+		row.add_theme_constant_override("separation", 6)
+		vbox.add_child(row)
+
+		# Avatar — drawn mini tower icon
+		var icon: Control = preload("res://scripts/tower_icon.gd").new()
+		icon.tower_type = type
+		icon.tower_color = data["color"]
+		icon.custom_minimum_size = Vector2(44, 44)
+		row.add_child(icon)
+
+		# Tower button (compact by default — no desc)
 		var btn := Button.new()
-		btn.text = _tower_button_text(data)
-		btn.custom_minimum_size = Vector2(280, 60)
+		btn.text = _tower_button_text(data, false)
+		btn.custom_minimum_size = Vector2(230, 44)
+		btn.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 		btn.alignment = HORIZONTAL_ALIGNMENT_LEFT
 
 		var btn_style := StyleBoxFlat.new()
@@ -261,7 +276,7 @@ func _create_side_panel() -> void:
 
 		var tower_type: String = type
 		btn.pressed.connect(_on_tower_button_pressed.bind(tower_type))
-		vbox.add_child(btn)
+		row.add_child(btn)
 		tower_buttons[type] = btn
 
 	vbox.add_child(_make_separator())
@@ -607,13 +622,14 @@ func _process(_dt: float) -> void:
 	# Sins
 	sins_label.text = Locale.tf("sins_display", {"amount": GM.sins})
 
-	# Tower button affordability + text
+	# Tower button affordability + text (show desc only when Tab/overview held)
+	var show_details := GM.show_overview
 	for type in Config.TOWER_DATA:
 		if tower_buttons.has(type):
 			var data: Dictionary = Config.TOWER_DATA[type]
 			var can_buy := GM.can_afford(data["cost"]) or GM.free_towers > 0
 			tower_buttons[type].modulate.a = 1.0 if can_buy else 0.5
-			tower_buttons[type].text = _tower_button_text(data)
+			tower_buttons[type].text = _tower_button_text(data, show_details)
 
 	# Next wave button
 	btn_next_wave.visible = not GM.wave_active and not GM.show_pact and GM.phase == "playing"
@@ -631,6 +647,9 @@ func _process(_dt: float) -> void:
 		if tw["hades_buffed"]:
 			effective_spd *= 1.5
 		var dps: float = effective_dmg * effective_spd
+		# Support towers deal damage on buff cycle, not via attack_speed
+		if tw["is_support"] and tw["damage"] > 0 and tw["buff_cooldown"] > 0:
+			dps = effective_dmg / tw["buff_cooldown"]
 		ti_stats.text = Locale.tf("tower_stats", {
 			"dmg": snappedf(effective_dmg, 0.1),
 			"rng": roundi(tw["range"]),
@@ -852,11 +871,16 @@ func _close_settings() -> void:
 # ═══════════════════════════════════════════════════════
 # UI HELPERS
 # ═══════════════════════════════════════════════════════
-func _tower_button_text(data: Dictionary) -> String:
-	return Locale.tf("tower_button", {
+func _tower_button_text(data: Dictionary, show_details: bool = false) -> String:
+	if show_details:
+		return Locale.tf("tower_button", {
+			"name": Locale.t(data["name"]),
+			"symbol": data["symbol"],
+			"desc": Locale.t(data["desc"]),
+			"cost": GM.format_cost(data["cost"]),
+		})
+	return Locale.tf("tower_button_compact", {
 		"name": Locale.t(data["name"]),
-		"symbol": data["symbol"],
-		"desc": Locale.t(data["desc"]),
 		"cost": GM.format_cost(data["cost"]),
 	})
 
