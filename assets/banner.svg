@@ -1,272 +1,284 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 900 320" width="900" height="320">
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 900 300" width="900" height="300">
   <defs>
-    <!-- Hellfire gradient for background -->
-    <linearGradient id="bgGrad" x1="0%" y1="0%" x2="0%" y2="100%">
-      <stop offset="0%" style="stop-color:#1a0a1a;stop-opacity:1"/>
-      <stop offset="50%" style="stop-color:#0e0308;stop-opacity:1"/>
-      <stop offset="100%" style="stop-color:#1a0a1a;stop-opacity:1"/>
+    <!-- Deep background -->
+    <linearGradient id="bg" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" style="stop-color:#06050e"/>
+      <stop offset="30%" style="stop-color:#0a0412"/>
+      <stop offset="60%" style="stop-color:#150310"/>
+      <stop offset="100%" style="stop-color:#1a0408"/>
     </linearGradient>
-    <!-- Fire glow for title -->
-    <linearGradient id="fireGrad" x1="0%" y1="0%" x2="0%" y2="100%">
-      <stop offset="0%" style="stop-color:#ff6b1a"/>
-      <stop offset="40%" style="stop-color:#cc2200"/>
-      <stop offset="100%" style="stop-color:#880011"/>
+    <!-- Title fire gradient -->
+    <linearGradient id="fireText" x1="0%" y1="0%" x2="0%" y2="100%">
+      <stop offset="0%" style="stop-color:#ffcc55"/>
+      <stop offset="20%" style="stop-color:#ff9933"/>
+      <stop offset="50%" style="stop-color:#ee4411"/>
+      <stop offset="80%" style="stop-color:#bb1100"/>
+      <stop offset="100%" style="stop-color:#660000"/>
     </linearGradient>
-    <!-- Lava gradient -->
-    <linearGradient id="lavaGrad" x1="0%" y1="0%" x2="100%" y2="0%">
-      <stop offset="0%" style="stop-color:#cc2200;stop-opacity:0"/>
-      <stop offset="50%" style="stop-color:#ff4400;stop-opacity:0.8"/>
-      <stop offset="100%" style="stop-color:#cc2200;stop-opacity:0"/>
+    <!-- Title glow layer (bright, wide version) -->
+    <linearGradient id="fireGlow" x1="0%" y1="0%" x2="0%" y2="100%">
+      <stop offset="0%" style="stop-color:#ff993320"/>
+      <stop offset="50%" style="stop-color:#ee441115"/>
+      <stop offset="100%" style="stop-color:#bb110010"/>
     </linearGradient>
-    <!-- Glow filter -->
-    <filter id="glow" x="-20%" y="-20%" width="140%" height="140%">
-      <feGaussianBlur in="SourceGraphic" stdDeviation="4" result="blur"/>
-      <feMerge>
-        <feMergeNode in="blur"/>
-        <feMergeNode in="SourceGraphic"/>
-      </feMerge>
-    </filter>
-    <filter id="strongGlow" x="-30%" y="-30%" width="160%" height="160%">
-      <feGaussianBlur in="SourceGraphic" stdDeviation="8" result="blur"/>
-      <feMerge>
-        <feMergeNode in="blur"/>
-        <feMergeNode in="SourceGraphic"/>
-      </feMerge>
-    </filter>
-    <filter id="softGlow" x="-15%" y="-15%" width="130%" height="130%">
-      <feGaussianBlur in="SourceGraphic" stdDeviation="2" result="blur"/>
-      <feMerge>
-        <feMergeNode in="blur"/>
-        <feMergeNode in="SourceGraphic"/>
-      </feMerge>
-    </filter>
+    <!-- Subtitle gradient -->
+    <linearGradient id="subText" x1="0%" y1="0%" x2="0%" y2="100%">
+      <stop offset="0%" style="stop-color:#eebb88"/>
+      <stop offset="100%" style="stop-color:#aa6633"/>
+    </linearGradient>
+    <!-- Gold divider -->
+    <linearGradient id="goldLine" x1="0%" y1="0%" x2="100%" y2="0%">
+      <stop offset="0%" style="stop-color:#cc8800;stop-opacity:0"/>
+      <stop offset="15%" style="stop-color:#ffaa33;stop-opacity:0.6"/>
+      <stop offset="50%" style="stop-color:#ffdd88;stop-opacity:1"/>
+      <stop offset="85%" style="stop-color:#ffaa33;stop-opacity:0.6"/>
+      <stop offset="100%" style="stop-color:#cc8800;stop-opacity:0"/>
+    </linearGradient>
+    <!-- Central lava glow -->
+    <radialGradient id="coreGlow" cx="50%" cy="48%" r="35%">
+      <stop offset="0%" style="stop-color:#ff4400;stop-opacity:0.25"/>
+      <stop offset="50%" style="stop-color:#cc1100;stop-opacity:0.08"/>
+      <stop offset="100%" style="stop-color:#440000;stop-opacity:0"/>
+    </radialGradient>
+    <!-- Top heavenly glow -->
+    <radialGradient id="heavenAura" cx="20%" cy="0%" r="35%">
+      <stop offset="0%" style="stop-color:#4466cc;stop-opacity:0.1"/>
+      <stop offset="100%" style="stop-color:#4466cc;stop-opacity:0"/>
+    </radialGradient>
+    <!-- Bottom ember glow -->
+    <radialGradient id="emberAura" cx="80%" cy="100%" r="45%">
+      <stop offset="0%" style="stop-color:#ff3300;stop-opacity:0.14"/>
+      <stop offset="100%" style="stop-color:#ff3300;stop-opacity:0"/>
+    </radialGradient>
+    <!-- Pentagram ring gradient -->
+    <linearGradient id="pentaRing" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" style="stop-color:#ff6633"/>
+      <stop offset="50%" style="stop-color:#cc2200"/>
+      <stop offset="100%" style="stop-color:#881100"/>
+    </linearGradient>
+    <!-- Ember dot radial for soft glow effect -->
+    <radialGradient id="emberDot">
+      <stop offset="0%" style="stop-color:#ff5522;stop-opacity:0.6"/>
+      <stop offset="60%" style="stop-color:#ff4411;stop-opacity:0.2"/>
+      <stop offset="100%" style="stop-color:#ff3300;stop-opacity:0"/>
+    </radialGradient>
+    <!-- Pentagram center glow -->
+    <radialGradient id="pentaCore">
+      <stop offset="0%" style="stop-color:#ffaa66;stop-opacity:1"/>
+      <stop offset="30%" style="stop-color:#ff5522;stop-opacity:0.9"/>
+      <stop offset="60%" style="stop-color:#cc2200;stop-opacity:0.5"/>
+      <stop offset="100%" style="stop-color:#661100;stop-opacity:0"/>
+    </radialGradient>
+    <!-- Star sparkle -->
+    <radialGradient id="starGlow">
+      <stop offset="0%" style="stop-color:#ccddff;stop-opacity:0.6"/>
+      <stop offset="100%" style="stop-color:#ccddff;stop-opacity:0"/>
+    </radialGradient>
   </defs>
 
   <!-- Background -->
-  <rect width="900" height="320" fill="url(#bgGrad)"/>
+  <rect width="900" height="300" fill="url(#bg)"/>
 
-  <!-- Subtle grid pattern (highground reference) -->
-  <g opacity="0.06">
-    <line x1="0" y1="0" x2="0" y2="320" stroke="#8833aa" stroke-width="0.5"/>
-    <line x1="50" y1="0" x2="50" y2="320" stroke="#8833aa" stroke-width="0.5"/>
-    <line x1="100" y1="0" x2="100" y2="320" stroke="#8833aa" stroke-width="0.5"/>
-    <line x1="150" y1="0" x2="150" y2="320" stroke="#8833aa" stroke-width="0.5"/>
-    <line x1="200" y1="0" x2="200" y2="320" stroke="#8833aa" stroke-width="0.5"/>
-    <line x1="250" y1="0" x2="250" y2="320" stroke="#8833aa" stroke-width="0.5"/>
-    <line x1="300" y1="0" x2="300" y2="320" stroke="#8833aa" stroke-width="0.5"/>
-    <line x1="350" y1="0" x2="350" y2="320" stroke="#8833aa" stroke-width="0.5"/>
-    <line x1="400" y1="0" x2="400" y2="320" stroke="#8833aa" stroke-width="0.5"/>
-    <line x1="450" y1="0" x2="450" y2="320" stroke="#8833aa" stroke-width="0.5"/>
-    <line x1="500" y1="0" x2="500" y2="320" stroke="#8833aa" stroke-width="0.5"/>
-    <line x1="550" y1="0" x2="550" y2="320" stroke="#8833aa" stroke-width="0.5"/>
-    <line x1="600" y1="0" x2="600" y2="320" stroke="#8833aa" stroke-width="0.5"/>
-    <line x1="650" y1="0" x2="650" y2="320" stroke="#8833aa" stroke-width="0.5"/>
-    <line x1="700" y1="0" x2="700" y2="320" stroke="#8833aa" stroke-width="0.5"/>
-    <line x1="750" y1="0" x2="750" y2="320" stroke="#8833aa" stroke-width="0.5"/>
-    <line x1="800" y1="0" x2="800" y2="320" stroke="#8833aa" stroke-width="0.5"/>
-    <line x1="850" y1="0" x2="850" y2="320" stroke="#8833aa" stroke-width="0.5"/>
-    <line x1="900" y1="0" x2="900" y2="320" stroke="#8833aa" stroke-width="0.5"/>
-    <line x1="0" y1="50" x2="900" y2="50" stroke="#8833aa" stroke-width="0.5"/>
-    <line x1="0" y1="100" x2="900" y2="100" stroke="#8833aa" stroke-width="0.5"/>
-    <line x1="0" y1="150" x2="900" y2="150" stroke="#8833aa" stroke-width="0.5"/>
-    <line x1="0" y1="200" x2="900" y2="200" stroke="#8833aa" stroke-width="0.5"/>
-    <line x1="0" y1="250" x2="900" y2="250" stroke="#8833aa" stroke-width="0.5"/>
-    <line x1="0" y1="300" x2="900" y2="300" stroke="#8833aa" stroke-width="0.5"/>
+  <!-- Atmospheric layers -->
+  <rect width="900" height="300" fill="url(#heavenAura)"/>
+  <rect width="900" height="300" fill="url(#emberAura)"/>
+  <rect width="900" height="300" fill="url(#coreGlow)"/>
+
+  <!-- Heaven side: stars with soft glow (top-left) -->
+  <g>
+    <circle cx="55" cy="30" r="5" fill="url(#starGlow)"/>
+    <circle cx="55" cy="30" r="1.2" fill="#aabbee" opacity="0.5"/>
+    <circle cx="120" cy="18" r="4" fill="url(#starGlow)"/>
+    <circle cx="120" cy="18" r="0.8" fill="#99aadd" opacity="0.45"/>
+    <circle cx="88" cy="55" r="4.5" fill="url(#starGlow)"/>
+    <circle cx="88" cy="55" r="1" fill="#bbccff" opacity="0.5"/>
+    <circle cx="200" cy="25" r="3.5" fill="url(#starGlow)"/>
+    <circle cx="200" cy="25" r="0.7" fill="#99aadd" opacity="0.4"/>
+    <circle cx="160" cy="48" r="4" fill="url(#starGlow)"/>
+    <circle cx="160" cy="48" r="1.1" fill="#aabbee" opacity="0.45"/>
+    <circle cx="270" cy="15" r="3.5" fill="url(#starGlow)"/>
+    <circle cx="270" cy="15" r="0.9" fill="#bbccff" opacity="0.4"/>
+    <circle cx="310" cy="40" r="3" fill="url(#starGlow)"/>
+    <circle cx="310" cy="40" r="0.6" fill="#99aadd" opacity="0.35"/>
+    <circle cx="35" cy="75" r="3" fill="url(#starGlow)"/>
+    <circle cx="35" cy="75" r="0.7" fill="#aabbee" opacity="0.35"/>
+    <circle cx="240" cy="60" r="2.5" fill="url(#starGlow)"/>
+    <circle cx="240" cy="60" r="0.5" fill="#bbccff" opacity="0.3"/>
+    <circle cx="380" cy="22" r="2.5" fill="url(#starGlow)"/>
+    <circle cx="380" cy="22" r="0.6" fill="#99aadd" opacity="0.3"/>
   </g>
 
-  <!-- Border frame -->
-  <rect x="4" y="4" width="892" height="312" fill="none" stroke="#cc2200" stroke-width="2" rx="2"/>
-  <rect x="8" y="8" width="884" height="304" fill="none" stroke="#661100" stroke-width="1" rx="1"/>
-
-  <!-- Lava line accents -->
-  <rect x="100" y="50" width="700" height="2" fill="url(#lavaGrad)" opacity="0.6"/>
-  <rect x="100" y="268" width="700" height="2" fill="url(#lavaGrad)" opacity="0.6"/>
-
-  <!-- Left flame cluster -->
-  <g filter="url(#glow)">
-    <polygon points="55,230 35,100 75,230" fill="#cc2200" opacity="0.7"/>
-    <polygon points="65,230 50,80 80,230" fill="#ff4400" opacity="0.5"/>
-    <polygon points="58,230 48,120 68,230" fill="#ff8800" opacity="0.4"/>
-    <polygon points="40,230 25,140 55,230" fill="#cc2200" opacity="0.5"/>
-    <polygon points="80,230 70,130 90,230" fill="#ff4400" opacity="0.4"/>
+  <!-- Heaven crosses - faint in top-left -->
+  <g opacity="0.09">
+    <line x1="70" y1="20" x2="70" y2="54" stroke="#ccddff" stroke-width="2"/>
+    <line x1="55" y1="33" x2="85" y2="33" stroke="#ccddff" stroke-width="2"/>
+    <line x1="180" y1="33" x2="180" y2="60" stroke="#ccddff" stroke-width="1.4"/>
+    <line x1="169" y1="43" x2="191" y2="43" stroke="#ccddff" stroke-width="1.4"/>
+    <line x1="300" y1="16" x2="300" y2="40" stroke="#ccddff" stroke-width="1.1"/>
+    <line x1="291" y1="25" x2="309" y2="25" stroke="#ccddff" stroke-width="1.1"/>
   </g>
 
-  <!-- Right flame cluster -->
-  <g filter="url(#glow)">
-    <polygon points="845,230 825,100 865,230" fill="#cc2200" opacity="0.7"/>
-    <polygon points="835,230 820,80 850,230" fill="#ff4400" opacity="0.5"/>
-    <polygon points="842,230 832,120 852,230" fill="#ff8800" opacity="0.4"/>
-    <polygon points="860,230 850,140 870,230" fill="#cc2200" opacity="0.5"/>
-    <polygon points="820,230 810,130 830,230" fill="#ff4400" opacity="0.4"/>
+  <!-- Hell embers with radial glow (bottom-right) -->
+  <g>
+    <circle cx="580" cy="268" r="10" fill="url(#emberDot)" opacity="0.5"/>
+    <circle cx="640" cy="278" r="8" fill="url(#emberDot)" opacity="0.45"/>
+    <circle cx="710" cy="260" r="12" fill="url(#emberDot)" opacity="0.4"/>
+    <circle cx="770" cy="272" r="9" fill="url(#emberDot)" opacity="0.45"/>
+    <circle cx="830" cy="265" r="11" fill="url(#emberDot)" opacity="0.4"/>
+    <circle cx="870" cy="255" r="7" fill="url(#emberDot)" opacity="0.35"/>
+    <circle cx="520" cy="280" r="7" fill="url(#emberDot)" opacity="0.35"/>
+    <circle cx="660" cy="285" r="6" fill="url(#emberDot)" opacity="0.3"/>
+    <circle cx="750" cy="248" r="5" fill="url(#emberDot)" opacity="0.3"/>
+    <circle cx="800" cy="282" r="8" fill="url(#emberDot)" opacity="0.35"/>
+    <!-- Ember cores -->
+    <circle cx="580" cy="268" r="2" fill="#ff5522" opacity="0.5"/>
+    <circle cx="640" cy="278" r="1.5" fill="#ff4411" opacity="0.45"/>
+    <circle cx="710" cy="260" r="2.5" fill="#ff6633" opacity="0.4"/>
+    <circle cx="770" cy="272" r="1.8" fill="#ff5522" opacity="0.45"/>
+    <circle cx="830" cy="265" r="2.2" fill="#ff4411" opacity="0.4"/>
+    <circle cx="870" cy="255" r="1.2" fill="#ff8844" opacity="0.35"/>
   </g>
 
-  <!-- Central pentagram/hellgate symbol -->
-  <g filter="url(#strongGlow)" transform="translate(450, 75)">
-    <!-- Outer ring -->
-    <circle cx="0" cy="0" r="42" fill="none" stroke="#cc2200" stroke-width="2" opacity="0.4"/>
-    <circle cx="0" cy="0" r="38" fill="none" stroke="#ff4400" stroke-width="1" opacity="0.3"/>
+  <!-- Rising heat wisps from bottom -->
+  <g opacity="0.08">
+    <path d="M 600,300 Q 610,268 605,238" fill="none" stroke="#ff4400" stroke-width="2" stroke-linecap="round"/>
+    <path d="M 720,300 Q 715,262 725,232" fill="none" stroke="#ff3300" stroke-width="1.5" stroke-linecap="round"/>
+    <path d="M 810,300 Q 820,272 808,248" fill="none" stroke="#ff4400" stroke-width="1.2" stroke-linecap="round"/>
+    <path d="M 850,300 Q 845,278 855,258" fill="none" stroke="#ff3300" stroke-width="1" stroke-linecap="round"/>
+    <path d="M 550,300 Q 555,280 548,262" fill="none" stroke="#ff4400" stroke-width="0.8" stroke-linecap="round"/>
+  </g>
+
+  <!-- Central pentagram — larger, detailed -->
+  <g transform="translate(450, 62)">
+    <!-- Wide ambient glow behind pentagram -->
+    <circle cx="0" cy="0" r="55" fill="url(#pentaCore)" opacity="0.15"/>
+    <!-- Outer ritual circle -->
+    <circle cx="0" cy="0" r="48" fill="none" stroke="url(#pentaRing)" stroke-width="2" opacity="0.35"/>
+    <!-- Tick marks around circle -->
+    <g opacity="0.2" stroke="#cc4422" stroke-width="1">
+      <line x1="0" y1="-51" x2="0" y2="-45"/>
+      <line x1="48.5" y1="-15.7" x2="43" y2="-14"/>
+      <line x1="30" y1="41.3" x2="26.6" y2="36.6"/>
+      <line x1="-30" y1="41.3" x2="-26.6" y2="36.6"/>
+      <line x1="-48.5" y1="-15.7" x2="-43" y2="-14"/>
+    </g>
+    <!-- Second inner circle -->
+    <circle cx="0" cy="0" r="42" fill="none" stroke="#cc2200" stroke-width="0.8" opacity="0.22"/>
     <!-- Pentagram star -->
-    <polygon points="0,-35 8,-11 33,-11 13,4 20,28 0,14 -20,28 -13,4 -33,-11 -8,-11"
-             fill="#cc2200" fill-opacity="0.3" stroke="#ff4400" stroke-width="1.5" opacity="0.6"/>
-    <!-- Inner circle (Hell's Core) -->
-    <circle cx="0" cy="0" r="14" fill="#880011" stroke="#ff4400" stroke-width="1.5"/>
-    <circle cx="0" cy="0" r="8" fill="#cc2200"/>
-    <circle cx="0" cy="0" r="4" fill="#ff6633"/>
+    <polygon points="0,-38 8.9,-11.7 36.8,-11.7 14.3,5.4 22.5,32.4 0,16.3 -22.5,32.4 -14.3,5.4 -36.8,-11.7 -8.9,-11.7"
+             fill="none" stroke="#dd3311" stroke-width="1.6" opacity="0.5"/>
+    <!-- Inner pentagon -->
+    <polygon points="0,-19 18.1,-5.9 11.2,15.4 -11.2,15.4 -18.1,-5.9"
+             fill="none" stroke="#cc2200" stroke-width="0.7" opacity="0.22"/>
+    <!-- Glowing core - layered circles for glow effect -->
+    <circle cx="0" cy="0" r="18" fill="url(#pentaCore)" opacity="0.35"/>
+    <circle cx="0" cy="0" r="13" fill="#220400" stroke="#cc2200" stroke-width="1" opacity="0.55"/>
+    <circle cx="0" cy="0" r="8" fill="#661100" opacity="0.75"/>
+    <circle cx="0" cy="0" r="4" fill="#ff5522" opacity="0.9"/>
+    <circle cx="0" cy="0" r="2" fill="#ffaa66"/>
   </g>
 
-  <!-- TITLE: HELLGATE -->
-  <!-- Title shadow (behind) -->
-  <text x="452" y="172" text-anchor="middle" font-family="Georgia, 'Times New Roman', serif" font-size="64" font-weight="bold" letter-spacing="8" fill="#220000" opacity="0.5">HELLGATE</text>
-  <g filter="url(#strongGlow)">
-    <text x="450" y="170" text-anchor="middle" font-family="Georgia, 'Times New Roman', serif" font-size="64" font-weight="bold" letter-spacing="8" fill="url(#fireGrad)">HELLGATE</text>
+  <!-- Decorative wing-like sweeps flanking the title -->
+  <!-- Left demonic wing hints -->
+  <g opacity="0.1">
+    <path d="M 95,148 Q 135,128 180,140 Q 148,122 125,100 Q 158,115 188,105 Q 168,132 198,145 Q 150,140 95,148 Z" fill="#ff4400"/>
+    <path d="M 85,158 Q 112,175 102,200 Q 125,180 142,188 Q 128,168 152,158 Q 118,160 85,158 Z" fill="#ff4400"/>
+  </g>
+  <!-- Right angelic wing hints -->
+  <g opacity="0.06">
+    <path d="M 805,148 Q 765,128 720,140 Q 752,122 775,100 Q 742,115 712,105 Q 732,132 702,145 Q 750,140 805,148 Z" fill="#6688bb"/>
+    <path d="M 815,158 Q 788,175 798,200 Q 775,180 758,188 Q 772,168 748,158 Q 782,160 815,158 Z" fill="#6688bb"/>
   </g>
 
-  <!-- TITLE: DEFENDERS -->
-  <g filter="url(#glow)">
-    <text x="450" y="220" text-anchor="middle" font-family="Georgia, 'Times New Roman', serif" font-size="38" font-weight="bold" letter-spacing="14" fill="#ff8844">DEFENDERS</text>
+  <!-- Gold ornamental line above title -->
+  <rect x="95" y="108" width="710" height="1.5" fill="url(#goldLine)" opacity="0.5"/>
+  <!-- Diamond accents on the divider line -->
+  <polygon points="450,103.5 455,108.75 450,114 445,108.75" fill="#ffcc66" opacity="0.4"/>
+  <polygon points="245,105.5 249,108.75 245,112 241,108.75" fill="#ffcc66" opacity="0.22"/>
+  <polygon points="655,105.5 659,108.75 655,112 651,108.75" fill="#ffcc66" opacity="0.22"/>
+  <polygon points="170,107 173,108.75 170,110.5 167,108.75" fill="#ffcc66" opacity="0.15"/>
+  <polygon points="730,107 733,108.75 730,110.5 727,108.75" fill="#ffcc66" opacity="0.15"/>
+
+  <!-- ═══ MAIN TITLE: HELLGATE ═══ -->
+  <!-- Glow layer behind title text (wider, softer version) -->
+  <text x="450" y="161" text-anchor="middle"
+        font-family="Georgia, 'Times New Roman', serif"
+        font-size="72" font-weight="bold" letter-spacing="18"
+        fill="#ff441108" stroke="#ff660015" stroke-width="12">HELLGATE</text>
+  <text x="450" y="161" text-anchor="middle"
+        font-family="Georgia, 'Times New Roman', serif"
+        font-size="72" font-weight="bold" letter-spacing="18"
+        fill="#ff441110" stroke="#ff880020" stroke-width="5">HELLGATE</text>
+  <!-- Main title fill -->
+  <text x="450" y="161" text-anchor="middle"
+        font-family="Georgia, 'Times New Roman', serif"
+        font-size="72" font-weight="bold" letter-spacing="18"
+        fill="url(#fireText)">HELLGATE</text>
+  <!-- Thin bright stroke overlay for crisp edges -->
+  <text x="450" y="161" text-anchor="middle"
+        font-family="Georgia, 'Times New Roman', serif"
+        font-size="72" font-weight="bold" letter-spacing="18"
+        fill="none" stroke="#ffaa4420" stroke-width="0.6">HELLGATE</text>
+
+  <!-- Gold ornamental line below title -->
+  <rect x="155" y="171" width="590" height="1" fill="url(#goldLine)" opacity="0.38"/>
+
+  <!-- ═══ SUBTITLE: DEFENDERS ═══ -->
+  <!-- Glow layer -->
+  <text x="450" y="203" text-anchor="middle"
+        font-family="Georgia, 'Times New Roman', serif"
+        font-size="28" font-weight="bold" letter-spacing="20"
+        fill="#aa663310" stroke="#cc774410" stroke-width="4">DEFENDERS</text>
+  <!-- Main subtitle fill -->
+  <text x="450" y="203" text-anchor="middle"
+        font-family="Georgia, 'Times New Roman', serif"
+        font-size="28" font-weight="bold" letter-spacing="20"
+        fill="url(#subText)">DEFENDERS</text>
+
+  <!-- Tagline -->
+  <text x="450" y="232" text-anchor="middle"
+        font-family="'Segoe UI', Helvetica, Arial, sans-serif"
+        font-size="11.5" fill="#aa8866" letter-spacing="3.5" opacity="0.75">DEFEND HELL'S CORE AGAINST THE DIVINE CRUSADE</text>
+
+  <!-- Bottom feature bar -->
+  <g opacity="0.48">
+    <rect x="125" y="253" width="650" height="0.5" fill="#553322"/>
+    <text x="450" y="270" text-anchor="middle"
+          font-family="'Segoe UI', Helvetica, Arial, sans-serif"
+          font-size="10.5" fill="#887766" letter-spacing="2">6 TOWERS  &#xb7;  11 ENEMIES  &#xb7;  DEVIL'S DICE  &#xb7;  DEMONIC PACTS  &#xb7;  20 WAVES</text>
+    <rect x="125" y="279" width="650" height="0.5" fill="#553322"/>
   </g>
+  <!-- Feature bar accent dots -->
+  <circle cx="125" cy="266" r="1.8" fill="#cc6633" opacity="0.3"/>
+  <circle cx="775" cy="266" r="1.8" fill="#cc6633" opacity="0.3"/>
 
-  <!-- Subtitle -->
-  <text x="450" y="252" text-anchor="middle" font-family="'Segoe UI', Arial, sans-serif" font-size="13" fill="#aa6644" letter-spacing="2">DEFEND HELL'S CORE AGAINST THE DIVINE CRUSADE</text>
-
-  <!-- Tower icons (left side) -->
-  <g transform="translate(130, 140)" filter="url(#softGlow)">
-    <!-- Demon Archer -->
-    <circle cx="0" cy="0" r="15" fill="#331010" stroke="#cc3333" stroke-width="1.5"/>
-    <circle cx="0" cy="-3" r="4" fill="#cc3333"/>
-    <line x1="-3" y1="-7" x2="-5" y2="-13" stroke="#dd4411" stroke-width="2"/>
-    <line x1="3" y1="-7" x2="5" y2="-13" stroke="#dd4411" stroke-width="2"/>
-    <circle cx="-2" cy="-4" r="1" fill="#ffcc00"/>
-    <circle cx="2" cy="-4" r="1" fill="#ffcc00"/>
-    <text x="0" y="28" text-anchor="middle" font-family="monospace" font-size="9" fill="#cc4444">ARC</text>
-  </g>
-
-  <g transform="translate(180, 150)" filter="url(#softGlow)">
-    <!-- Hellfire Mage -->
-    <circle cx="0" cy="0" r="15" fill="#1a0825" stroke="#9933cc" stroke-width="1.5"/>
-    <polygon points="0,-15 6,-3 -6,-3" fill="#6622aa"/>
-    <circle cx="0" cy="-3" r="4" fill="#7733bb"/>
-    <circle cx="-2" cy="-4" r="1" fill="#cc88ff"/>
-    <circle cx="2" cy="-4" r="1" fill="#cc88ff"/>
-    <circle cx="-7" cy="-8" r="2.5" fill="#ff8811"/>
-    <circle cx="-7" cy="-8" r="4" fill="#ff8811" opacity="0.3"/>
-    <text x="0" y="28" text-anchor="middle" font-family="monospace" font-size="9" fill="#9944cc">MAG</text>
-  </g>
-
-  <g transform="translate(215, 145)" filter="url(#softGlow)">
-    <!-- Necromancer -->
-    <circle cx="0" cy="0" r="15" fill="#0a1a0e" stroke="#33cc66" stroke-width="1.5"/>
-    <polygon points="0,-14 6,-3 -6,-3" fill="#1a4422"/>
-    <circle cx="0" cy="-3" r="4" fill="#ddddcc"/>
-    <circle cx="-2" cy="-4" r="1.2" fill="#22ff55"/>
-    <circle cx="2" cy="-4" r="1.2" fill="#22ff55"/>
-    <circle cx="7" cy="-10" r="3" fill="#33ee66"/>
-    <circle cx="7" cy="-10" r="5" fill="#33ee66" opacity="0.2"/>
-    <text x="0" y="28" text-anchor="middle" font-family="monospace" font-size="9" fill="#44cc66">NEC</text>
-  </g>
-
-  <g transform="translate(260, 140)" filter="url(#softGlow)">
-    <!-- Lucifer -->
-    <circle cx="0" cy="0" r="15" fill="#1a0800" stroke="#ff6600" stroke-width="1.5"/>
-    <circle cx="0" cy="0" r="18" fill="none" stroke="#ff4400" stroke-width="0.5" opacity="0.4"/>
-    <circle cx="0" cy="-3" r="4" fill="#331005"/>
-    <line x1="-4" y1="-7" x2="-7" y2="-15" stroke="#ff5500" stroke-width="2.5"/>
-    <line x1="4" y1="-7" x2="7" y2="-15" stroke="#ff5500" stroke-width="2.5"/>
-    <circle cx="-2" cy="-4" r="1.2" fill="#ffaa00"/>
-    <circle cx="2" cy="-4" r="1.2" fill="#ffaa00"/>
-    <polygon points="-8,-1 -15,-8 -13,-2 -10,3" fill="#220500" opacity="0.7"/>
-    <polygon points="8,-1 15,-8 13,-2 10,3" fill="#220500" opacity="0.7"/>
-    <text x="0" y="28" text-anchor="middle" font-family="monospace" font-size="9" fill="#ff6600">LUC</text>
-  </g>
-
-  <g transform="translate(305, 148)" filter="url(#softGlow)">
-    <!-- Hades -->
-    <circle cx="0" cy="0" r="15" fill="#080520" stroke="#4433ee" stroke-width="1.5"/>
-    <circle cx="0" cy="-3" r="4" fill="#1a1040"/>
-    <line x1="-3" y1="-7" x2="-4" y2="-15" stroke="#5544ee" stroke-width="2"/>
-    <line x1="3" y1="-7" x2="4" y2="-15" stroke="#5544ee" stroke-width="2"/>
-    <circle cx="-2" cy="-4" r="1.2" fill="#8877ff"/>
-    <circle cx="2" cy="-4" r="1.2" fill="#8877ff"/>
-    <circle cx="7" cy="-10" r="3" fill="#5544ee"/>
-    <circle cx="7" cy="-10" r="5" fill="#5544ee" opacity="0.2"/>
-    <text x="0" y="28" text-anchor="middle" font-family="monospace" font-size="9" fill="#5544ee">HAD</text>
-  </g>
-
-  <!-- Enemy icons (right side) -->
-  <g transform="translate(635, 145)" filter="url(#softGlow)">
-    <!-- Angel Scout -->
-    <circle cx="0" cy="0" r="8" fill="#ffdd44"/>
-    <polygon points="-8,0 -13,-4 -10,2" fill="#ffee88"/>
-    <polygon points="8,0 13,-4 10,2" fill="#ffee88"/>
-    <ellipse cx="0" cy="-10" rx="4" ry="1.5" fill="none" stroke="#ffff99" stroke-width="1"/>
-  </g>
-
-  <g transform="translate(665, 140)" filter="url(#softGlow)">
-    <!-- Holy Knight -->
-    <circle cx="0" cy="0" r="10" fill="#cccccc"/>
-    <line x1="0" y1="-4" x2="0" y2="5" stroke="#ccaa33" stroke-width="1.5"/>
-    <line x1="-3" y1="1" x2="3" y2="1" stroke="#ccaa33" stroke-width="1.5"/>
-  </g>
-
-  <g transform="translate(700, 135)" filter="url(#softGlow)">
-    <!-- Paladin Boss -->
-    <circle cx="0" cy="0" r="14" fill="#ffcc00" stroke="#ffee66" stroke-width="1"/>
-    <circle cx="0" cy="0" r="9" fill="#ddaa00"/>
-    <line x1="0" y1="-7" x2="0" y2="7" stroke="#ffffcc" stroke-width="2"/>
-    <line x1="-5" y1="-1" x2="5" y2="-1" stroke="#ffffcc" stroke-width="2"/>
-    <polygon points="-8,-2 -14,-8 -12,-3 -10,2" fill="#ffeeaa" opacity="0.8"/>
-    <polygon points="8,-2 14,-8 12,-3 10,2" fill="#ffeeaa" opacity="0.8"/>
-    <line x1="-3" y1="-14" x2="-2" y2="-18" stroke="#ffcc44" stroke-width="1.5"/>
-    <line x1="0" y1="-14" x2="0" y2="-19" stroke="#ffcc44" stroke-width="1.5"/>
-    <line x1="3" y1="-14" x2="2" y2="-18" stroke="#ffcc44" stroke-width="1.5"/>
-  </g>
-
-  <g transform="translate(740, 142)" filter="url(#softGlow)">
-    <!-- God of War -->
-    <circle cx="0" cy="0" r="11" fill="#ff8844"/>
-    <polygon points="0,-16 2,-10 -2,-10" fill="#ee6611"/>
-    <line x1="4" y1="-3" x2="8" y2="-10" stroke="#ddddee" stroke-width="2"/>
-  </g>
-
-  <g transform="translate(775, 135)" filter="url(#softGlow)">
-    <!-- Michael (Boss) -->
-    <circle cx="0" cy="0" r="13" fill="#fff5dd" stroke="#ffee88" stroke-width="1"/>
-    <circle cx="0" cy="0" r="16" fill="none" stroke="#ffee66" stroke-width="0.5" opacity="0.4"/>
-    <circle cx="0" cy="0" r="8" fill="#eedd88"/>
-    <line x1="0" y1="-6" x2="0" y2="6" stroke="#ffffee" stroke-width="2"/>
-    <line x1="-4" y1="0" x2="4" y2="0" stroke="#ffffee" stroke-width="2"/>
-    <polygon points="-8,-2 -14,-8 -12,-3 -10,2" fill="#ffeecc" opacity="0.8"/>
-    <polygon points="8,-2 14,-8 12,-3 10,2" fill="#ffeecc" opacity="0.8"/>
-    <line x1="4" y1="-2" x2="7" y2="-9" stroke="#ffddaa" stroke-width="1.5"/>
-    <ellipse cx="0" cy="-14" rx="5" ry="2" fill="none" stroke="#ffee88" stroke-width="1"/>
-  </g>
-
-  <g transform="translate(815, 145)" filter="url(#softGlow)">
-    <!-- Zeus -->
-    <circle cx="0" cy="0" r="10" fill="#b3ccff" stroke="#88aaff" stroke-width="1"/>
-    <line x1="-1" y1="-4" x2="2" y2="-1" stroke="#ffff88" stroke-width="2"/>
-    <line x1="2" y1="-1" x2="-1" y2="1" stroke="#ffff88" stroke-width="2"/>
-    <line x1="-1" y1="1" x2="1" y2="4" stroke="#ffff88" stroke-width="2"/>
-    <circle cx="0" cy="0" r="13" fill="none" stroke="#88aaff" stroke-width="0.5" opacity="0.4"/>
-  </g>
-
-  <!-- "VS" divider ornament -->
-  <g opacity="0.4">
-    <line x1="300" y1="130" x2="300" y2="190" stroke="#661100" stroke-width="1"/>
-    <rect x="296" y="156" width="8" height="8" fill="#661100" transform="rotate(45 300 160)"/>
-    <line x1="600" y1="130" x2="600" y2="190" stroke="#661100" stroke-width="1"/>
-  </g>
-
-  <!-- Labels -->
-  <text x="215" y="115" text-anchor="middle" font-family="'Segoe UI', Arial, sans-serif" font-size="10" fill="#cc4444" letter-spacing="2" opacity="0.7">YOUR TOWERS</text>
-  <text x="720" y="115" text-anchor="middle" font-family="'Segoe UI', Arial, sans-serif" font-size="10" fill="#ddaa44" letter-spacing="2" opacity="0.7">DIVINE ENEMIES</text>
-
-  <!-- Bottom tagline area -->
-  <text x="450" y="300" text-anchor="middle" font-family="monospace" font-size="10" fill="#553322" letter-spacing="1">5 Towers  |  10 Enemies  |  Gambling  |  20 Waves  |  Godot 4.6</text>
+  <!-- Double border frame -->
+  <rect x="3" y="3" width="894" height="294" fill="none" stroke="#661100" stroke-width="1" rx="4" opacity="0.38"/>
+  <rect x="7" y="7" width="886" height="286" fill="none" stroke="#331100" stroke-width="0.5" rx="3" opacity="0.18"/>
 
   <!-- Corner ornaments -->
-  <polygon points="20,20 35,20 20,35" fill="#cc2200" opacity="0.3"/>
-  <polygon points="880,20 865,20 880,35" fill="#cc2200" opacity="0.3"/>
-  <polygon points="20,300 35,300 20,285" fill="#cc2200" opacity="0.3"/>
-  <polygon points="880,300 865,300 880,285" fill="#cc2200" opacity="0.3"/>
+  <!-- Top-left -->
+  <g opacity="0.5" stroke="#cc4400" fill="none" stroke-width="1.5">
+    <path d="M 3,32 L 3,3 L 32,3"/>
+    <path d="M 3,24 L 15,3" stroke-width="0.8" opacity="0.5"/>
+    <circle cx="3" cy="3" r="2.5" fill="#cc4400" stroke="none"/>
+  </g>
+  <!-- Top-right -->
+  <g opacity="0.5" stroke="#cc4400" fill="none" stroke-width="1.5">
+    <path d="M 897,32 L 897,3 L 868,3"/>
+    <path d="M 897,24 L 885,3" stroke-width="0.8" opacity="0.5"/>
+    <circle cx="897" cy="3" r="2.5" fill="#cc4400" stroke="none"/>
+  </g>
+  <!-- Bottom-left -->
+  <g opacity="0.5" stroke="#cc4400" fill="none" stroke-width="1.5">
+    <path d="M 3,268 L 3,297 L 32,297"/>
+    <path d="M 3,276 L 15,297" stroke-width="0.8" opacity="0.5"/>
+    <circle cx="3" cy="297" r="2.5" fill="#cc4400" stroke="none"/>
+  </g>
+  <!-- Bottom-right -->
+  <g opacity="0.5" stroke="#cc4400" fill="none" stroke-width="1.5">
+    <path d="M 897,268 L 897,297 L 868,297"/>
+    <path d="M 897,276 L 885,297" stroke-width="0.8" opacity="0.5"/>
+    <circle cx="897" cy="297" r="2.5" fill="#cc4400" stroke="none"/>
+  </g>
 </svg>

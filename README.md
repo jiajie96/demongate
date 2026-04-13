@@ -18,7 +18,11 @@
 ---
 
 <p align="center">
-  <img src="assets/screenshot_gameplay.png" alt="Gameplay Screenshot" width="85%"/>
+  <br/>
+  <img src="assets/screenshot_gameplay.png" alt="Gameplay Screenshot" width="90%"/>
+  <br/>
+  <sub>Demons and towers defend the hellgate against waves of divine invaders</sub>
+  <br/><br/>
 </p>
 
 ## What Makes It Different
