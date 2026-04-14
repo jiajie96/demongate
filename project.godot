@@ -24,6 +24,7 @@ Config="*res://scripts/autoload/game_config.gd"
 GM="*res://scripts/autoload/game_manager.gd"
 Audio="*res://scripts/autoload/audio_manager.gd"
 Locale="*res://scripts/autoload/locale.gd"
+CharRenderer="*res://scripts/autoload/character_renderer.gd"
 
 [display]
 
@@ -33,4 +34,4 @@ window/stretch/mode="canvas_items"
 
 [rendering]
 
-environment/defaults/default_clear_color=Color(0.055, 0.022, 0.055, 1)
+environment/defaults/default_clear_color=Color(0.1, 0.04, 0.06, 1)

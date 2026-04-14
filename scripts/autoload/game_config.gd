@@ -16,47 +16,51 @@ const DICE_MAX_USES := 2
 const BETWEEN_WAVE_DELAY := 8.0
 const FIRST_WAVE_DELAY := 3.0
 
-const UPGRADE_MULT := 1.35
+const UPGRADE_MULT := 1.30
 const MAX_TOWER_LEVEL := 3
 const SELL_REFUND := 0.65
 
 const PROJECTILE_SPEED := 280.0
 
-const WAVE_HP_SCALE := 0.06    # +6% enemy HP per wave past SCALE_START
-const WAVE_SPD_SCALE := 0.015  # +1.5% speed per wave past SCALE_START
-const SCALE_START_WAVE := 3    # scaling kicks in after this wave
+const WAVE_HP_COMPOUND := 1.08   # ×1.08 enemy HP per wave (compound growth)
+const WAVE_SPD_COMPOUND := 1.015 # ×1.015 speed per wave (compound growth)
+const SCALE_START_WAVE := 2      # scaling kicks in after this wave
+# powHPG: kill rewards & wave bonus scale with pow(hp_scale, REWARD_POW_HPG).
+# 0.85 per YYZ-Productions / gamedeveloper.com TD balance research —
+# income grows slower than HP, but fast enough to enable a new tower / upgrade every 1-2 waves.
+const REWARD_POW_HPG := 0.85
 
 const PACT_EVERY := 5
 
 # ═══════════════════════════════════════════════════════
 # COLORS
 # ═══════════════════════════════════════════════════════
-const COLOR_BG := Color(0.055, 0.022, 0.055)
-const COLOR_GRID_LINE := Color(0.31, 0.16, 0.31, 0.25)
-const COLOR_PATH := Color(0.2, 0.14, 0.1)
-const COLOR_PATH_EDGE := Color(0.13, 0.09, 0.065)
-const COLOR_GROUND := Color(0.14, 0.085, 0.14)
-const COLOR_GROUND_ALT := Color(0.155, 0.09, 0.15)
+const COLOR_BG := Color(0.12, 0.04, 0.06)
+const COLOR_GRID_LINE := Color(0.4, 0.2, 0.2, 0.2)
+const COLOR_PATH := Color(0.28, 0.18, 0.12)
+const COLOR_PATH_EDGE := Color(0.18, 0.1, 0.07)
+const COLOR_GROUND := Color(0.22, 0.1, 0.12)
+const COLOR_GROUND_ALT := Color(0.24, 0.11, 0.13)
 const COLOR_SPAWN := Color(0.133, 0.267, 0.667)
 const COLOR_CORE := Color(0.8, 0.133, 0.133)
 
 # Heaven-side colors (for top of map gradient)
-const COLOR_HEAVEN_BG := Color(0.07, 0.09, 0.18)
-const COLOR_HEAVEN_GROUND := Color(0.18, 0.2, 0.28)
-const COLOR_HEAVEN_GROUND_ALT := Color(0.19, 0.21, 0.3)
-const COLOR_HEAVEN_PATH := Color(0.26, 0.24, 0.2)
-const COLOR_HEAVEN_PATH_SURFACE := Color(0.32, 0.29, 0.25)
-const COLOR_HEAVEN_PATH_EDGE := Color(0.18, 0.16, 0.13)
-const COLOR_HEAVEN_HIGHLIGHT := Color(0.75, 0.82, 1.0, 0.1)
-const COLOR_HEAVEN_CLIFF := Color(0.18, 0.2, 0.28, 0.5)
+const COLOR_HEAVEN_BG := Color(0.1, 0.12, 0.25)
+const COLOR_HEAVEN_GROUND := Color(0.22, 0.25, 0.36)
+const COLOR_HEAVEN_GROUND_ALT := Color(0.24, 0.27, 0.38)
+const COLOR_HEAVEN_PATH := Color(0.3, 0.28, 0.24)
+const COLOR_HEAVEN_PATH_SURFACE := Color(0.38, 0.35, 0.3)
+const COLOR_HEAVEN_PATH_EDGE := Color(0.2, 0.18, 0.15)
+const COLOR_HEAVEN_HIGHLIGHT := Color(0.8, 0.88, 1.0, 0.14)
+const COLOR_HEAVEN_CLIFF := Color(0.22, 0.25, 0.36, 0.5)
 
 # Depth / highground effect colors
-const COLOR_TILE_HIGHLIGHT := Color(1.0, 0.8, 0.65, 0.07)
+const COLOR_TILE_HIGHLIGHT := Color(1.0, 0.85, 0.7, 0.1)
 const COLOR_TILE_SHADOW := Color(0.0, 0.0, 0.0, 0.22)
-const COLOR_PATH_SURFACE := Color(0.24, 0.17, 0.12)
+const COLOR_PATH_SURFACE := Color(0.35, 0.24, 0.16)
 const COLOR_CLIFF_FACE := Color(0.28, 0.17, 0.1, 0.6)
-const COLOR_LAVA_CRACK := Color(1.0, 0.4, 0.1, 0.45)
-const COLOR_EMBER := Color(1.0, 0.5, 0.15, 0.35)
+const COLOR_LAVA_CRACK := Color(1.0, 0.5, 0.15, 0.55)
+const COLOR_EMBER := Color(1.0, 0.6, 0.2, 0.45)
 
 const COLOR_HEALTH_BG := Color(0.2, 0.2, 0.2)
 const COLOR_HEALTH_HP := Color(0.2, 0.8, 0.2)
@@ -70,7 +74,7 @@ const COLOR_AOE_FLASH := Color(1.0, 0.47, 0.12, 0.25)
 const COLOR_PREVIEW_OK := Color(0.24, 0.86, 0.24, 0.45)
 const COLOR_PREVIEW_BAD := Color(0.86, 0.24, 0.24, 0.45)
 
-const COLOR_SINS := Color(0.8, 0.267, 1.0)
+const COLOR_SINS := Color(0.85, 0.3, 1.0)
 
 # ═══════════════════════════════════════════════════════
 # TOWER DATA — each tower fills an irreplaceable role
@@ -79,8 +83,8 @@ const COLOR_SINS := Color(0.8, 0.267, 1.0)
 # LUC: global damage pulse. HAD: attack speed buffer + AoE damage.
 # ═══════════════════════════════════════════════════════
 var TOWER_DATA := {
-	"demon_archer": {
-		"name": "Demon Archer",
+	"bone_marksman": {
+		"name": "Bone Marksman",
 		"desc": "Fast attacks, reliable early damage",
 		"damage": 2.0,
 		"range": 120.0,
@@ -93,8 +97,8 @@ var TOWER_DATA := {
 		"color": Color(0.8, 0.2, 0.2),
 		"symbol": "ARC",
 	},
-	"hellfire_mage": {
-		"name": "Hellfire Mage",
+	"inferno_warlock": {
+		"name": "Inferno Warlock",
 		"desc": "AoE blasts, essential vs swarms",
 		"damage": 3.0,
 		"range": 100.0,
@@ -107,8 +111,8 @@ var TOWER_DATA := {
 		"color": Color(0.6, 0.2, 0.8),
 		"symbol": "MAG",
 	},
-	"necromancer": {
-		"name": "Necromancer",
+	"soul_reaper": {
+		"name": "Soul Reaper",
 		"desc": "Slows enemies on hit, force multiplier",
 		"damage": 2.0,
 		"range": 110.0,
@@ -175,43 +179,46 @@ var TOWER_DATA := {
 # ENEMY DATA
 # ═══════════════════════════════════════════════════════
 var ENEMY_DATA := {
-	"angel_scout": {"name": "Angel Scout", "hp": 14.0, "speed": 80.0, "core_dmg": 3, "is_boss": false, "color": Color(1.0, 0.867, 0.267), "radius": 7.0, "sin_reward": 6},
-	"holy_knight": {"name": "Holy Knight", "hp": 45.0, "speed": 55.0, "core_dmg": 6, "is_boss": false, "color": Color(0.91, 0.91, 0.91), "radius": 9.0, "sin_reward": 8},
-	"divine_hunter": {"name": "Divine Hunter", "hp": 28.0, "speed": 130.0, "core_dmg": 5, "is_boss": false, "color": Color(0.267, 0.867, 1.0), "radius": 8.0, "sin_reward": 6},
-	"god_of_war": {"name": "God of War", "hp": 110.0, "speed": 38.0, "core_dmg": 14, "is_boss": false, "color": Color(1.0, 0.533, 0.267), "radius": 11.0, "sin_reward": 15},
-	"paladin": {"name": "Paladin", "hp": 280.0, "speed": 42.0, "core_dmg": 30, "is_boss": true, "color": Color(1.0, 0.8, 0.0), "radius": 13.0, "sin_reward": 30},
-	"monk": {"name": "Monk", "hp": 32.0, "speed": 60.0, "core_dmg": 4, "is_boss": false, "color": Color(0.533, 1.0, 0.533), "radius": 8.0, "sin_reward": 8},
-	"archangel": {"name": "Archangel Commander", "hp": 55.0, "speed": 42.0, "core_dmg": 10, "is_boss": false, "color": Color(1.0, 0.9, 0.5), "radius": 10.0, "sin_reward": 22},
-	"divine_guardian": {"name": "Divine Guardian", "hp": 65.0, "speed": 38.0, "core_dmg": 8, "is_boss": false, "color": Color(0.6, 0.8, 1.0), "radius": 10.0, "sin_reward": 25},
-	"michael": {"name": "Archangel Michael", "hp": 200.0, "speed": 35.0, "core_dmg": 25, "is_boss": true, "color": Color(1.0, 0.95, 0.8), "radius": 12.0, "sin_reward": 25},
+	"seraph_scout": {"name": "Seraph Scout", "hp": 14.0, "speed": 80.0, "core_dmg": 3, "is_boss": false, "color": Color(1.0, 0.867, 0.267), "radius": 7.0, "sin_reward": 6},
+	"crusader": {"name": "Crusader", "hp": 45.0, "speed": 55.0, "core_dmg": 6, "is_boss": false, "color": Color(0.91, 0.91, 0.91), "radius": 9.0, "sin_reward": 8},
+	"swift_ranger": {"name": "Swift Ranger", "hp": 28.0, "speed": 130.0, "core_dmg": 5, "is_boss": false, "color": Color(0.267, 0.867, 1.0), "radius": 8.0, "sin_reward": 6},
+	"war_titan": {"name": "War Titan", "hp": 110.0, "speed": 38.0, "core_dmg": 14, "is_boss": false, "color": Color(1.0, 0.533, 0.267), "radius": 11.0, "sin_reward": 15},
+	"grand_paladin": {"name": "Grand Paladin", "hp": 280.0, "speed": 42.0, "core_dmg": 30, "is_boss": true, "color": Color(1.0, 0.8, 0.0), "radius": 13.0, "sin_reward": 30},
+	"temple_cleric": {"name": "Temple Cleric", "hp": 32.0, "speed": 60.0, "core_dmg": 4, "is_boss": false, "color": Color(0.533, 1.0, 0.533), "radius": 8.0, "sin_reward": 8},
+	"archangel_marshal": {"name": "Archangel Marshal", "hp": 55.0, "speed": 42.0, "core_dmg": 10, "is_boss": false, "color": Color(1.0, 0.9, 0.5), "radius": 10.0, "sin_reward": 22},
+	"holy_sentinel": {"name": "Holy Sentinel", "hp": 65.0, "speed": 38.0, "core_dmg": 8, "is_boss": false, "color": Color(0.6, 0.8, 1.0), "radius": 10.0, "sin_reward": 25},
+	"archangel_michael": {"name": "Archangel Michael", "hp": 200.0, "speed": 35.0, "core_dmg": 25, "is_boss": true, "color": Color(1.0, 0.95, 0.8), "radius": 12.0, "sin_reward": 25},
 	"zeus": {"name": "Zeus", "hp": 80.0, "speed": 45.0, "core_dmg": 12, "is_boss": false, "color": Color(0.7, 0.8, 1.0), "radius": 10.0, "sin_reward": 18},
-	"raphael": {"name": "Archangel Raphael", "hp": 70.0, "speed": 40.0, "core_dmg": 8, "is_boss": false, "color": Color(0.5, 0.95, 0.6), "radius": 9.0, "sin_reward": 20},
+	"archangel_raphael": {"name": "Archangel Raphael", "hp": 70.0, "speed": 40.0, "core_dmg": 8, "is_boss": false, "color": Color(0.5, 0.95, 0.6), "radius": 9.0, "sin_reward": 20},
 }
 
 # ═══════════════════════════════════════════════════════
 # WAVE DATA
 # ═══════════════════════════════════════════════════════
 var WAVE_DATA := [
-	{"enemies": [{"type": "angel_scout", "count": 3}], "interval": 3.0, "desc": "The first scouts arrive"},
-	{"enemies": [{"type": "angel_scout", "count": 5}, {"type": "holy_knight", "count": 2}], "interval": 1.5, "desc": "The crusade begins"},
-	{"enemies": [{"type": "angel_scout", "count": 6}, {"type": "holy_knight", "count": 3}], "interval": 0.9, "desc": "Knights join the crusade"},
-	{"enemies": [{"type": "angel_scout", "count": 10}, {"type": "holy_knight", "count": 4}, {"type": "divine_hunter", "count": 2}], "interval": 0.8, "desc": "Hunters arrive - fast and deadly"},
-	{"enemies": [{"type": "holy_knight", "count": 6}, {"type": "divine_hunter", "count": 5}, {"type": "monk", "count": 2}], "interval": 0.8, "desc": "Healers bolster the ranks"},
-	{"enemies": [{"type": "angel_scout", "count": 12}, {"type": "holy_knight", "count": 6}, {"type": "divine_hunter", "count": 4}, {"type": "archangel", "count": 1}], "interval": 0.7, "desc": "The Archangel takes command!"},
-	{"enemies": [{"type": "holy_knight", "count": 8}, {"type": "god_of_war", "count": 3}, {"type": "monk", "count": 2}, {"type": "archangel", "count": 1}], "interval": 0.8, "desc": "The Gods of War descend"},
-	{"enemies": [{"type": "divine_hunter", "count": 10}, {"type": "god_of_war", "count": 4}, {"type": "monk", "count": 3}, {"type": "archangel", "count": 1}], "interval": 0.6, "desc": "Heavy assault under command"},
-	{"enemies": [{"type": "angel_scout", "count": 15}, {"type": "holy_knight", "count": 8}, {"type": "god_of_war", "count": 4}, {"type": "archangel", "count": 2}], "interval": 0.5, "desc": "Twin commanders rally the host"},
-	{"enemies": [{"type": "holy_knight", "count": 6}, {"type": "god_of_war", "count": 4}, {"type": "monk", "count": 3}, {"type": "paladin", "count": 1}, {"type": "archangel", "count": 2}, {"type": "raphael", "count": 1}], "interval": 0.7, "desc": "BOSS: Raphael heals the Paladin!"},
-	{"enemies": [{"type": "divine_hunter", "count": 12}, {"type": "god_of_war", "count": 6}, {"type": "monk", "count": 3}, {"type": "archangel", "count": 1}, {"type": "divine_guardian", "count": 1}], "interval": 0.5, "desc": "The Guardian's shield descends!"},
-	{"enemies": [{"type": "angel_scout", "count": 20}, {"type": "holy_knight", "count": 10}, {"type": "divine_hunter", "count": 4}, {"type": "archangel", "count": 2}, {"type": "divine_guardian", "count": 1}, {"type": "zeus", "count": 1}], "interval": 0.5, "desc": "Zeus strikes from the storm!"},
-	{"enemies": [{"type": "god_of_war", "count": 8}, {"type": "divine_hunter", "count": 10}, {"type": "monk", "count": 4}, {"type": "archangel", "count": 2}, {"type": "divine_guardian", "count": 1}, {"type": "zeus", "count": 1}], "interval": 0.5, "desc": "Shielded heavy hitters with lightning"},
-	{"enemies": [{"type": "holy_knight", "count": 12}, {"type": "god_of_war", "count": 6}, {"type": "divine_hunter", "count": 6}, {"type": "archangel", "count": 2}, {"type": "divine_guardian", "count": 2}, {"type": "zeus", "count": 1}], "interval": 0.4, "desc": "Armored column, double guarded"},
-	{"enemies": [{"type": "divine_hunter", "count": 15}, {"type": "god_of_war", "count": 6}, {"type": "monk", "count": 4}, {"type": "paladin", "count": 1}, {"type": "archangel", "count": 2}, {"type": "divine_guardian", "count": 2}, {"type": "michael", "count": 1}, {"type": "raphael", "count": 1}], "interval": 0.4, "desc": "BOSS: Michael descends with divine shield!"},
-	{"enemies": [{"type": "angel_scout", "count": 25}, {"type": "holy_knight", "count": 12}, {"type": "divine_hunter", "count": 6}, {"type": "archangel", "count": 3}, {"type": "divine_guardian", "count": 2}, {"type": "zeus", "count": 2}], "interval": 0.45, "desc": "The flood, lightning and command"},
-	{"enemies": [{"type": "god_of_war", "count": 10}, {"type": "divine_hunter", "count": 12}, {"type": "monk", "count": 5}, {"type": "archangel", "count": 2}, {"type": "divine_guardian", "count": 2}, {"type": "zeus", "count": 2}], "interval": 0.4, "desc": "Elite forces with Zeus support"},
-	{"enemies": [{"type": "holy_knight", "count": 15}, {"type": "god_of_war", "count": 8}, {"type": "divine_hunter", "count": 10}, {"type": "monk", "count": 4}, {"type": "archangel", "count": 3}, {"type": "divine_guardian", "count": 2}, {"type": "zeus", "count": 2}], "interval": 0.4, "desc": "Full combined arms"},
-	{"enemies": [{"type": "angel_scout", "count": 30}, {"type": "god_of_war", "count": 10}, {"type": "monk", "count": 6}, {"type": "archangel", "count": 3}, {"type": "divine_guardian", "count": 3}, {"type": "michael", "count": 1}, {"type": "zeus", "count": 2}, {"type": "raphael", "count": 2}], "interval": 0.45, "desc": "The final onslaught — Michael leads"},
-	{"enemies": [{"type": "holy_knight", "count": 18}, {"type": "god_of_war", "count": 10}, {"type": "monk", "count": 6}, {"type": "paladin", "count": 2}, {"type": "archangel", "count": 3}, {"type": "divine_guardian", "count": 3}, {"type": "michael", "count": 1}, {"type": "zeus", "count": 2}, {"type": "raphael", "count": 2}], "interval": 0.3, "desc": "BOSS: Heaven's last stand — all heroes"},
+	# --- Early game: gentle ramp, learn mechanics (base HP: 42→328) ---
+	{"enemies": [{"type": "seraph_scout", "count": 3}], "interval": 3.0, "desc": "The first scouts arrive"},
+	{"enemies": [{"type": "seraph_scout", "count": 4}, {"type": "crusader", "count": 1}], "interval": 2.0, "desc": "The crusade begins"},
+	{"enemies": [{"type": "seraph_scout", "count": 5}, {"type": "crusader", "count": 2}], "interval": 1.3, "desc": "Knights join the crusade"},
+	{"enemies": [{"type": "seraph_scout", "count": 6}, {"type": "crusader", "count": 2}, {"type": "swift_ranger", "count": 2}], "interval": 1.0, "desc": "Hunters arrive - fast and deadly"},
+	{"enemies": [{"type": "crusader", "count": 4}, {"type": "swift_ranger", "count": 3}, {"type": "temple_cleric", "count": 2}], "interval": 0.9, "desc": "Healers bolster the ranks"},
+	# --- Mid game: new abilities, steady pressure (base HP: 431→1460) ---
+	{"enemies": [{"type": "seraph_scout", "count": 8}, {"type": "crusader", "count": 4}, {"type": "swift_ranger", "count": 3}, {"type": "archangel_marshal", "count": 1}], "interval": 0.8, "desc": "The Archangel takes command!"},
+	{"enemies": [{"type": "crusader", "count": 5}, {"type": "war_titan", "count": 2}, {"type": "temple_cleric", "count": 2}, {"type": "archangel_marshal", "count": 1}], "interval": 0.8, "desc": "The Gods of War descend"},
+	{"enemies": [{"type": "swift_ranger", "count": 7}, {"type": "war_titan", "count": 3}, {"type": "temple_cleric", "count": 2}, {"type": "archangel_marshal", "count": 1}], "interval": 0.7, "desc": "Heavy assault under command"},
+	{"enemies": [{"type": "seraph_scout", "count": 10}, {"type": "crusader", "count": 5}, {"type": "war_titan", "count": 3}, {"type": "archangel_marshal", "count": 2}], "interval": 0.6, "desc": "Twin commanders rally the host"},
+	{"enemies": [{"type": "crusader", "count": 4}, {"type": "war_titan", "count": 3}, {"type": "temple_cleric", "count": 2}, {"type": "grand_paladin", "count": 1}, {"type": "archangel_marshal", "count": 1}, {"type": "archangel_raphael", "count": 1}], "interval": 0.7, "desc": "BOSS: Raphael heals the Paladin!"},
+	{"enemies": [{"type": "swift_ranger", "count": 10}, {"type": "war_titan", "count": 5}, {"type": "temple_cleric", "count": 3}, {"type": "archangel_marshal", "count": 2}, {"type": "holy_sentinel", "count": 1}], "interval": 0.6, "desc": "The Guardian's shield descends!"},
+	{"enemies": [{"type": "seraph_scout", "count": 14}, {"type": "crusader", "count": 6}, {"type": "swift_ranger", "count": 4}, {"type": "war_titan", "count": 4}, {"type": "archangel_marshal", "count": 1}, {"type": "holy_sentinel", "count": 1}, {"type": "zeus", "count": 1}], "interval": 0.5, "desc": "Zeus strikes from the storm!"},
+	{"enemies": [{"type": "war_titan", "count": 7}, {"type": "swift_ranger", "count": 8}, {"type": "temple_cleric", "count": 4}, {"type": "archangel_marshal", "count": 2}, {"type": "holy_sentinel", "count": 1}, {"type": "zeus", "count": 1}], "interval": 0.5, "desc": "Shielded heavy hitters with lightning"},
+	{"enemies": [{"type": "crusader", "count": 10}, {"type": "war_titan", "count": 5}, {"type": "swift_ranger", "count": 5}, {"type": "archangel_marshal", "count": 2}, {"type": "holy_sentinel", "count": 2}, {"type": "zeus", "count": 1}], "interval": 0.45, "desc": "Armored column, double guarded"},
+	# --- Late game: bosses & full synergy, compound scaling does heavy lifting (base HP: 1772→2588) ---
+	{"enemies": [{"type": "swift_ranger", "count": 12}, {"type": "war_titan", "count": 5}, {"type": "temple_cleric", "count": 3}, {"type": "grand_paladin", "count": 1}, {"type": "archangel_marshal", "count": 2}, {"type": "holy_sentinel", "count": 2}, {"type": "archangel_michael", "count": 1}, {"type": "archangel_raphael", "count": 1}], "interval": 0.45, "desc": "BOSS: Michael descends with divine shield!"},
+	{"enemies": [{"type": "seraph_scout", "count": 18}, {"type": "crusader", "count": 10}, {"type": "swift_ranger", "count": 4}, {"type": "war_titan", "count": 5}, {"type": "temple_cleric", "count": 3}, {"type": "archangel_marshal", "count": 2}, {"type": "holy_sentinel", "count": 2}, {"type": "zeus", "count": 2}], "interval": 0.5, "desc": "The flood, lightning and command"},
+	{"enemies": [{"type": "crusader", "count": 12}, {"type": "war_titan", "count": 7}, {"type": "swift_ranger", "count": 8}, {"type": "temple_cleric", "count": 3}, {"type": "archangel_marshal", "count": 2}, {"type": "holy_sentinel", "count": 2}, {"type": "zeus", "count": 2}], "interval": 0.45, "desc": "Elite forces with Zeus support"},
+	{"enemies": [{"type": "crusader", "count": 14}, {"type": "war_titan", "count": 7}, {"type": "swift_ranger", "count": 8}, {"type": "temple_cleric", "count": 4}, {"type": "archangel_marshal", "count": 3}, {"type": "holy_sentinel", "count": 2}, {"type": "zeus", "count": 2}], "interval": 0.4, "desc": "Full combined arms"},
+	{"enemies": [{"type": "seraph_scout", "count": 22}, {"type": "crusader", "count": 10}, {"type": "war_titan", "count": 8}, {"type": "temple_cleric", "count": 4}, {"type": "archangel_marshal", "count": 2}, {"type": "holy_sentinel", "count": 2}, {"type": "archangel_michael", "count": 1}, {"type": "zeus", "count": 2}, {"type": "archangel_raphael", "count": 1}], "interval": 0.45, "desc": "The final onslaught — Michael leads"},
+	{"enemies": [{"type": "crusader", "count": 12}, {"type": "war_titan", "count": 7}, {"type": "temple_cleric", "count": 4}, {"type": "grand_paladin", "count": 2}, {"type": "archangel_marshal", "count": 2}, {"type": "holy_sentinel", "count": 2}, {"type": "archangel_michael", "count": 1}, {"type": "zeus", "count": 1}, {"type": "archangel_raphael", "count": 1}], "interval": 0.35, "desc": "BOSS: Heaven's last stand — all heroes"},
 ]
 
 # ═══════════════════════════════════════════════════════
@@ -219,22 +226,22 @@ var WAVE_DATA := [
 # ═══════════════════════════════════════════════════════
 # Early game (waves 1-4): all outcomes are positive
 var DICE_OUTCOMES_EARLY := {
-	6: {"name": "HELLFIRE APOCALYPSE", "positive": true, "effect": "kill_all", "desc": "All enemies instantly destroyed!"},
-	5: {"name": "Demonic Surge", "positive": true, "effect": "triple_speed", "desc": "All towers 3x attack speed for 20s!"},
-	4: {"name": "Hellstorm", "positive": true, "effect": "aoe_30", "desc": "30% damage to all enemies!"},
-	3: {"name": "Quick Hands", "positive": true, "effect": "speed_boost", "desc": "All towers +50% attack speed for 10s!"},
-	2: {"name": "Small Spark", "positive": true, "effect": "aoe_15", "desc": "15% damage to all enemies!"},
-	1: {"name": "Minor Blessing", "positive": true, "effect": "bonus_sins", "desc": "Gained 30 bonus Sins!"},
+	6: {"name": "Demonic Surge", "positive": true, "effect": "surge", "desc": "All towers +80% attack speed for 15s!"},
+	5: {"name": "Hellstorm", "positive": true, "effect": "aoe_25", "desc": "25% damage to all enemies!"},
+	4: {"name": "Quick Hands", "positive": true, "effect": "speed_boost", "desc": "All towers +30% attack speed for 10s!"},
+	3: {"name": "Small Spark", "positive": true, "effect": "aoe_10", "desc": "10% damage to all enemies!"},
+	2: {"name": "Minor Blessing", "positive": true, "effect": "bonus_sins", "desc": "Gained 25 bonus Sins!"},
+	1: {"name": "Tithe", "positive": true, "effect": "tithe", "desc": "Gained 10 bonus Sins!"},
 }
 
-# Late game (waves 5+): negatives appear — 50/50 risk
+# Late game (waves 5+): clean 3-negative (rolls 1-3) / 3-positive (rolls 4-6) split
 var DICE_OUTCOMES := {
-	6: {"name": "HELLFIRE APOCALYPSE", "positive": true, "effect": "kill_all", "desc": "All enemies instantly destroyed!"},
-	5: {"name": "Demonic Surge", "positive": true, "effect": "triple_speed", "desc": "All towers 3x attack speed for 20s!"},
-	4: {"name": "Hellstorm", "positive": true, "effect": "aoe_30", "desc": "30% damage to all enemies!"},
-	3: {"name": "Slow Curse", "positive": false, "effect": "slow_towers", "desc": "All towers -30% speed for 10s"},
+	6: {"name": "Demonic Surge", "positive": true, "effect": "surge", "desc": "All towers +80% attack speed for 15s!"},
+	5: {"name": "Hellstorm", "positive": true, "effect": "aoe_25", "desc": "25% damage to all enemies!"},
+	4: {"name": "Tithe", "positive": true, "effect": "tithe_big", "desc": "Gained 50 bonus Sins!"},
+	3: {"name": "Slow Curse", "positive": false, "effect": "slow_towers", "desc": "All towers -25% speed for 10s"},
 	2: {"name": "Tremor", "positive": false, "effect": "disable_3s", "desc": "All towers disabled for 3 seconds"},
-	1: {"name": "Devil's Tax", "positive": false, "effect": "tax_sins", "desc": "Lost 15% of current Sins"},
+	1: {"name": "Devil's Tax", "positive": false, "effect": "tax_sins", "desc": "Lost 10% of current Sins"},
 }
 
 const DICE_NEGATIVE_WAVE := 5  # negatives start at this wave
@@ -246,11 +253,11 @@ func get_dice_outcome(total: int, current_wave: int) -> Dictionary:
 
 var PACT_POOL := [
 	{"name": "Blood Rage", "benefit": "All towers 2x damage for 3 waves", "cost_desc": "Core loses 20 HP", "b_effect": "double_dmg_3", "c_effect": "core_-20"},
-	{"name": "Infernal Discount", "benefit": "Next 3 towers are free", "cost_desc": "Enemies 30% faster for 2 waves", "b_effect": "free_towers_3", "c_effect": "fast_enemy_2"},
-	{"name": "Soul Harvest", "benefit": "Triple sin income for 1 wave", "cost_desc": "Enemies 20% faster for 2 waves", "b_effect": "triple_sins_1", "c_effect": "fast_enemy_2"},
+	{"name": "Infernal Discount", "benefit": "Next 2 towers are free", "cost_desc": "Enemies 30% faster for 2 waves", "b_effect": "free_towers_2", "c_effect": "fast_enemy_2"},
+	{"name": "Soul Harvest", "benefit": "Double sin income for 1 wave", "cost_desc": "Enemies 20% faster for 2 waves", "b_effect": "double_sins_1", "c_effect": "fast_enemy_2"},
 	{"name": "Hellfire Rain", "benefit": "Instant massive AoE to all enemies", "cost_desc": "All towers disabled 10 seconds", "b_effect": "massive_aoe", "c_effect": "disable_10s"},
-	{"name": "Demonic Fervor", "benefit": "All towers +50% attack speed (perm)", "cost_desc": "Core max HP reduced by 25", "b_effect": "speed_50_perm", "c_effect": "core_max_-25"},
-	{"name": "Sin Amplifier", "benefit": "All sin earnings doubled for 5 waves", "cost_desc": "All current sins halved", "b_effect": "double_earn_5", "c_effect": "halve_sins"},
+	{"name": "Demonic Fervor", "benefit": "All towers +30% attack speed (perm)", "cost_desc": "Core max HP reduced by 30", "b_effect": "speed_30_perm", "c_effect": "core_max_-30"},
+	{"name": "Sin Amplifier", "benefit": "All sin earnings doubled for 3 waves", "cost_desc": "All current sins halved", "b_effect": "double_earn_3", "c_effect": "halve_sins"},
 ]
 
 var RELIC_LOOT := [

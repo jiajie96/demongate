@@ -187,15 +187,16 @@ var _zh: Dictionary = {
 	"No dice left": "没有骰子了",
 
 	# --- Dice effect descriptions ---
-	"All enemies instantly destroyed!": "所有敌人瞬间毁灭！",
-	"All towers 3x attack speed for 20s!": "所有塔攻速3倍，持续20秒！",
-	"30% damage to all enemies!": "对所有敌人造成30%伤害！",
-	"15% damage to all enemies!": "对所有敌人造成15%伤害！",
-	"All towers +50% attack speed for 10s!": "所有塔攻速+50%，持续10秒！",
-	"Gained 30 bonus Sins!": "获得30额外罪孽！",
-	"All towers -30% speed for 10s": "所有塔速度-30%，持续10秒",
+	"All towers +80% attack speed for 15s!": "所有塔攻速+80%，持续15秒！",
+	"25% damage to all enemies!": "对所有敌人造成25%伤害！",
+	"10% damage to all enemies!": "对所有敌人造成10%伤害！",
+	"All towers +30% attack speed for 10s!": "所有塔攻速+30%，持续10秒！",
+	"Gained 25 bonus Sins!": "获得25额外罪孽！",
+	"Gained 10 bonus Sins!": "获得10额外罪孽！",
+	"Gained 50 bonus Sins!": "获得50额外罪孽！",
+	"All towers -25% speed for 10s": "所有塔速度-25%，持续10秒",
 	"All towers disabled for 3 seconds": "所有塔禁用3秒",
-	"Lost 15% of current Sins": "失去当前15%的罪孽",
+	"Lost 10% of current Sins": "失去当前10%的罪孽",
 
 	# --- Dice outcome names (new) ---
 	"Quick Hands": "快手",
@@ -220,9 +221,9 @@ var _zh: Dictionary = {
 	"SHIELD END": "护盾边界",
 
 	# --- Tower names ---
-	"Demon Archer": "恶魔弓手",
-	"Hellfire Mage": "地狱火法师",
-	"Necromancer": "死灵法师",
+	"Bone Marksman": "骨弓手",
+	"Inferno Warlock": "炼狱术士",
+	"Soul Reaper": "灵魂收割者",
 	"Lucifer": "路西法",
 	"Hades": "哈迪斯",
 	"Cocytus": "科赛特斯",
@@ -236,14 +237,14 @@ var _zh: Dictionary = {
 	"Ice spike ramps damage on same target": "冰锥射击，对同一目标伤害递增",
 
 	# --- Enemy names ---
-	"Angel Scout": "天使斥候",
-	"Holy Knight": "圣骑士",
-	"Divine Hunter": "神圣猎手",
-	"God of War": "战神",
-	"Paladin": "圣武士",
-	"Monk": "武僧",
-	"Archangel Commander": "大天使指挥官",
-	"Divine Guardian": "神圣守卫",
+	"Seraph Scout": "炽天斥候",
+	"Crusader": "十字军",
+	"Swift Ranger": "迅捷游侠",
+	"War Titan": "战争巨人",
+	"Grand Paladin": "大圣武士",
+	"Temple Cleric": "神殿牧师",
+	"Archangel Marshal": "大天使元帅",
+	"Holy Sentinel": "神圣哨兵",
 	"Archangel Michael": "大天使米迦勒",
 	"Zeus": "宙斯",
 	"Archangel Raphael": "大天使拉斐尔",
@@ -281,24 +282,26 @@ var _zh: Dictionary = {
 
 	# --- Pact benefits ---
 	"All towers 2x damage for 3 waves": "所有塔3波内伤害翻倍",
-	"Next 3 towers are free": "接下来3座塔免费",
-	"Triple sin income for 1 wave": "1波内罪孽收入三倍",
+	"Next 2 towers are free": "接下来2座塔免费",
+	"Double sin income for 1 wave": "1波内罪孽收入翻倍",
 	"Instant massive AoE to all enemies": "对所有敌人造成大范围伤害",
-	"All towers +50% attack speed (perm)": "所有塔攻击速度永久+50%",
-	"All sin earnings doubled for 5 waves": "5波内所有罪孽收入翻倍",
+	"All towers +30% attack speed (perm)": "所有塔攻击速度永久+30%",
+	"All sin earnings doubled for 3 waves": "3波内所有罪孽收入翻倍",
 
 	# --- Pact costs ---
 	"Core loses 20 HP": "核心失去20生命值",
 	"Enemies 30% faster for 2 waves": "敌人2波内速度增加30%",
 	"Enemies 20% faster for 2 waves": "敌人2波内速度增加20%",
 	"All towers disabled 10 seconds": "所有塔禁用10秒",
-	"Core max HP reduced by 25": "核心最大生命值减少25",
+	"Core max HP reduced by 30": "核心最大生命值减少30",
 	"All current sins halved": "当前所有罪孽减半",
 
 	# --- Dice outcomes ---
-	"HELLFIRE APOCALYPSE": "地狱火天启",
+	"Tithe": "献金",
 	"Demonic Surge": "恶魔涌潮",
 	"Hellstorm": "地狱风暴",
+	"Hellfire Rain will strike 3 times next wave!": "下一波地狱火雨将轰击3次！",
+	"Hellfire Rain strikes!": "地狱火雨轰击！",
 	"Backfire": "反噬",
 	"Earthquake": "地震",
 	"DEVIL'S BETRAYAL": "恶魔背叛",

@@ -163,11 +163,11 @@ func _run_tower_tests() -> void:
 	GM.reset_state()
 
 	# Create tower
-	var tower := GM.create_tower("demon_archer", 3, 3)
-	_assert_eq(tower["type"], "demon_archer", "Tower type is demon_archer")
+	var tower := GM.create_tower("bone_marksman", 3, 3)
+	_assert_eq(tower["type"], "bone_marksman", "Tower type is bone_marksman")
 	_assert_eq(tower["level"], 1, "Tower starts at level 1")
-	_assert_eq(tower["damage"], 2.0, "Demon archer damage is 2.0")
-	_assert_eq(tower["range"], 120.0, "Demon archer range is 120")
+	_assert_eq(tower["damage"], 2.0, "Bone marksman damage is 2.0")
+	_assert_eq(tower["range"], 120.0, "Bone marksman range is 120")
 	_assert(tower.has("id"), "Tower has unique id")
 
 	# Buildable checks
@@ -212,38 +212,38 @@ func _run_enemy_tests() -> void:
 	print("[Enemies]")
 	GM.reset_state()
 
-	var scout := GM.create_enemy("angel_scout")
-	_assert_eq(scout["hp"], 14.0, "Angel scout has 14 HP")
-	_assert_eq(scout["max_hp"], 14.0, "Angel scout max HP is 14")
+	var scout := GM.create_enemy("seraph_scout")
+	_assert_eq(scout["hp"], 14.0, "Seraph scout has 14 HP")
+	_assert_eq(scout["max_hp"], 14.0, "Seraph scout max HP is 14")
 	_assert(scout["alive"], "Enemy starts alive")
 	_assert_eq(scout["path_index"], 0, "Enemy starts at path index 0")
 	_assert(scout.has("id"), "Enemy has unique id")
 	_assert_eq(scout["slow_amount"], 0.0, "Enemy starts with no slow")
 	_assert_eq(scout["slow_timer"], 0.0, "Enemy starts with no slow timer")
 
-	var paladin := GM.create_enemy("paladin")
-	_assert_eq(paladin["hp"], 280.0, "Paladin has 280 HP")
-	_assert(paladin["is_boss"], "Paladin is a boss")
-	_assert_eq(paladin["core_dmg"], 30, "Paladin core damage is 30")
+	var paladin := GM.create_enemy("grand_paladin")
+	_assert_eq(paladin["hp"], 280.0, "Grand Paladin has 280 HP")
+	_assert(paladin["is_boss"], "Grand Paladin is a boss")
+	_assert_eq(paladin["core_dmg"], 30, "Grand Paladin core damage is 30")
 
-	var knight := GM.create_enemy("holy_knight")
-	_assert_eq(knight["hp"], 45.0, "Holy knight has 45 HP")
+	var knight := GM.create_enemy("crusader")
+	_assert_eq(knight["hp"], 45.0, "Crusader has 45 HP")
 
 	# New enemy types
-	var arch := GM.create_enemy("archangel")
-	_assert_eq(arch["hp"], 55.0, "Archangel has 55 HP")
-	_assert_eq(arch["type"], "archangel", "Archangel type correct")
+	var arch := GM.create_enemy("archangel_marshal")
+	_assert_eq(arch["hp"], 55.0, "Archangel Marshal has 55 HP")
+	_assert_eq(arch["type"], "archangel_marshal", "Archangel Marshal type correct")
 
-	var guard := GM.create_enemy("divine_guardian")
-	_assert_eq(guard["hp"], 65.0, "Divine Guardian has 65 HP")
-	_assert_eq(guard["type"], "divine_guardian", "Divine Guardian type correct")
+	var guard := GM.create_enemy("holy_sentinel")
+	_assert_eq(guard["hp"], 65.0, "Holy Sentinel has 65 HP")
+	_assert_eq(guard["type"], "holy_sentinel", "Holy Sentinel type correct")
 
 	# Wave scaling: enemies get tougher each wave (starts after SCALE_START_WAVE)
 	GM.wave = 10
-	var scaled_scout := GM.create_enemy("angel_scout")
-	_assert(scaled_scout["hp"] > 14.0, "Wave 10 scouts have scaled HP")
-	_assert(scaled_scout["speed"] > 80.0, "Wave 10 scouts have scaled speed")
-	var expected_hp: float = 14.0 * (1.0 + (10 - Config.SCALE_START_WAVE) * Config.WAVE_HP_SCALE)
+	var scaled_scout := GM.create_enemy("seraph_scout")
+	_assert(scaled_scout["hp"] > 14.0, "Wave 10 seraph scouts have scaled HP")
+	_assert(scaled_scout["speed"] > 80.0, "Wave 10 seraph scouts have scaled speed")
+	var expected_hp: float = 14.0 * pow(Config.WAVE_HP_COMPOUND, maxf(0, 10 - Config.SCALE_START_WAVE))
 	_assert_eq(scaled_scout["hp"], expected_hp, "Wave 10 scout HP matches scaling formula")
 
 	GM.reset_state()
@@ -255,7 +255,7 @@ func _run_combat_tests() -> void:
 	print("[Combat]")
 	GM.reset_state()
 
-	var enemy := GM.create_enemy("angel_scout")
+	var enemy := GM.create_enemy("seraph_scout")
 	GM.enemies.append(enemy)
 
 	# Hit without killing
@@ -274,8 +274,8 @@ func _run_combat_tests() -> void:
 
 	# AoE combat
 	GM.reset_state()
-	var e1 := GM.create_enemy("angel_scout")
-	var e2 := GM.create_enemy("angel_scout")
+	var e1 := GM.create_enemy("seraph_scout")
+	var e2 := GM.create_enemy("seraph_scout")
 	e1["x"] = 100.0; e1["y"] = 100.0
 	e2["x"] = 110.0; e2["y"] = 100.0
 	GM.enemies.append(e1)
@@ -286,7 +286,7 @@ func _run_combat_tests() -> void:
 
 	# Damage calculation with double damage
 	GM.reset_state()
-	var e3 := GM.create_enemy("angel_scout")
+	var e3 := GM.create_enemy("seraph_scout")
 	GM.double_damage = 3
 	var dmg := GM.calc_damage(5.0, null, e3)
 	_assert(dmg >= 10.0, "Double damage pact doubles damage")
@@ -313,10 +313,10 @@ func _run_wave_tests() -> void:
 	# Wave 1 should only have angel scouts (easy tutorial)
 	var all_scouts := true
 	for enemy_type in GM.spawn_queue:
-		if enemy_type != "angel_scout":
+		if enemy_type != "seraph_scout":
 			all_scouts = false
 			break
-	_assert(all_scouts, "Wave 1 only has angel scouts")
+	_assert(all_scouts, "Wave 1 only has seraph scouts")
 	_assert_eq(GM.spawn_queue.size(), 3, "Wave 1 has 3 enemies")
 
 	# Wave 2 should have tougher enemies
@@ -327,10 +327,10 @@ func _run_wave_tests() -> void:
 	_assert_eq(GM.wave, 2, "Wave 2 started")
 	var has_knight := false
 	for enemy_type in GM.spawn_queue:
-		if enemy_type == "holy_knight":
+		if enemy_type == "crusader":
 			has_knight = true
 			break
-	_assert(has_knight, "Wave 2 includes holy knights")
+	_assert(has_knight, "Wave 2 includes crusaders")
 	_assert(GM.spawn_queue.size() > 5, "Wave 2 has more enemies than wave 1")
 
 	GM.reset_state()
@@ -342,26 +342,26 @@ func _run_slow_tests() -> void:
 	print("[Slow Mechanic]")
 	GM.reset_state()
 
-	# Necromancer should have slow_power
-	var nec_data: Dictionary = Config.TOWER_DATA["necromancer"]
-	_assert(nec_data["slow_power"] > 0, "Necromancer has slow_power > 0")
-	_assert_eq(nec_data["slow_power"], 0.4, "Necromancer slows by 40%")
+	# Soul Reaper should have slow_power
+	var nec_data: Dictionary = Config.TOWER_DATA["soul_reaper"]
+	_assert(nec_data["slow_power"] > 0, "Soul Reaper has slow_power > 0")
+	_assert_eq(nec_data["slow_power"], 0.4, "Soul Reaper slows by 40%")
 
 	# Other towers should not slow
-	_assert_eq(Config.TOWER_DATA["demon_archer"]["slow_power"], 0.0, "Demon Archer has no slow")
-	_assert_eq(Config.TOWER_DATA["hellfire_mage"]["slow_power"], 0.0, "Hellfire Mage has no slow")
+	_assert_eq(Config.TOWER_DATA["bone_marksman"]["slow_power"], 0.0, "Bone Marksman has no slow")
+	_assert_eq(Config.TOWER_DATA["inferno_warlock"]["slow_power"], 0.0, "Inferno Warlock has no slow")
 
 	# NEC tower applies slow on hit
-	var nec := GM.create_tower("necromancer", 5, 5)
-	var enemy := GM.create_enemy("angel_scout")
+	var nec := GM.create_tower("soul_reaper", 5, 5)
+	var enemy := GM.create_enemy("seraph_scout")
 	GM.enemies.append(enemy)
 	GM.combat_hit(enemy, 2.0, nec)
 	_assert(enemy["slow_timer"] > 0, "NEC hit applies slow timer")
 	_assert_eq(enemy["slow_amount"], 0.4, "NEC hit applies 40% slow")
 
 	# Non-slow tower should NOT apply slow
-	var arc := GM.create_tower("demon_archer", 6, 6)
-	var enemy2 := GM.create_enemy("angel_scout")
+	var arc := GM.create_tower("bone_marksman", 6, 6)
+	var enemy2 := GM.create_enemy("seraph_scout")
 	GM.enemies.append(enemy2)
 	GM.combat_hit(enemy2, 2.0, arc)
 	_assert_eq(enemy2["slow_timer"], 0.0, "ARC hit does not apply slow")
@@ -398,7 +398,7 @@ func _run_targeting_tests() -> void:
 	GM.reset_state()
 
 	# Default targeting mode
-	var tower := GM.create_tower("demon_archer", 5, 1)
+	var tower := GM.create_tower("bone_marksman", 5, 1)
 	_assert_eq(tower["targeting_mode"], "first", "Default targeting mode is 'first'")
 
 	# Cycle through modes

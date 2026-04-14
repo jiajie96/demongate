@@ -44,9 +44,9 @@ func stop_music() -> void:
 # SOUND GENERATION
 # ═══════════════════════════════════════════════════════
 func _generate_sounds() -> void:
-	_sounds["shoot_demon_archer"] = _make_archer_shoot()
-	_sounds["shoot_hellfire_mage"] = _make_mage_shoot()
-	_sounds["shoot_necromancer"] = _make_necro_shoot()
+	_sounds["shoot_bone_marksman"] = _make_archer_shoot()
+	_sounds["shoot_inferno_warlock"] = _make_mage_shoot()
+	_sounds["shoot_soul_reaper"] = _make_necro_shoot()
 	_sounds["enemy_death"] = _make_enemy_death()
 	_sounds["core_hit"] = _make_core_hit()
 	_sounds["wave_start"] = _make_wave_start()

@@ -88,7 +88,7 @@ func _create_top_bar() -> void:
 	bar.position = Vector2(0, 0)
 	bar.size = Vector2(Config.GAME_WIDTH + 332, 50)
 	var bar_style := StyleBoxFlat.new()
-	bar_style.bg_color = Color(0.08, 0.03, 0.08)
+	bar_style.bg_color = Color(0.12, 0.05, 0.07)
 	bar.add_theme_stylebox_override("panel", bar_style)
 	add_child(bar)
 
@@ -155,8 +155,8 @@ func _create_top_bar() -> void:
 		sbtn.custom_minimum_size = Vector2(38, 28)
 		sbtn.add_theme_font_size_override("font_size", 10)
 		var s := StyleBoxFlat.new()
-		s.bg_color = Color(0.2, 0.1, 0.2)
-		s.border_color = Color(0.4, 0.2, 0.4)
+		s.bg_color = Color(0.18, 0.1, 0.12)
+		s.border_color = Color(0.4, 0.22, 0.25)
 		s.set_border_width_all(1)
 		s.set_corner_radius_all(3)
 		s.set_content_margin_all(2)
@@ -172,15 +172,15 @@ func _create_top_bar() -> void:
 	menu_btn.text = "☰"
 	menu_btn.custom_minimum_size = Vector2(40, 32)
 	var mb_style := StyleBoxFlat.new()
-	mb_style.bg_color = Color(0.2, 0.1, 0.2)
-	mb_style.border_color = Color(0.4, 0.2, 0.4)
+	mb_style.bg_color = Color(0.18, 0.1, 0.12)
+	mb_style.border_color = Color(0.4, 0.22, 0.25)
 	mb_style.set_border_width_all(1)
 	mb_style.set_corner_radius_all(4)
 	mb_style.set_content_margin_all(2)
 	menu_btn.add_theme_stylebox_override("normal", mb_style)
 	var mb_hover := mb_style.duplicate()
-	mb_hover.bg_color = Color(0.3, 0.15, 0.3)
-	mb_hover.border_color = Color(0.6, 0.3, 0.6)
+	mb_hover.bg_color = Color(0.3, 0.16, 0.2)
+	mb_hover.border_color = Color(0.55, 0.3, 0.35)
 	menu_btn.add_theme_stylebox_override("hover", mb_hover)
 	menu_btn.add_theme_font_size_override("font_size", 18)
 	menu_btn.add_theme_color_override("font_color", Color(0.9, 0.9, 0.9))
@@ -195,8 +195,8 @@ func _create_side_panel() -> void:
 	panel.position = Vector2(Config.GAME_WIDTH + 20, 55)
 	panel.size = Vector2(305, Config.GAME_HEIGHT)
 	var panel_style := StyleBoxFlat.new()
-	panel_style.bg_color = Color(0.1, 0.04, 0.1)
-	panel_style.border_color = Color(0.3, 0.15, 0.3)
+	panel_style.bg_color = Color(0.1, 0.06, 0.08)
+	panel_style.border_color = Color(0.3, 0.16, 0.2)
 	panel_style.set_border_width_all(1)
 	panel.add_theme_stylebox_override("panel", panel_style)
 	add_child(panel)
@@ -254,7 +254,7 @@ func _create_side_panel() -> void:
 		btn.alignment = HORIZONTAL_ALIGNMENT_LEFT
 
 		var btn_style := StyleBoxFlat.new()
-		btn_style.bg_color = Color(0.16, 0.08, 0.16)
+		btn_style.bg_color = Color(0.15, 0.08, 0.1)
 		btn_style.border_color = data["color"] * 0.5
 		btn_style.set_border_width_all(1)
 		btn_style.set_corner_radius_all(4)
@@ -262,12 +262,12 @@ func _create_side_panel() -> void:
 		btn.add_theme_stylebox_override("normal", btn_style)
 
 		var btn_hover := btn_style.duplicate()
-		btn_hover.bg_color = Color(0.22, 0.1, 0.22)
+		btn_hover.bg_color = Color(0.22, 0.12, 0.14)
 		btn_hover.border_color = data["color"]
 		btn.add_theme_stylebox_override("hover", btn_hover)
 
 		var btn_pressed := btn_style.duplicate()
-		btn_pressed.bg_color = Color(0.3, 0.12, 0.3)
+		btn_pressed.bg_color = Color(0.3, 0.14, 0.18)
 		btn_pressed.border_color = data["color"]
 		btn.add_theme_stylebox_override("pressed", btn_pressed)
 
@@ -285,8 +285,8 @@ func _create_side_panel() -> void:
 	tower_info_panel = PanelContainer.new()
 	tower_info_panel.visible = false
 	var ti_style := StyleBoxFlat.new()
-	ti_style.bg_color = Color(0.12, 0.06, 0.12)
-	ti_style.border_color = Color(0.4, 0.2, 0.4)
+	ti_style.bg_color = Color(0.12, 0.07, 0.09)
+	ti_style.border_color = Color(0.4, 0.22, 0.25)
 	ti_style.set_border_width_all(1)
 	ti_style.set_content_margin_all(8)
 	tower_info_panel.add_theme_stylebox_override("panel", ti_style)
@@ -843,7 +843,10 @@ func _on_menu_btn_pressed() -> void:
 
 func _on_pause_pressed() -> void:
 	Audio.play_sfx("ui_click")
-	GM.paused = not GM.paused
+	if GM.paused:
+		_close_settings()
+	else:
+		GM.paused = true
 
 func _on_settings_restart_pressed() -> void:
 	Audio.play_sfx("ui_click")

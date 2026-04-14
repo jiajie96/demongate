@@ -46,6 +46,7 @@ var sin_mult_waves: int = 0
 var free_towers: int = 0
 var double_damage: int = 0
 var perm_speed_buff: float = 1.0
+var temp_speed_buff: float = 1.0
 var fast_enemy_waves: int = 0
 
 var fallen_hero_pool: int = 0
@@ -61,7 +62,8 @@ var screen_shake_intensity: float = 0.0
 var speed_buff_timer: float = 0.0
 var speed_buff_factor: float = 1.0  # what was multiplied, divide to undo
 var game_speed: float = 1.0
-var pending_aoe_timer: float = 0.0
+var hellfire_strikes_left: int = 0    # Hellfire Rain pact: strikes remaining for next wave
+var hellfire_strike_timer: float = 0.0
 
 var _next_id: int = 0
 
@@ -98,6 +100,7 @@ func reset_state() -> void:
 	free_towers = 0
 	double_damage = 0
 	perm_speed_buff = 1.0
+	temp_speed_buff = 1.0
 	fast_enemy_waves = 0
 	fallen_hero_pool = 0
 	fallen_heroes_spawned = 0
@@ -112,7 +115,8 @@ func reset_state() -> void:
 	speed_buff_factor = 1.0
 	game_speed = 1.0
 	Engine.time_scale = 1.0
-	pending_aoe_timer = 0.0
+	hellfire_strikes_left = 0
+	hellfire_strike_timer = 0.0
 	_next_id = 0
 
 func set_game_speed(speed: float) -> void:
@@ -126,11 +130,18 @@ func earn(amount: int) -> void:
 	var total := roundi(amount * sin_multiplier)
 	sins += total
 
+# powHPG scaling: kill rewards grow with enemy HP scaling (exponent 0.85).
+# Keeps economy from dying as enemies get tougher in late waves.
+func reward_scale() -> float:
+	var w: float = maxf(0, wave - Config.SCALE_START_WAVE)
+	return pow(Config.WAVE_HP_COMPOUND, w * Config.REWARD_POW_HPG)
+
 func earn_from_kill(enemy_type: String, was_aoe: bool) -> void:
 	var data: Dictionary = Config.ENEMY_DATA.get(enemy_type, {})
 	if data.is_empty():
 		return
-	earn(data["sin_reward"])
+	var scaled_reward: int = maxi(1, roundi(data["sin_reward"] * reward_scale()))
+	earn(scaled_reward)
 	if was_aoe:
 		earn(1)
 
@@ -263,8 +274,8 @@ func create_enemy(type: String) -> Dictionary:
 	var sp := Config.spawn_pixel()
 	_next_id += 1
 	var w := maxf(0, wave - Config.SCALE_START_WAVE)
-	var scaled_hp: float = data["hp"] * (1.0 + w * Config.WAVE_HP_SCALE)
-	var scaled_speed: float = data["speed"] * (1.0 + w * Config.WAVE_SPD_SCALE)
+	var scaled_hp: float = data["hp"] * pow(Config.WAVE_HP_COMPOUND, w)
+	var scaled_speed: float = data["speed"] * pow(Config.WAVE_SPD_COMPOUND, w)
 	return {
 		"id": _next_id,
 		"type": type,
@@ -297,9 +308,9 @@ func _has_alive_type(etype: String) -> bool:
 	return false
 
 func _is_guardian_protected(enemy: Dictionary) -> bool:
-	if enemy["type"] == "divine_guardian":
+	if enemy["type"] == "holy_sentinel":
 		return false
-	if not _has_alive_type("divine_guardian"):
+	if not _has_alive_type("holy_sentinel"):
 		return false
 	return enemy.get("path_index", 0) < Config.path_pixels.size() / 2
 
@@ -307,7 +318,7 @@ func _michael_shield(michael: Dictionary) -> void:
 	# Every 8 seconds, grant all enemies 50% damage reduction for 2 seconds
 	michael["ability_timer"] = 8.0
 	for e in enemies:
-		if e["alive"] and e["type"] != "michael":
+		if e["alive"] and e["type"] != "archangel_michael":
 			e["shield_buff"] = true
 			e["shield_buff_timer"] = 2.0
 	# Golden shield dome from Michael's position
@@ -343,7 +354,7 @@ func _raphael_heal(raphael: Dictionary) -> void:
 	var best = null
 	var best_missing := 0.0
 	for e in enemies:
-		if not e["alive"] or e["type"] == "raphael":
+		if not e["alive"] or e["type"] == "archangel_raphael":
 			continue
 		var missing: float = e["max_hp"] - e["hp"]
 		if missing > best_missing:
@@ -357,20 +368,20 @@ func _raphael_heal(raphael: Dictionary) -> void:
 
 func update_enemies(dt: float) -> void:
 	var path_px: Array[Vector2] = Config.path_pixels
-	var has_commander := _has_alive_type("archangel")
+	var has_commander := _has_alive_type("archangel_marshal")
 
 	# Process Michael, Zeus, and Raphael abilities
 	for e in enemies:
 		if not e["alive"]:
 			continue
-		if e["type"] == "michael" or e["type"] == "zeus" or e["type"] == "raphael":
+		if e["type"] == "archangel_michael" or e["type"] == "zeus" or e["type"] == "archangel_raphael":
 			e["ability_timer"] -= dt
 			if e["ability_timer"] <= 0:
-				if e["type"] == "michael":
+				if e["type"] == "archangel_michael":
 					_michael_shield(e)
 				elif e["type"] == "zeus":
 					_zeus_lightning(e)
-				elif e["type"] == "raphael":
+				elif e["type"] == "archangel_raphael":
 					_raphael_heal(e)
 
 	var i := enemies.size() - 1
@@ -419,7 +430,7 @@ func update_enemies(dt: float) -> void:
 		if fast_enemy_waves > 0:
 			spd *= 1.3
 		# Archangel Commander aura: +25% speed to allies
-		if has_commander and e["type"] != "archangel":
+		if has_commander and e["type"] != "archangel_marshal":
 			spd *= 1.25
 
 		if e["path_index"] >= path_px.size():
@@ -459,16 +470,13 @@ func update_enemies(dt: float) -> void:
 # PROJECTILE
 # ═══════════════════════════════════════════════════════
 func create_projectile(tower: Dictionary, target: Dictionary) -> Dictionary:
-	var dmg_mult := 1.0
-	if double_damage > 0:
-		dmg_mult = 2.0
 	return {
 		"x": tower["x"],
 		"y": tower["y"],
 		"target": target,
 		"target_last_x": target["x"],
 		"target_last_y": target["y"],
-		"damage": tower["damage"] * tower["damage_mult"] * dmg_mult,
+		"damage": tower["damage"],
 		"speed": Config.PROJECTILE_SPEED,
 		"tower": tower,
 		"alive": true,
@@ -579,7 +587,7 @@ func calc_damage(base_dmg: float, tower, enemy: Dictionary) -> float:
 	if enemy.get("shield_buff", false):
 		dmg *= 0.7
 	# Archangel Commander aura: 25% damage reduction for allies
-	if _has_alive_type("archangel") and enemy.get("type", "") != "archangel":
+	if _has_alive_type("archangel_marshal") and enemy.get("type", "") != "archangel_marshal":
 		dmg *= 0.75
 	# Michael aura: while shield_buff active, 30% damage reduction (already applied via shield_buff flag)
 	return maxf(1.0, dmg)
@@ -587,7 +595,7 @@ func calc_damage(base_dmg: float, tower, enemy: Dictionary) -> float:
 func combat_hit(enemy: Dictionary, base_dmg: float, tower) -> void:
 	if not enemy.get("alive", false):
 		return
-	# Divine Guardian protection: enemies in first half of path are invulnerable
+	# Holy Sentinel protection: enemies in first half of path are invulnerable
 	if _is_guardian_protected(enemy):
 		enemy["flash_timer"] = 0.05
 		return
@@ -672,7 +680,7 @@ func update_towers(dt: float) -> void:
 
 		# Lucifer global pulse: damage ALL enemies
 		if t["is_global"]:
-			var effective_speed: float = t["attack_speed"] * perm_speed_buff
+			var effective_speed: float = t["attack_speed"] * perm_speed_buff * temp_speed_buff
 			if t["hades_buffed"]:
 				effective_speed *= t.get("buff_multiplier", 1.5)
 			t["cooldown"] -= dt
@@ -686,7 +694,7 @@ func update_towers(dt: float) -> void:
 
 		# Beam tower: lock onto target, keep attacking even out of range, re-target only on death
 		if t["is_beam"]:
-			var effective_speed: float = t["attack_speed"] * perm_speed_buff
+			var effective_speed: float = t["attack_speed"] * perm_speed_buff * temp_speed_buff
 			if t["hades_buffed"]:
 				effective_speed *= 1.5
 			t["cooldown"] -= dt
@@ -725,7 +733,7 @@ func update_towers(dt: float) -> void:
 			_cocytus_spike(t, locked_target)
 			continue
 
-		var effective_speed: float = t["attack_speed"] * perm_speed_buff
+		var effective_speed: float = t["attack_speed"] * perm_speed_buff * temp_speed_buff
 		if t["hades_buffed"]:
 			effective_speed *= 1.5
 		t["cooldown"] -= dt
@@ -743,10 +751,7 @@ func update_towers(dt: float) -> void:
 		Audio.play_shoot(t["type"])
 
 func _lucifer_pulse(tower: Dictionary) -> void:
-	var dmg_mult := 1.0
-	if double_damage > 0:
-		dmg_mult = 2.0
-	var base_dmg: float = tower["damage"] * tower["damage_mult"] * dmg_mult
+	var base_dmg: float = tower["damage"]
 	for e in enemies:
 		if e["alive"]:
 			combat_hit(e, base_dmg, tower)
@@ -763,10 +768,7 @@ func _cocytus_spike(tower: Dictionary, target: Dictionary) -> void:
 	# Damage ramps: 1x / 1.5x / 2x / 3x
 	var stack_mult: Array = [1.0, 1.5, 2.0, 3.0]
 	var mult: float = stack_mult[tower["beam_stacks"]]
-	var dmg_mult := 1.0
-	if double_damage > 0:
-		dmg_mult = 2.0
-	var base_dmg: float = tower["damage"] * tower["damage_mult"] * dmg_mult * mult
+	var base_dmg: float = tower["damage"] * mult
 	combat_hit(target, base_dmg, tower)
 	tower["beam_flash"] = 0.15
 	# Visual: ice spike flying from tower to target
@@ -803,11 +805,9 @@ func _apply_hades_buff(hades_tower: Dictionary) -> void:
 			t["hades_buff_timer"] = buff_dur
 
 func _hades_damage(hades_tower: Dictionary) -> void:
-	var base_dmg: float = hades_tower["damage"] * hades_tower["damage_mult"]
+	var base_dmg: float = hades_tower["damage"]
 	if base_dmg <= 0:
 		return
-	if double_damage > 0:
-		base_dmg *= 2.0
 	var r2: float = hades_tower["range"] * hades_tower["range"]
 	var hit_any := false
 	for e in enemies:
@@ -840,7 +840,7 @@ func start_wave() -> void:
 	for entry in wave_def["enemies"]:
 		var etype: String = entry["type"]
 		var edata: Dictionary = Config.ENEMY_DATA.get(etype, {})
-		var is_special: bool = edata.get("is_boss", false) or etype in ["archangel", "divine_guardian", "michael", "zeus"]
+		var is_special: bool = edata.get("is_boss", false) or etype in ["archangel_marshal", "holy_sentinel", "archangel_michael", "zeus"]
 		for j in range(entry["count"]):
 			if is_special:
 				specials.append(etype)
@@ -881,19 +881,22 @@ func update_waves(dt: float) -> void:
 			var wave_def: Dictionary = Config.WAVE_DATA[wave - 1]
 			spawn_timer = wave_def["interval"]
 
-		# Deferred pact AoE: fires 2s into the wave
-		if pending_aoe_timer > 0:
-			pending_aoe_timer -= dt
-			if pending_aoe_timer <= 0:
+		# Hellfire Rain pact: multiple strikes spread across the wave (3s, 8s, 13s in)
+		if hellfire_strikes_left > 0:
+			hellfire_strike_timer -= dt
+			if hellfire_strike_timer <= 0:
 				for e in enemies:
 					if e["alive"]:
-						e["hp"] -= e["max_hp"] * 0.5
+						e["hp"] -= e["max_hp"] * 0.30
 						e["flash_timer"] = 0.3
 						if e["hp"] <= 0:
 							e["alive"] = false
 							stats["enemies_killed"] += 1
+							earn_from_kill(e["type"], true)
 				add_effect("screen_flash", 0, 0, 0, Color(1.0, 0.2, 0.0))
 				notify(Locale.t("Hellfire Rain strikes!"), Color(1.0, 0.4, 0.0))
+				hellfire_strikes_left -= 1
+				hellfire_strike_timer = 5.0  # next strike 5s later
 
 		if spawn_queue.size() == 0 and enemies.size() == 0:
 			complete_wave()
@@ -905,7 +908,8 @@ func update_waves(dt: float) -> void:
 
 func complete_wave() -> void:
 	wave_active = false
-	var wave_bonus: int = 30 + wave * 2
+	# Wave bonus: base linear + powHPG-scaled portion so it stays meaningful late game.
+	var wave_bonus: int = wave * 2 + roundi(30 * reward_scale())
 	earn(wave_bonus)
 	notify(Locale.tf("wave_complete_notify", {"wave": wave, "bonus": wave_bonus}), Color(0.8, 0.267, 1.0))
 	Audio.play_sfx("wave_complete")
@@ -955,20 +959,12 @@ func roll_dice() -> Dictionary:
 	notify(Locale.t(outcome["name"]) + " (" + str(d1) + ")", msg_color)
 
 	match outcome["effect"]:
-		"kill_all":
+		"surge":
+			_apply_speed_buff(1.8, 15.0)
+		"aoe_25":
 			for e in enemies:
 				if e["alive"]:
-					e["hp"] = 0
-					e["alive"] = false
-					earn_from_kill(e["type"], true)
-					stats["enemies_killed"] += 1
-			add_effect("screen_flash", 0, 0, 0, Color(1.0, 0.267, 0.0))
-		"triple_speed":
-			_apply_speed_buff(3.0, 20.0)
-		"aoe_30":
-			for e in enemies:
-				if e["alive"]:
-					var dmg: float = e["max_hp"] * 0.3
+					var dmg: float = e["max_hp"] * 0.25
 					e["hp"] -= dmg
 					e["flash_timer"] = 0.2
 					if e["hp"] <= 0:
@@ -976,10 +972,10 @@ func roll_dice() -> Dictionary:
 						stats["enemies_killed"] += 1
 						earn_from_kill(e["type"], true)
 			add_effect("screen_flash", 0, 0, 0, Color(1.0, 0.4, 0.0))
-		"aoe_15":
+		"aoe_10":
 			for e in enemies:
 				if e["alive"]:
-					var dmg: float = e["max_hp"] * 0.15
+					var dmg: float = e["max_hp"] * 0.10
 					e["hp"] -= dmg
 					e["flash_timer"] = 0.15
 					if e["hp"] <= 0:
@@ -988,17 +984,21 @@ func roll_dice() -> Dictionary:
 						earn_from_kill(e["type"], true)
 			add_effect("screen_flash", 0, 0, 0, Color(1.0, 0.6, 0.2))
 		"speed_boost":
-			_apply_speed_buff(1.5, 10.0)
+			_apply_speed_buff(1.3, 10.0)
 		"bonus_sins":
-			earn(30)
+			earn(25)
+		"tithe":
+			earn(10)
+		"tithe_big":
+			earn(50)
 		"slow_towers":
-			_apply_speed_buff(0.7, 10.0)
+			_apply_speed_buff(0.75, 10.0)
 		"disable_3s":
 			for t in towers:
 				t["is_disabled"] = true
 				t["disable_timer"] = 3.0
 		"tax_sins":
-			var lost: int = roundi(sins * 0.15)
+			var lost: int = roundi(sins * 0.10)
 			sins -= lost
 
 	return dice_result
@@ -1008,11 +1008,11 @@ func roll_dice() -> Dictionary:
 # ═══════════════════════════════════════════════════════
 func should_drop_relic(enemy_type: String) -> bool:
 	var roll := randf()
-	if enemy_type == "paladin":
+	if enemy_type == "grand_paladin":
 		return true
-	if enemy_type == "god_of_war":
+	if enemy_type == "war_titan":
 		return roll < 0.15
-	if enemy_type == "holy_knight" or enemy_type == "monk":
+	if enemy_type == "crusader" or enemy_type == "temple_cleric":
 		return roll < 0.05
 	return roll < 0.03
 
@@ -1050,7 +1050,7 @@ func drop_relic(rx: float, ry: float) -> void:
 				strongest["disable_timer"] = 10.0
 				notify(Locale.tf("tower_cursed", {"name": Locale.t(strongest["name"])}), Color(0.8, 0.2, 0.2))
 		"trap":
-			enemies.append(create_enemy("god_of_war"))
+			enemies.append(create_enemy("war_titan"))
 			notify(Locale.t("Trojan Relic! Elite enemy spawned!"), Color(0.8, 0.2, 0.2))
 		_:
 			earn(30)
@@ -1069,19 +1069,20 @@ func accept_pact(pact: Dictionary) -> void:
 	match pact["b_effect"]:
 		"double_dmg_3":
 			double_damage = 3
-		"free_towers_3":
-			free_towers = 3
-		"triple_sins_1":
-			sin_multiplier = 3.0
+		"free_towers_2":
+			free_towers = 2
+		"double_sins_1":
+			sin_multiplier = 2.0
 			sin_mult_waves = 1
 		"massive_aoe":
-			pending_aoe_timer = 2.0
-			notify(Locale.t("Hellfire Rain will strike when enemies appear!"), Color(1.0, 0.4, 0.0))
-		"speed_50_perm":
-			perm_speed_buff += 0.5
-		"double_earn_5":
+			hellfire_strikes_left = 3
+			hellfire_strike_timer = 3.0  # first strike 3s into next wave
+			notify(Locale.t("Hellfire Rain will strike 3 times next wave!"), Color(1.0, 0.4, 0.0))
+		"speed_30_perm":
+			perm_speed_buff += 0.3
+		"double_earn_3":
 			sin_multiplier = 2.0
-			sin_mult_waves = 5
+			sin_mult_waves = 3
 
 	match pact["c_effect"]:
 		"core_-20":
@@ -1094,8 +1095,8 @@ func accept_pact(pact: Dictionary) -> void:
 			for t in towers:
 				t["is_disabled"] = true
 				t["disable_timer"] = 10.0
-		"core_max_-25":
-			core_max_hp -= 25
+		"core_max_-30":
+			core_max_hp -= 30
 			core_hp = minf(core_hp, core_max_hp)
 		"halve_sins":
 			sins = sins / 2
@@ -1157,7 +1158,7 @@ func update_effects(dt: float) -> void:
 	if speed_buff_timer > 0:
 		speed_buff_timer -= dt
 		if speed_buff_timer <= 0:
-			perm_speed_buff /= speed_buff_factor
+			temp_speed_buff = 1.0
 			speed_buff_factor = 1.0
 
 	if screen_shake > 0:
@@ -1170,10 +1171,7 @@ func shake(intensity: float, duration: float) -> void:
 	screen_shake_intensity = intensity
 
 func _apply_speed_buff(factor: float, duration: float) -> void:
-	# Undo any existing temp buff first
-	if speed_buff_timer > 0:
-		perm_speed_buff /= speed_buff_factor
-	perm_speed_buff *= factor
+	temp_speed_buff = factor
 	speed_buff_factor = factor
 	speed_buff_timer = duration
 

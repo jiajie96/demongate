@@ -55,6 +55,7 @@ func _draw() -> void:
 	_draw_enemies()
 	_draw_projectiles()
 	_draw_effects()
+	_draw_foreground_particles()
 	_draw_placement_preview()
 	_draw_notifications()
 	_draw_dice_result()
@@ -67,6 +68,39 @@ func _draw() -> void:
 func _row_gradient(r: int) -> float:
 	return float(r) / float(Config.GRID_ROWS - 1)  # 0.0 = heaven (top), 1.0 = hell (bottom)
 
+# Directional cast shadow — light source is upper-left, shadow falls to lower-right
+func _draw_cast_shadow(cx: float, cy: float, radius: float, height: float = 1.0) -> void:
+	var sx: float = cx + 3.0 * height   # offset right
+	var sy: float = cy + 4.0 * height   # offset down
+	var rx: float = radius * 1.3         # stretch horizontally
+	var ry: float = radius * 0.55        # flatten vertically (ellipse on ground plane)
+	# Multi-layer soft shadow
+	# Outer soft penumbra
+	var pts := PackedVector2Array()
+	for i in range(24):
+		var angle: float = float(i) * TAU / 24.0
+		pts.append(Vector2(sx + cos(angle) * rx * 1.2, sy + sin(angle) * ry * 1.2))
+	draw_colored_polygon(pts, Color(0, 0, 0, 0.08 * height))
+	# Inner shadow core
+	pts.clear()
+	for i in range(24):
+		var angle: float = float(i) * TAU / 24.0
+		pts.append(Vector2(sx + cos(angle) * rx * 0.75, sy + sin(angle) * ry * 0.75))
+	draw_colored_polygon(pts, Color(0, 0, 0, 0.14 * height))
+
+# Rim lighting — bright arc on the upper-left (light-facing) edge of circular bodies
+func _draw_rim_light(cx: float, cy: float, radius: float, alpha: float = 1.0, tint: Color = Color(1, 1, 1)) -> void:
+	# Upper-left rim (light source direction: ~225 degrees from center, i.e. upper-left)
+	var rim_a: float = 0.22 * alpha
+	draw_arc(Vector2(cx, cy), radius, PI * 0.85, PI * 1.45, 12, Color(tint.r, tint.g, tint.b, rim_a), 1.5)
+	# Brighter specular highlight on the top-left
+	draw_arc(Vector2(cx, cy), radius - 1, PI * 1.0, PI * 1.3, 8, Color(tint.r, tint.g, tint.b, rim_a * 1.5), 1.0)
+
+# Ground-bounce gradient — darker at feet, lighter at head (simulates ambient occlusion)
+func _draw_ground_ao(cx: float, cy: float, radius: float, alpha: float = 1.0) -> void:
+	# Dark ring at the very bottom of the entity (contact shadow)
+	draw_arc(Vector2(cx, cy), radius - 1, -0.3, PI + 0.3, 16, Color(0, 0, 0, 0.12 * alpha), 2.0)
+
 func _draw_map() -> void:
 	# Background gradient: celestial blue (top) → hellish dark (bottom)
 	for gr in range(Config.GRID_ROWS):
@@ -74,65 +108,65 @@ func _draw_map() -> void:
 		var row_col := Config.COLOR_HEAVEN_BG.lerp(Config.COLOR_BG, g)
 		draw_rect(Rect2(0, gr * T, Config.GAME_WIDTH, T + 1), row_col)
 
-	# Draw tiles with gradient depth effect
+	# Draw tiles — two passes: path first (sunken), then ground (raised with walls on top)
 	for r in range(Config.GRID_ROWS):
 		for c in range(Config.GRID_COLS):
-			var rx: float = c * T
-			var ry: float = r * T
 			if Config.is_path(c, r):
-				_draw_path_tile(rx, ry, c, r)
-			else:
-				_draw_ground_tile(rx, ry, c, r)
+				_draw_path_tile(c * T, r * T, c, r)
+	for r in range(Config.GRID_ROWS):
+		for c in range(Config.GRID_COLS):
+			if not Config.is_path(c, r):
+				_draw_ground_tile(c * T, r * T, c, r)
 
 	# Ambient atmosphere layer
 	_draw_ambient()
 
-	# Spawn marker — heavenly golden portal
+	# Spawn marker — heavenly golden portal (brighter)
 	var spawn_cell: Vector2i = Config.MAP_PATH[0]
 	var sx: float = spawn_cell.x * T + T / 2.0
 	var sy: float = spawn_cell.y * T + T / 2.0
 	var sp_pulse: float = 0.5 + 0.5 * sin(GM.game_time * 2.5)
-	# Outer golden glow
-	draw_circle(Vector2(sx, sy), 14, Color(1.0, 0.85, 0.4, 0.08 + sp_pulse * 0.06))
-	draw_circle(Vector2(sx, sy), 10, Color(1.0, 0.9, 0.6, 0.12 + sp_pulse * 0.08))
+	# Outer golden glow — increased alphas
+	draw_circle(Vector2(sx, sy), 16, Color(1.0, 0.85, 0.4, 0.12 + sp_pulse * 0.08))
+	draw_circle(Vector2(sx, sy), 11, Color(1.0, 0.9, 0.6, 0.18 + sp_pulse * 0.12))
 	# Core light
-	draw_circle(Vector2(sx, sy), 6, Color(1.0, 0.95, 0.8, 0.6))
-	draw_circle(Vector2(sx, sy), 3, Color(1.0, 1.0, 0.95, 0.8))
+	draw_circle(Vector2(sx, sy), 6, Color(1.0, 0.95, 0.8, 0.75))
+	draw_circle(Vector2(sx, sy), 3, Color(1.0, 1.0, 0.95, 0.9))
 	# Golden ring
-	draw_arc(Vector2(sx, sy), 11, 0, TAU, 20, Color(1.0, 0.85, 0.5, 0.35 + sp_pulse * 0.15), 1.5)
+	draw_arc(Vector2(sx, sy), 12, 0, TAU, 20, Color(1.0, 0.85, 0.5, 0.5 + sp_pulse * 0.2), 1.5)
 	# Light rays upward
 	for ri in range(5):
 		var ray_angle: float = -PI / 2.0 + (float(ri) - 2.0) * 0.25
-		var ray_len: float = 16.0 + sp_pulse * 6.0
+		var ray_len: float = 18.0 + sp_pulse * 8.0
 		var ray_end := Vector2(sx + cos(ray_angle) * ray_len, sy + sin(ray_angle) * ray_len)
-		draw_line(Vector2(sx, sy), ray_end, Color(1.0, 0.9, 0.6, 0.15 + sp_pulse * 0.1), 1.0)
+		draw_line(Vector2(sx, sy), ray_end, Color(1.0, 0.9, 0.6, 0.22 + sp_pulse * 0.14), 1.0)
 	draw_string(font, Vector2(sx - 24, sy + T * 0.7), Locale.t("SPAWN"), HORIZONTAL_ALIGNMENT_CENTER, 48, 10, Color(1.0, 0.92, 0.7))
 
-	# Core marker — Hell's Core with fire
+	# Core marker — Hell's Core with vivid fire
 	var core_cell: Vector2i = Config.MAP_PATH[Config.MAP_PATH.size() - 1]
 	var cx: float = core_cell.x * T + T / 2.0
 	var cy: float = core_cell.y * T + T / 2.0
 
-	# Intense fire glow layers
+	# Intense fire glow layers — brighter alphas
 	var pulse: float = 0.5 + 0.5 * sin(GM.game_time * 3.0)
 	for i in range(6):
 		var glow_r: float = T * (1.1 - float(i) * 0.15)
-		var glow_a: float = (0.2 + 0.15 * pulse) * float(i + 1) * 0.1
-		draw_circle(Vector2(cx, cy), glow_r, Color(1, 0.12 + float(i) * 0.03, 0.05, glow_a))
-	# Fire tongues around core
+		var glow_a: float = (0.3 + 0.2 * pulse) * float(i + 1) * 0.12
+		draw_circle(Vector2(cx, cy), glow_r, Color(1, 0.18 + float(i) * 0.04, 0.06, glow_a))
+	# Fire tongues around core — more vivid
 	for fi in range(8):
 		var fa: float = GM.game_time * 2.5 + float(fi) * TAU / 8.0
 		var fdist: float = 16.0 + 6.0 * sin(GM.game_time * 4.0 + float(fi) * 1.7)
 		var fx: float = cx + cos(fa) * fdist
 		var fy: float = cy + sin(fa) * fdist
 		var fh: float = 4.0 + 3.0 * sin(GM.game_time * 5.0 + float(fi))
-		draw_circle(Vector2(fx, fy), fh, Color(1, 0.4, 0.05, 0.2 * pulse))
-		draw_circle(Vector2(fx, fy), fh * 0.5, Color(1, 0.6, 0.15, 0.35 * pulse))
+		draw_circle(Vector2(fx, fy), fh, Color(1, 0.45, 0.08, 0.3 * pulse))
+		draw_circle(Vector2(fx, fy), fh * 0.5, Color(1, 0.65, 0.2, 0.5 * pulse))
 
-	draw_circle(Vector2(cx, cy), 12, Color(0.9, 0.1, 0.05))
+	draw_circle(Vector2(cx, cy), 12, Color(0.95, 0.15, 0.06))
 	draw_circle(Vector2(cx, cy), 8, Config.COLOR_CORE)
-	draw_arc(Vector2(cx, cy), 14, 0, TAU, 24, Color(1, 0.3, 0.1, 0.4 + pulse * 0.2), 1.5)
-	draw_string(font, Vector2(cx - 40, cy - 18), Locale.t("HELL'S CORE"), HORIZONTAL_ALIGNMENT_CENTER, 80, 9, Color(1, 0.85, 0.8))
+	draw_arc(Vector2(cx, cy), 14, 0, TAU, 24, Color(1, 0.35, 0.12, 0.55 + pulse * 0.25), 1.5)
+	draw_string(font, Vector2(cx - 40, cy - 18), Locale.t("HELL'S CORE"), HORIZONTAL_ALIGNMENT_CENTER, 80, 9, Color(1, 0.88, 0.82))
 
 	# Core HP bar on map
 	var bar_w: float = 40.0
@@ -144,10 +178,10 @@ func _draw_map() -> void:
 
 func _draw_ambient() -> void:
 	var t := GM.game_time
-	# Heaven zone (top rows 0-3): soft golden light shafts and sparkles
+	# Heaven zone (top rows 0-3): bright golden light shafts and sparkles
 	for li in range(4):
 		var lx: float = 80.0 + float(li) * 180.0 + sin(t * 0.3 + float(li)) * 30.0
-		var shaft_a: float = 0.03 + 0.015 * sin(t * 0.8 + float(li) * 1.5)
+		var shaft_a: float = 0.045 + 0.022 * sin(t * 0.8 + float(li) * 1.5)
 		# Vertical light shaft from top, fading downward
 		for sy in range(0, 4 * T, 4):
 			var fade: float = 1.0 - float(sy) / float(4 * T)
@@ -157,17 +191,17 @@ func _draw_ambient() -> void:
 		var seed_val: float = float(si) * 73.37
 		var sx: float = fmod(seed_val * 47.1 + t * 8.0, Config.GAME_WIDTH)
 		var sy: float = fmod(seed_val * 31.7 + t * 3.0, float(3 * T))
-		var sparkle_a: float = 0.3 + 0.3 * sin(t * 4.0 + seed_val)
-		if sparkle_a > 0.3:
-			draw_circle(Vector2(sx, sy), 1.2, Color(1.0, 0.95, 0.85, sparkle_a * 0.5))
+		var sparkle_a: float = 0.4 + 0.4 * sin(t * 4.0 + seed_val)
+		if sparkle_a > 0.35:
+			draw_circle(Vector2(sx, sy), 1.4, Color(1.0, 0.95, 0.85, sparkle_a * 0.7))
 
 	# Hell zone (bottom rows 8-11): rising embers and heat glow
 	var hell_top: float = float(8 * T)
-	# Bottom edge fire glow
-	var fire_glow_a: float = 0.04 + 0.02 * sin(t * 1.5)
-	draw_rect(Rect2(0, float(10 * T), Config.GAME_WIDTH, float(2 * T)), Color(1, 0.15, 0.0, fire_glow_a))
-	draw_rect(Rect2(0, float(11 * T), Config.GAME_WIDTH, float(T)), Color(1, 0.1, 0.0, fire_glow_a * 1.5))
-	# Rising ember particles
+	# Bottom edge fire glow — brighter
+	var fire_glow_a: float = 0.06 + 0.03 * sin(t * 1.5)
+	draw_rect(Rect2(0, float(10 * T), Config.GAME_WIDTH, float(2 * T)), Color(1, 0.2, 0.0, fire_glow_a))
+	draw_rect(Rect2(0, float(11 * T), Config.GAME_WIDTH, float(T)), Color(1, 0.15, 0.0, fire_glow_a * 1.5))
+	# Rising ember particles — more vivid
 	for ei in range(16):
 		var seed_val: float = float(ei) * 53.91
 		var ex: float = fmod(seed_val * 41.3, Config.GAME_WIDTH)
@@ -176,12 +210,52 @@ func _draw_ambient() -> void:
 		var ey: float = float(Config.GAME_HEIGHT) - ey_cycle
 		if ey >= hell_top:
 			var ember_life: float = ey_cycle / float(4 * T)  # 0=just spawned, 1=faded
-			var ember_a: float = (1.0 - ember_life) * 0.5
-			var ember_r: float = 1.5 + (1.0 - ember_life) * 1.0
+			var ember_a: float = (1.0 - ember_life) * 0.7
+			var ember_r: float = 1.8 + (1.0 - ember_life) * 1.2
 			# Slight horizontal drift
 			ex += sin(t * 2.0 + seed_val) * 4.0
-			draw_circle(Vector2(ex, ey), ember_r, Color(1, 0.5, 0.1, ember_a))
-			draw_circle(Vector2(ex, ey), ember_r * 0.5, Color(1, 0.8, 0.3, ember_a * 0.7))
+			draw_circle(Vector2(ex, ey), ember_r, Color(1, 0.55, 0.15, ember_a))
+			draw_circle(Vector2(ex, ey), ember_r * 0.5, Color(1, 0.85, 0.35, ember_a * 0.8))
+
+func _draw_foreground_particles() -> void:
+	var t := GM.game_time
+	# Foreground depth layer — larger, softer particles that drift in front of entities
+
+	# Heaven zone: drifting light motes — brighter
+	for i in range(8):
+		var seed_f: float = float(i) * 97.13
+		var fx: float = fmod(seed_f * 37.7 + t * 6.0, float(Config.GAME_WIDTH + 40)) - 20.0
+		var fy: float = fmod(seed_f * 23.1 + t * 2.5, float(4 * T))
+		var mote_a: float = 0.09 + 0.06 * sin(t * 1.5 + seed_f)
+		var mote_r: float = 2.5 + 1.5 * sin(t * 0.8 + seed_f * 0.5)
+		# Soft glow
+		draw_circle(Vector2(fx, fy), mote_r * 2.0, Color(0.9, 0.95, 1.0, mote_a * 0.4))
+		draw_circle(Vector2(fx, fy), mote_r, Color(0.95, 0.97, 1.0, mote_a))
+
+	# Hell zone: floating ash and cinder — more vivid
+	var hell_top_y: float = float(8 * T)
+	for i in range(10):
+		var seed_f: float = float(i) * 61.47
+		var fx: float = fmod(seed_f * 29.3, float(Config.GAME_WIDTH))
+		fx += sin(t * 0.5 + seed_f) * 12.0  # gentle horizontal sway
+		# Slow rise
+		var fy_cycle: float = fmod(seed_f * 11.3 + t * 8.0, float(4 * T))
+		var fy: float = float(Config.GAME_HEIGHT) - fy_cycle
+		if fy >= hell_top_y:
+			var ash_life: float = fy_cycle / float(4 * T)
+			var ash_a: float = (1.0 - ash_life) * 0.12
+			var ash_r: float = 3.0 + (1.0 - ash_life) * 2.0
+			# Soft warm glow — more saturated
+			draw_circle(Vector2(fx, fy), ash_r, Color(1.0, 0.45, 0.18, ash_a))
+			draw_circle(Vector2(fx, fy), ash_r * 0.4, Color(1.0, 0.75, 0.35, ash_a * 1.8))
+
+	# Mid-zone: universal dust motes — slightly more visible
+	for i in range(6):
+		var seed_f: float = float(i) * 113.79
+		var fx: float = fmod(seed_f * 43.1 + t * 4.0, float(Config.GAME_WIDTH + 20)) - 10.0
+		var fy: float = fmod(seed_f * 67.3 + t * 1.2, float(Config.GAME_HEIGHT))
+		var dust_a: float = 0.045 + 0.03 * sin(t * 2.0 + seed_f)
+		draw_circle(Vector2(fx, fy), 2.0, Color(0.8, 0.8, 0.85, dust_a))
 
 func _draw_path_flow() -> void:
 	var path_px: Array[Vector2] = Config.path_pixels
@@ -221,131 +295,120 @@ func _tile_hash(c: int, r: int) -> int:
 func _draw_ground_tile(rx: float, ry: float, c: int, r: int) -> void:
 	var h := _tile_hash(c, r)
 	var g := _row_gradient(r)  # 0.0 = heaven, 1.0 = hell
+	var WALL_H := 10  # visible wall height for isometric depth
 
-	# Base color blended by gradient: cool blue-silver (heaven) → warm dark purple (hell)
+	# Base color blended by gradient: cool blue-silver (heaven) → warm crimson (hell)
 	var v := float(h % 30 - 15) * 0.002
 	var heaven_base := Config.COLOR_HEAVEN_GROUND if (c + r) % 2 == 0 else Config.COLOR_HEAVEN_GROUND_ALT
 	var hell_base := Config.COLOR_GROUND if (c + r) % 2 == 0 else Config.COLOR_GROUND_ALT
 	var base := heaven_base.lerp(hell_base, g)
 	var tile_col := Color(base.r + v, base.g + v * 0.6, base.b + v)
+
+	# --- Isometric wall faces (drawn BEHIND the top face) ---
+	var wall_dark := tile_col.darkened(0.35)
+	var wall_mid := tile_col.darkened(0.22)
+
+	# South wall — visible when path is below this tile
+	if Config.is_path(c, r + 1):
+		draw_colored_polygon(PackedVector2Array([
+			Vector2(rx, ry + T), Vector2(rx + T, ry + T),
+			Vector2(rx + T, ry + T + WALL_H), Vector2(rx, ry + T + WALL_H)
+		]), wall_dark)
+		draw_rect(Rect2(rx, ry + T, T, 3), wall_mid)
+		draw_line(Vector2(rx, ry + T + WALL_H), Vector2(rx + T, ry + T + WALL_H), Color(0, 0, 0, 0.3), 1.5)
+
+	# East wall — visible when path is to the right
+	if Config.is_path(c + 1, r):
+		var east_col := tile_col.darkened(0.45)
+		draw_colored_polygon(PackedVector2Array([
+			Vector2(rx + T, ry), Vector2(rx + T, ry + T),
+			Vector2(rx + T + 6, ry + T + WALL_H), Vector2(rx + T + 6, ry + WALL_H)
+		]), east_col)
+
+	# South-east corner fill
+	if Config.is_path(c, r + 1) and Config.is_path(c + 1, r):
+		draw_colored_polygon(PackedVector2Array([
+			Vector2(rx + T, ry + T), Vector2(rx + T + 6, ry + T + WALL_H),
+			Vector2(rx + T, ry + T + WALL_H)
+		]), tile_col.darkened(0.5))
+
+	# --- Top face (flat-shaded) ---
 	draw_rect(Rect2(rx, ry, T, T), tile_col)
 
-	# Raised platform — lighter inner face
-	draw_rect(Rect2(rx + 2, ry + 2, T - 4, T - 4), tile_col.lightened(0.05))
-
-	# Bevel highlight — blended between heaven (cool) and hell (warm)
+	# Highlight border: top + left edges bright, bottom + right edges dark
 	var highlight := Config.COLOR_HEAVEN_HIGHLIGHT.lerp(Config.COLOR_TILE_HIGHLIGHT, g)
-	draw_line(Vector2(rx + 1, ry + 1), Vector2(rx + T - 1, ry + 1), highlight, 1.0)
-	draw_line(Vector2(rx + 1, ry + 2), Vector2(rx + 1, ry + T - 2), Color(highlight.r, highlight.g, highlight.b, highlight.a * 0.7), 1.0)
+	draw_line(Vector2(rx + 1, ry + 1), Vector2(rx + T - 1, ry + 1), Color(highlight.r, highlight.g, highlight.b, highlight.a * 1.6), 1.0)
+	draw_line(Vector2(rx + 1, ry + 2), Vector2(rx + 1, ry + T - 2), Color(highlight.r, highlight.g, highlight.b, highlight.a * 1.2), 1.0)
+	draw_line(Vector2(rx + 2, ry + T - 1), Vector2(rx + T, ry + T - 1), Color(0, 0, 0, 0.28), 1.0)
+	draw_line(Vector2(rx + T - 1, ry + 2), Vector2(rx + T - 1, ry + T - 2), Color(0, 0, 0, 0.2), 1.0)
 
-	# Bevel shadow (bottom + right)
-	draw_line(Vector2(rx + 2, ry + T - 1), Vector2(rx + T, ry + T - 1), Config.COLOR_TILE_SHADOW, 1.0)
-	draw_line(Vector2(rx + T - 1, ry + 2), Vector2(rx + T - 1, ry + T - 2), Color(0, 0, 0, 0.14), 1.0)
-
-	# Cliff faces — blended
-	var cliff := Config.COLOR_HEAVEN_CLIFF.lerp(Config.COLOR_CLIFF_FACE, g)
+	# Top edge lip when wall is visible below
 	if Config.is_path(c, r + 1):
-		draw_rect(Rect2(rx, ry + T - 4, T, 4), cliff)
-		var edge_col := Color(0.25, 0.28, 0.35, 0.3).lerp(Color(0.4, 0.25, 0.15, 0.35), g)
-		draw_line(Vector2(rx, ry + T - 4), Vector2(rx + T, ry + T - 4), edge_col, 1.0)
-	if Config.is_path(c + 1, r):
-		draw_rect(Rect2(rx + T - 4, ry, 4, T), Color(cliff.r, cliff.g, cliff.b, cliff.a * 0.8))
-		var edge_col := Color(0.22, 0.25, 0.32, 0.25).lerp(Color(0.35, 0.2, 0.12, 0.3), g)
-		draw_line(Vector2(rx + T - 4, ry), Vector2(rx + T - 4, ry + T), edge_col, 1.0)
-	if Config.is_path(c - 1, r):
-		draw_rect(Rect2(rx, ry, 4, T), Color(cliff.r, cliff.g, cliff.b, cliff.a * 0.7))
-	if Config.is_path(c, r - 1):
-		draw_rect(Rect2(rx, ry, T, 4), Color(cliff.r, cliff.g, cliff.b, cliff.a * 0.7))
+		draw_line(Vector2(rx, ry + T - 1), Vector2(rx + T, ry + T - 1), tile_col.lightened(0.14), 1.5)
 
 	# Decorative details — different for heaven vs hell
 	if g > 0.5:
-		# Hell side: lava cracks, embers, pebbles
-		if h % 8 == 0:
-			var lx := rx + float(h % 24) + 12
-			var ly := ry + float((h / 20) % 24) + 12
-			var lx2 := lx + float(h % 14) - 7
-			var ly2 := ly + float((h / 14) % 14) - 7
-			var crack_a: float = (g - 0.5) * 2.0  # fade in from middle
-			draw_line(Vector2(lx, ly), Vector2(lx2, ly2), Color(Config.COLOR_LAVA_CRACK.r, Config.COLOR_LAVA_CRACK.g, Config.COLOR_LAVA_CRACK.b, Config.COLOR_LAVA_CRACK.a * crack_a), 1.0)
-			draw_circle(Vector2(lx, ly), 1.5, Color(Config.COLOR_EMBER.r, Config.COLOR_EMBER.g, Config.COLOR_EMBER.b, Config.COLOR_EMBER.a * crack_a))
-		elif h % 13 == 0:
-			var rock_x := rx + float(h % 28) + 10
-			var rock_y := ry + float((h / 28) % 28) + 10
-			draw_circle(Vector2(rock_x, rock_y), 2.0, tile_col.darkened(0.15))
-			draw_circle(Vector2(rock_x + 3, rock_y + 1), 1.5, tile_col.darkened(0.1))
-		elif h % 19 == 0:
+		# Hell side: bright orange geometric dots and ember glows
+		var hell_fade: float = (g - 0.5) * 2.0
+		if h % 7 == 0:
+			var dx := rx + float(h % 28) + 10
+			var dy := ry + float((h / 20) % 28) + 10
+			draw_circle(Vector2(dx, dy), 2.0, Color(1.0, 0.55, 0.15, 0.5 * hell_fade))
+			draw_circle(Vector2(dx, dy), 4.0, Color(1.0, 0.4, 0.1, 0.2 * hell_fade))
+		elif h % 11 == 0:
 			var ex := rx + float(h % 28) + 10
 			var ey := ry + float((h / 28) % 28) + 10
-			var glow := 0.25 + 0.2 * sin(GM.game_time * 2.0 + float(h) * 0.01)
-			draw_circle(Vector2(ex, ey), 2.0, Color(1, 0.4, 0.1, glow))
-			draw_circle(Vector2(ex, ey), 4.5, Color(1, 0.3, 0.05, glow * 0.3))
+			var glow := 0.35 + 0.25 * sin(GM.game_time * 2.5 + float(h) * 0.01)
+			draw_circle(Vector2(ex, ey), 2.5, Color(1.0, 0.5, 0.15, glow * hell_fade))
 	else:
-		# Heaven side: star sparkles, marble veins, crystal accents
-		if h % 9 == 0:
-			# Twinkling star particle
-			var star_x := rx + float(h % 30) + 9
-			var star_y := ry + float((h / 30) % 30) + 9
-			var twinkle := 0.2 + 0.3 * sin(GM.game_time * 3.0 + float(h) * 0.02)
-			draw_circle(Vector2(star_x, star_y), 1.2, Color(0.85, 0.9, 1.0, twinkle))
-			# Tiny cross shape
-			draw_line(Vector2(star_x - 2, star_y), Vector2(star_x + 2, star_y), Color(0.9, 0.95, 1.0, twinkle * 0.5), 0.5)
-			draw_line(Vector2(star_x, star_y - 2), Vector2(star_x, star_y + 2), Color(0.9, 0.95, 1.0, twinkle * 0.5), 0.5)
-		elif h % 14 == 0:
-			# Marble vein (subtle light streak)
-			var mx := rx + float(h % 20) + 14
-			var my := ry + float((h / 20) % 20) + 14
-			var mx2 := mx + float(h % 16) - 8
-			var my2 := my + float((h / 16) % 12) - 6
-			draw_line(Vector2(mx, my), Vector2(mx2, my2), Color(0.7, 0.75, 0.85, 0.08), 1.0)
-		elif h % 17 == 0:
-			# Clean stone pebble (lighter tone)
-			var rock_x := rx + float(h % 28) + 10
-			var rock_y := ry + float((h / 28) % 28) + 10
-			draw_circle(Vector2(rock_x, rock_y), 1.8, tile_col.lightened(0.1))
+		# Heaven side: simple 4-point star sparkles
+		if h % 8 == 0:
+			var sx := rx + float(h % 30) + 9
+			var sy := ry + float((h / 30) % 30) + 9
+			var twinkle := 0.35 + 0.35 * sin(GM.game_time * 3.5 + float(h) * 0.02)
+			var star_len: float = 3.0
+			draw_line(Vector2(sx - star_len, sy), Vector2(sx + star_len, sy), Color(0.9, 0.95, 1.0, twinkle * 0.7), 1.0)
+			draw_line(Vector2(sx, sy - star_len), Vector2(sx, sy + star_len), Color(0.9, 0.95, 1.0, twinkle * 0.7), 1.0)
+			draw_circle(Vector2(sx, sy), 1.0, Color(0.95, 0.97, 1.0, twinkle))
 
 func _draw_path_tile(rx: float, ry: float, c: int, r: int) -> void:
-	var h := _tile_hash(c, r)
 	var g := _row_gradient(r)  # 0.0 = heaven, 1.0 = hell
 
-	# Sunken base — blended
+	# Dark sunken base
 	var path_col := Config.COLOR_HEAVEN_PATH.lerp(Config.COLOR_PATH, g)
-	draw_rect(Rect2(rx, ry, T, T), path_col)
+	var deep_col := path_col.darkened(0.15)
+	draw_rect(Rect2(rx, ry, T, T), deep_col)
 
-	# Worn walking surface — blended
+	# Brighter center surface
 	var surface_col := Config.COLOR_HEAVEN_PATH_SURFACE.lerp(Config.COLOR_PATH_SURFACE, g)
-	draw_rect(Rect2(rx + 5, ry + 5, T - 10, T - 10), surface_col)
+	draw_rect(Rect2(rx + 3, ry + 3, T - 6, T - 6), surface_col)
 
-	# Shadows cast by elevated ground neighbors
+	# Cast shadows from walls (2 bands)
+	# North wall casts shadow downward
 	if not Config.is_path(c, r - 1):
-		draw_rect(Rect2(rx, ry, T, 5), Color(0, 0, 0, 0.2))
-		draw_rect(Rect2(rx, ry + 5, T, 3), Color(0, 0, 0, 0.07))
+		draw_rect(Rect2(rx, ry, T, 6), Color(0, 0, 0, 0.3))
+		draw_rect(Rect2(rx, ry + 6, T, 4), Color(0, 0, 0, 0.12))
+	# West wall casts shadow rightward
 	if not Config.is_path(c - 1, r):
-		draw_rect(Rect2(rx, ry, 5, T), Color(0, 0, 0, 0.15))
-		draw_rect(Rect2(rx + 5, ry, 3, T), Color(0, 0, 0, 0.05))
+		draw_rect(Rect2(rx, ry, 5, T), Color(0, 0, 0, 0.25))
+		draw_rect(Rect2(rx + 5, ry, 3, T), Color(0, 0, 0, 0.1))
 
-	# Subtle light on open edges (bottom / right) — warmer in hell, cooler in heaven
-	var edge_light := Color(0.8, 0.85, 1.0, 0.05).lerp(Color(1, 0.8, 0.6, 0.04), g)
+	# Subtle light on open edges
+	var edge_light := Color(0.8, 0.85, 1.0, 0.08).lerp(Color(1, 0.8, 0.6, 0.07), g)
 	if not Config.is_path(c, r + 1):
 		draw_line(Vector2(rx + 2, ry + T - 2), Vector2(rx + T - 2, ry + T - 2), edge_light, 1.0)
 	if not Config.is_path(c + 1, r):
 		draw_line(Vector2(rx + T - 2, ry + 2), Vector2(rx + T - 2, ry + T - 2), Color(edge_light.r, edge_light.g, edge_light.b, edge_light.a * 0.75), 1.0)
 
-	# Path edge definition — blended
+	# Inset border
 	var edge_col := Config.COLOR_HEAVEN_PATH_EDGE.lerp(Config.COLOR_PATH_EDGE, g)
 	draw_rect(Rect2(rx + 0.5, ry + 0.5, T - 1, T - 1), edge_col, false, 0.5)
-
-	# Subtle wear marks
-	if h % 6 == 0:
-		var wx := rx + float(h % 20) + 14
-		var wy := ry + T / 2.0
-		var wear_col := Color(0.2, 0.2, 0.22, 0.15).lerp(Color(0.1, 0.07, 0.05, 0.2), g)
-		draw_line(Vector2(wx, wy - 5), Vector2(wx + 1, wy + 5), wear_col, 1.0)
 
 # ═══════════════════════════════════════════════════════
 # GUARDIAN PROTECTION ZONE
 # ═══════════════════════════════════════════════════════
 func _draw_guardian_zone() -> void:
-	if not GM._has_alive_type("divine_guardian"):
+	if not GM._has_alive_type("holy_sentinel"):
 		return
 	var half := Config.path_pixels.size() / 2
 	var pulse := 0.3 + 0.15 * sin(GM.game_time * 2.0)
@@ -394,13 +457,7 @@ func _draw_towers() -> void:
 				var bpy: float = cy + 10 * build_a - 20 * (1.0 - build_a)
 				draw_circle(Vector2(cx + cos(ba) * br, bpy), 1.5, Color(1, 0.8, 0.4, build_a * 0.5))
 
-		match t["type"]:
-			"demon_archer": _draw_avatar_archer(cx, cy, a)
-			"hellfire_mage": _draw_avatar_mage(cx, cy, a)
-			"necromancer": _draw_avatar_necro(cx, cy, a)
-			"lucifer": _draw_avatar_lucifer(cx, cy, a)
-			"hades": _draw_avatar_hades(cx, cy, a)
-			"cocytus": _draw_avatar_cocytus(cx, cy, a)
+		_draw_tower_model(t, cx, cy, a)
 
 		# Hades buff aura — pale golden ring rising vertically
 		if t.get("hades_buffed", false):
@@ -438,16 +495,16 @@ func _draw_towers() -> void:
 			var tp := Vector2(t["x"], t["y"])
 			var fc: Color = t["color"]
 			match t["type"]:
-				"demon_archer":
+				"bone_marksman":
 					# Quick bright spark
 					draw_circle(tp, 8 * flash_a, Color(1, 0.6, 0.2, 0.35 * flash_a))
 					draw_circle(tp, 3 * flash_a, Color(1, 0.9, 0.5, 0.7 * flash_a))
-				"hellfire_mage":
+				"inferno_warlock":
 					# Purple flare burst
 					draw_circle(tp, 14 * flash_a, Color(0.6, 0.15, 0.8, 0.2 * flash_a))
 					draw_circle(tp, 8 * flash_a, Color(1, 0.5, 0.8, 0.4 * flash_a))
 					draw_circle(tp, 3 * flash_a, Color(1, 1, 1, 0.5 * flash_a))
-				"necromancer":
+				"soul_reaper":
 					# Green pulse ring
 					draw_arc(tp, 10 * flash_a, 0, TAU, 16, Color(0.2, 0.9, 0.4, 0.4 * flash_a), 2.0)
 					draw_circle(tp, 4 * flash_a, Color(0.4, 1, 0.6, 0.5 * flash_a))
@@ -469,7 +526,7 @@ func _draw_towers() -> void:
 # ═══════════════════════════════════════════════════════
 func _draw_enemies() -> void:
 	var gt: float = GM.game_time
-	var has_commander: bool = GM._has_alive_type("archangel")
+	var has_commander: bool = GM._has_alive_type("archangel_marshal")
 
 	for e in GM.enemies:
 		if not e["alive"]:
@@ -495,7 +552,7 @@ func _draw_enemies() -> void:
 			draw_line(Vector2(ex, ey - 20 * spawn_a), Vector2(ex, ey + 10), Color(1, 0.9, 0.6, spawn_a * 0.3), 2.0)
 
 		# Archangel speed buff — golden speed streaks behind boosted enemies
-		if has_commander and e["type"] != "archangel":
+		if has_commander and e["type"] != "archangel_marshal":
 			for si in range(3):
 				var streak_off: float = float(si + 1) * 3.5
 				var streak_a: float = 0.12 - float(si) * 0.03
@@ -503,7 +560,7 @@ func _draw_enemies() -> void:
 				draw_line(Vector2(ex - er - streak_off, ey + 1), Vector2(ex - er - streak_off + 3, ey + 1), Color(1, 0.85, 0.3, streak_a), 1.0)
 
 		# Monk healing sparkles — green particles rising from monks
-		if e["type"] == "monk":
+		if e["type"] == "temple_cleric":
 			for pi in range(3):
 				var spark_phase: float = fmod(gt * 1.5 + pi * 0.7, 2.0)
 				if spark_phase < 1.0:
@@ -515,22 +572,12 @@ func _draw_enemies() -> void:
 					draw_line(Vector2(spark_x - 1.5, spark_y), Vector2(spark_x + 1.5, spark_y), Color(0.5, 1, 0.6, spark_a * 0.7), 1.0)
 					draw_line(Vector2(spark_x, spark_y - 1.5), Vector2(spark_x, spark_y + 1.5), Color(0.5, 1, 0.6, spark_a * 0.7), 1.0)
 
-		# Draw avatar based on type
-		match e["type"]:
-			"angel_scout": _draw_enemy_scout(ex, ey, er, flash)
-			"holy_knight": _draw_enemy_knight(ex, ey, er, flash)
-			"divine_hunter": _draw_enemy_hunter(ex, ey, er, flash)
-			"god_of_war": _draw_enemy_war(ex, ey, er, flash)
-			"paladin": _draw_enemy_paladin(ex, ey, er, flash)
-			"monk": _draw_enemy_monk(ex, ey, er, flash)
-			"archangel": _draw_enemy_archangel(ex, ey, er, flash)
-			"divine_guardian": _draw_enemy_guardian(ex, ey, er, flash)
-			"michael": _draw_enemy_michael(ex, ey, er, flash)
-			"zeus": _draw_enemy_zeus(ex, ey, er, flash)
-			"raphael": _draw_enemy_raphael(ex, ey, er, flash)
-			_:
-				var body_color: Color = Color(1, 0.2, 0.2) if flash else e["color"]
-				draw_circle(Vector2(ex, ey), er, body_color)
+		# Draw 3D model avatar
+		_draw_enemy_model(e, ex, ey, er, flash)
+
+		# Rim lighting — upper-left highlight on all enemies
+		if not flash:
+			_draw_rim_light(ex, ey, er, 0.8, e["color"].lightened(0.5))
 
 		# Hit white flash — brief bright glow on damage
 		if flash:
@@ -589,11 +636,11 @@ func _draw_projectiles() -> void:
 			tower_type = p["tower"].get("type", "")
 
 		match tower_type:
-			"demon_archer":
+			"bone_marksman":
 				_draw_proj_arrow(px, py, angle, p["color"])
-			"hellfire_mage":
+			"inferno_warlock":
 				_draw_proj_fireball(px, py, p["color"])
-			"necromancer":
+			"soul_reaper":
 				_draw_proj_necro(px, py, angle, p["color"])
 			_:
 				# Default — glow + core
@@ -631,61 +678,40 @@ func _draw_proj_fireball(px: float, py: float, color: Color) -> void:
 	var pos := Vector2(px, py)
 	var pulse: float = 0.85 + 0.15 * sin(GM.game_time * 18.0)
 
-	# Outer corona — large soft glow
-	draw_circle(pos, 12 * pulse, Color(1, 0.3, 0.05, 0.1))
-	draw_circle(pos, 9 * pulse, Color(1, 0.2, 0.0, 0.18))
-
-	# Trailing fire fragments
-	for ti in range(5):
-		var frag_angle := GM.game_time * 8.0 + ti * TAU / 5.0
-		var frag_dist := 5.0 + 3.0 * sin(GM.game_time * 12.0 + ti * 1.5)
-		var fx := px + cos(frag_angle) * frag_dist
-		var fy := py + sin(frag_angle) * frag_dist
-		var frag_a := 0.2 + 0.15 * sin(GM.game_time * 15.0 + ti)
-		draw_circle(Vector2(fx, fy), 2.0, Color(1, 0.45, 0.1, frag_a))
+	# Outer glow — bold and bright
+	draw_circle(pos, 10 * pulse, Color(1, 0.35, 0.08, 0.15))
 
 	# Fire ring
-	draw_arc(pos, 6 * pulse, 0, TAU, 16, Color(1, 0.5, 0.15, 0.4), 1.5)
+	draw_arc(pos, 7 * pulse, 0, TAU, 16, Color(1, 0.55, 0.2, 0.5), 1.5)
 
-	# Core — purple/orange gradient
-	draw_circle(pos, 5.0, Color(0.7, 0.2, 0.9, 0.85))
-	draw_circle(pos, 3.0, Color(1, 0.5, 0.8, 0.9))
+	# Core — purple/orange
+	draw_circle(pos, 5.0, Color(0.75, 0.25, 0.95, 0.9))
+	draw_circle(pos, 3.0, Color(1, 0.55, 0.85, 0.95))
 
 	# White-hot center
-	draw_circle(pos, 1.5, Color(1, 1, 1, 0.85))
+	draw_circle(pos, 1.5, Color(1, 1, 1, 0.9))
 
 func _draw_proj_necro(px: float, py: float, angle: float, color: Color) -> void:
 	var dir := Vector2(cos(angle), sin(angle))
 	var pos := Vector2(px, py)
 
-	# Ghostly wisp trail — multiple fading segments
-	for ti in range(4):
+	# Ghostly wisp trail
+	for ti in range(3):
 		var trail_pos := pos - dir * (4.0 + ti * 5.0)
 		var sway := sin(GM.game_time * 8.0 + ti * 1.5) * 3.0
 		trail_pos += Vector2(-dir.y, dir.x) * sway
-		var trail_a := 0.25 - ti * 0.05
-		draw_circle(trail_pos, 2.5 - ti * 0.4, Color(0.2, 0.8, 0.4, trail_a))
+		var trail_a := 0.3 - ti * 0.08
+		draw_circle(trail_pos, 2.2 - ti * 0.4, Color(0.25, 0.9, 0.45, trail_a))
 
-	# Orbiting wisps — larger orbit
-	var t: float = GM.game_time * 5.0
-	for i in range(3):
-		var wa: float = t + i * TAU / 3.0
-		var orbit_r := 6.0 + sin(t * 0.5 + i) * 1.5
-		var wx: float = px + cos(wa) * orbit_r
-		var wy: float = py + sin(wa) * orbit_r
-		draw_circle(Vector2(wx, wy), 2.0, Color(0.3, 1, 0.5, 0.3))
-		# Tiny wisp trail
-		var wx2: float = px + cos(wa - 0.4) * orbit_r
-		var wy2: float = py + sin(wa - 0.4) * orbit_r
-		draw_circle(Vector2(wx2, wy2), 1.0, Color(0.3, 1, 0.5, 0.15))
+	# Outer glow
+	draw_circle(pos, 5.5, Color(0.15, 0.5, 0.25, 0.2))
 
-	# Core orb — layered
-	draw_circle(pos, 5, Color(0.1, 0.4, 0.2, 0.6))
-	draw_circle(pos, 3.5, Color(0.15, 0.6, 0.3, 0.85))
+	# Core orb — bright green
+	draw_circle(pos, 3.5, Color(0.2, 0.7, 0.35, 0.9))
 	draw_circle(pos, 2.0, color)
 
 	# Bright center
-	draw_circle(pos, 1.0, Color(0.6, 1, 0.8, 0.7))
+	draw_circle(pos, 1.0, Color(0.65, 1, 0.8, 0.8))
 
 # ═══════════════════════════════════════════════════════
 # EFFECTS
@@ -699,23 +725,17 @@ func _draw_effects() -> void:
 			"death":
 				var expand: float = (1.0 - alpha) * 25.0
 				var col: Color = e["color"]
-				# Outer expanding ring
-				draw_arc(pos, e["radius"] + expand, 0, TAU, 28, Color(col.r, col.g, col.b, alpha * 0.8), 2.5)
-				# Inner ring (slower)
-				draw_arc(pos, e["radius"] + expand * 0.4, 0, TAU, 20, Color(col.r, col.g, col.b, alpha * 0.35), 1.5)
-				# Spark lines radiating outward — like an explosion burst
-				for i in range(10):
-					var pa: float = i * TAU / 10.0 + e["radius"] * 0.1
-					var inner_r: float = e["radius"] * 0.5 + expand * 0.3
-					var outer_r: float = e["radius"] + expand * (0.7 + 0.3 * sin(pa * 3.0))
-					var p1 := Vector2(e["x"] + cos(pa) * inner_r, e["y"] + sin(pa) * inner_r)
-					var p2 := Vector2(e["x"] + cos(pa) * outer_r, e["y"] + sin(pa) * outer_r)
-					draw_line(p1, p2, Color(col.r, col.g, col.b, alpha * 0.6), 1.5)
-					# Bright tip
-					draw_circle(p2, 1.5 * alpha, Color(1, 0.9, 0.7, alpha * 0.5))
+				# Bold expanding ring
+				draw_arc(pos, e["radius"] + expand, 0, TAU, 24, Color(col.r, col.g, col.b, alpha * 0.9), 2.5)
+				# Triangular shards radiating outward
+				for i in range(6):
+					var pa: float = i * TAU / 6.0 + e["radius"] * 0.1
+					var outer_r: float = e["radius"] + expand * 0.8
+					var shard := Vector2(e["x"] + cos(pa) * outer_r, e["y"] + sin(pa) * outer_r)
+					draw_circle(shard, 2.0 * alpha, Color(1, 0.95, 0.8, alpha * 0.7))
 				# Center flash
-				draw_circle(pos, 6 * alpha, Color(1, 0.95, 0.8, alpha * 0.5))
-				draw_circle(pos, 3 * alpha, Color(1, 1, 1, alpha * 0.3))
+				draw_circle(pos, 6 * alpha, Color(1, 0.95, 0.8, alpha * 0.6))
+				draw_circle(pos, 3 * alpha, Color(1, 1, 1, alpha * 0.4))
 			"aoe":
 				# Shockwave — expanding ring
 				var ring_r: float = e["radius"] * (1.0 - alpha * 0.2)
@@ -938,14 +958,9 @@ func _draw_placement_preview() -> void:
 		draw_circle(center, data["range"], Config.COLOR_RANGE)
 		draw_arc(center, data["range"], 0, TAU, 48, Config.COLOR_RANGE_BORDER, 1.0)
 
-		# Tower avatar preview (semi-transparent)
-		match GM.selected_tower_type:
-			"demon_archer": _draw_avatar_archer(center.x, center.y, 0.5)
-			"hellfire_mage": _draw_avatar_mage(center.x, center.y, 0.5)
-			"necromancer": _draw_avatar_necro(center.x, center.y, 0.5)
-			"lucifer": _draw_avatar_lucifer(center.x, center.y, 0.5)
-			"hades": _draw_avatar_hades(center.x, center.y, 0.5)
-			"cocytus": _draw_avatar_cocytus(center.x, center.y, 0.5)
+		# Tower model preview (semi-transparent)
+		var preview_tower := {"type": GM.selected_tower_type, "color": Config.TOWER_DATA[GM.selected_tower_type]["color"]}
+		_draw_tower_model(preview_tower, center.x, center.y, 0.4)
 
 # ═══════════════════════════════════════════════════════
 # NOTIFICATIONS
@@ -1108,1467 +1123,286 @@ func _draw_die_face(cx: float, cy: float, value: int, size: float, alpha: float,
 		draw_circle(p, pip_r, pip_col)
 		draw_circle(p, pip_r * 0.5, Color(1, 1, 1, alpha * 0.6))
 
-# ═══════════════════════════════════════════════════════
-# TOWER AVATARS
-# ═══════════════════════════════════════════════════════
-
-func _draw_avatar_archer(cx: float, cy: float, a: float) -> void:
-	var t := GM.game_time
-	# Ember particles floating up from base
-	for i in range(5):
-		var seed_f: float = float(i) * 1.7 + 0.3
-		var life: float = fmod(t * 0.8 + seed_f, 2.0) / 2.0
-		var ex: float = cx + sin(seed_f * 3.1 + t * 0.7) * 10.0
-		var ey: float = cy + 14 - life * 30.0
-		var ea: float = (1.0 - life) * 0.6
-		var sz: float = 1.2 + (1.0 - life) * 0.8
-		draw_circle(Vector2(ex, ey), sz, Color(1, 0.5 + life * 0.3, 0.1, a * ea * 0.4))
-		draw_circle(Vector2(ex, ey), sz * 0.5, Color(1, 0.8, 0.3, a * ea))
-	# Drop shadow for depth
-	draw_circle(Vector2(cx + 1, cy + 2), 17, Color(0, 0, 0, a * 0.3))
-	# Base platform layered (dark core -> mid -> rim glow)
-	draw_circle(Vector2(cx, cy), 18, Color(0.25, 0.04, 0.04, a))
-	draw_circle(Vector2(cx, cy), 16, Color(0.35, 0.07, 0.07, a))
-	draw_circle(Vector2(cx - 1, cy - 1), 13, Color(0.42, 0.1, 0.09, a * 0.5))
-	draw_arc(Vector2(cx, cy), 18, 0, TAU, 32, Color(0.85, 0.25, 0.15, a * 0.55), 1.5)
-	draw_arc(Vector2(cx, cy), 17, PI * 0.8, PI * 1.4, 10, Color(1.0, 0.4, 0.2, a * 0.2), 1.0)
-	# Flowing cape behind body
-	var cape_sway: float = sin(t * 2.5) * 2.0
-	var cape_sway2: float = sin(t * 2.5 + 0.8) * 1.5
-	draw_colored_polygon(PackedVector2Array([
-		Vector2(cx - 6, cy - 1), Vector2(cx + 2, cy - 1),
-		Vector2(cx + 4 + cape_sway2, cy + 16), Vector2(cx - 10 + cape_sway, cy + 16),
-		Vector2(cx - 8 + cape_sway * 0.7, cy + 10)
-	]), Color(0.4, 0.05, 0.05, a * 0.85))
-	# Cape edge highlight
-	draw_line(Vector2(cx - 6, cy - 1), Vector2(cx - 10 + cape_sway, cy + 16), Color(0.6, 0.12, 0.1, a * 0.5), 1.0)
-	draw_line(Vector2(cx - 10 + cape_sway, cy + 16), Vector2(cx + 4 + cape_sway2, cy + 16), Color(0.5, 0.08, 0.06, a * 0.3), 1.0)
-	# Body with layered armor plates
-	draw_colored_polygon(PackedVector2Array([
-		Vector2(cx - 7, cy - 1), Vector2(cx + 3, cy - 1),
-		Vector2(cx + 2, cy + 13), Vector2(cx - 6, cy + 13)
-	]), Color(0.5, 0.08, 0.08, a))
-	# Armor mid tone
-	draw_colored_polygon(PackedVector2Array([
-		Vector2(cx - 5, cy + 0), Vector2(cx + 1, cy + 0),
-		Vector2(cx + 0, cy + 11), Vector2(cx - 4, cy + 11)
-	]), Color(0.6, 0.12, 0.1, a))
-	# Armor highlight edge
-	draw_line(Vector2(cx - 2, cy + 1), Vector2(cx - 2, cy + 10), Color(0.75, 0.2, 0.15, a * 0.7), 1.0)
-	draw_line(Vector2(cx - 4, cy + 1), Vector2(cx - 5, cy + 10), Color(0.7, 0.15, 0.12, a * 0.4), 0.8)
-	# Shoulder guard with highlight
-	draw_colored_polygon(PackedVector2Array([
-		Vector2(cx - 8, cy - 1), Vector2(cx - 3, cy - 4),
-		Vector2(cx + 2, cy - 1), Vector2(cx - 3, cy + 1)
-	]), Color(0.6, 0.12, 0.1, a))
-	draw_line(Vector2(cx - 3, cy - 4), Vector2(cx + 2, cy - 1), Color(0.8, 0.25, 0.18, a * 0.6), 1.0)
-	# Quiver on back (visible behind right shoulder)
-	draw_colored_polygon(PackedVector2Array([
-		Vector2(cx + 1, cy - 3), Vector2(cx + 4, cy - 4),
-		Vector2(cx + 5, cy + 8), Vector2(cx + 2, cy + 8)
-	]), Color(0.4, 0.2, 0.08, a * 0.8))
-	# Arrow shafts in quiver
-	for qi in range(3):
-		var qx: float = cx + 2.0 + float(qi) * 1.0
-		draw_line(Vector2(qx, cy - 4 - float(qi) * 0.5), Vector2(qx, cy + 6), Color(0.8, 0.65, 0.3, a * 0.6), 0.8)
-	# Arrow fletching tips
-	for qi in range(3):
-		var qx: float = cx + 2.0 + float(qi) * 1.0
-		var qy: float = cy - 4 - float(qi) * 0.5
-		draw_colored_polygon(PackedVector2Array([
-			Vector2(qx, qy - 2), Vector2(qx + 1, qy), Vector2(qx - 1, qy)
-		]), Color(0.9, 0.3, 0.1, a * 0.7))
-	# Head with layered shading
-	draw_circle(Vector2(cx - 2, cy - 6), 5.5, Color(0.55, 0.1, 0.1, a))
-	draw_circle(Vector2(cx - 2, cy - 6), 4.8, Color(0.65, 0.15, 0.15, a))
-	draw_circle(Vector2(cx - 2.5, cy - 6.5), 3.5, Color(0.78, 0.22, 0.2, a * 0.6))
-	# Horns with curved gradient (3 segments each for smooth curve)
-	draw_line(Vector2(cx - 5, cy - 10), Vector2(cx - 7, cy - 13), Color(0.7, 0.18, 0.08, a), 2.8)
-	draw_line(Vector2(cx - 7, cy - 13), Vector2(cx - 9, cy - 16), Color(0.85, 0.28, 0.1, a), 2.2)
-	draw_line(Vector2(cx - 9, cy - 16), Vector2(cx - 10, cy - 18), Color(0.95, 0.45, 0.15, a), 1.5)
-	# Horn highlight
-	draw_line(Vector2(cx - 6, cy - 11), Vector2(cx - 8, cy - 15), Color(1.0, 0.5, 0.25, a * 0.4), 1.0)
-	draw_line(Vector2(cx + 1, cy - 10), Vector2(cx + 3, cy - 13), Color(0.7, 0.18, 0.08, a), 2.8)
-	draw_line(Vector2(cx + 3, cy - 13), Vector2(cx + 6, cy - 16), Color(0.85, 0.28, 0.1, a), 2.2)
-	draw_line(Vector2(cx + 6, cy - 16), Vector2(cx + 7, cy - 18), Color(0.95, 0.45, 0.15, a), 1.5)
-	draw_line(Vector2(cx + 2, cy - 11), Vector2(cx + 5, cy - 15), Color(1.0, 0.5, 0.25, a * 0.4), 1.0)
-	# Glowing eyes (animated pulse)
-	var eye_glow: float = 0.75 + 0.25 * sin(t * 4.5)
-	draw_circle(Vector2(cx - 4, cy - 7), 2.8, Color(1, 0.6, 0, a * 0.15))
-	draw_circle(Vector2(cx, cy - 7), 2.8, Color(1, 0.6, 0, a * 0.15))
-	draw_circle(Vector2(cx - 4, cy - 7), 1.5, Color(1, 0.85, 0, a * eye_glow))
-	draw_circle(Vector2(cx, cy - 7), 1.5, Color(1, 0.85, 0, a * eye_glow))
-	draw_circle(Vector2(cx - 4, cy - 7), 0.7, Color(1, 1, 0.7, a * eye_glow))
-	draw_circle(Vector2(cx, cy - 7), 0.7, Color(1, 1, 0.7, a * eye_glow))
-	# Bow arm
-	draw_line(Vector2(cx + 3, cy + 1), Vector2(cx + 11, cy + 1), Color(0.7, 0.2, 0.18, a), 2.0)
-	# Bow (more curved, dynamic with flex animation)
-	var bow_flex: float = 0.1 * sin(t * 3.0)
-	draw_arc(Vector2(cx + 11, cy + 1), 11, -1.3 - bow_flex, 1.3 + bow_flex, 18, Color(0.45, 0.22, 0.08, a), 3.5)
-	draw_arc(Vector2(cx + 11, cy + 1), 10.5, -1.1 - bow_flex, 1.1 + bow_flex, 14, Color(0.6, 0.35, 0.12, a), 2.0)
-	draw_arc(Vector2(cx + 11, cy + 1), 10, -0.8 - bow_flex, 0.8 + bow_flex, 10, Color(0.75, 0.45, 0.18, a * 0.5), 1.0)
-	# Bow tips
-	var bta: float = -1.3 - bow_flex
-	var bba: float = 1.3 + bow_flex
-	draw_circle(Vector2(cx + 11 + 11 * cos(bta), cy + 1 + 11 * sin(bta)), 1.5, Color(0.6, 0.35, 0.12, a))
-	draw_circle(Vector2(cx + 11 + 11 * cos(bba), cy + 1 + 11 * sin(bba)), 1.5, Color(0.6, 0.35, 0.12, a))
-	# Bowstring
-	var bt := Vector2(cx + 11 + 11 * cos(bta), cy + 1 + 11 * sin(bta))
-	var bb := Vector2(cx + 11 + 11 * cos(bba), cy + 1 + 11 * sin(bba))
-	draw_line(bt, Vector2(cx + 7, cy + 1), Color(0.85, 0.8, 0.5, a * 0.9), 1.0)
-	draw_line(bb, Vector2(cx + 7, cy + 1), Color(0.85, 0.8, 0.5, a * 0.9), 1.0)
-	# Flaming arrow shaft with glow
-	draw_circle(Vector2(cx + 10, cy + 1), 2.0, Color(1, 0.5, 0.1, a * 0.1))
-	draw_line(Vector2(cx, cy + 1), Vector2(cx + 17, cy + 1), Color(0.85, 0.7, 0.25, a), 1.5)
-	draw_line(Vector2(cx + 2, cy + 1), Vector2(cx + 15, cy + 1), Color(0.95, 0.8, 0.4, a * 0.5), 0.8)
-	# Arrow tip (fiery glow, layered)
-	draw_circle(Vector2(cx + 18, cy + 1), 4.5, Color(1, 0.35, 0.05, a * 0.2))
-	draw_circle(Vector2(cx + 18, cy + 1), 3.0, Color(1, 0.5, 0.1, a * 0.3))
-	draw_colored_polygon(PackedVector2Array([
-		Vector2(cx + 21, cy + 1), Vector2(cx + 15, cy - 2.5), Vector2(cx + 15, cy + 4.5)
-	]), Color(0.95, 0.4, 0.1, a))
-	draw_colored_polygon(PackedVector2Array([
-		Vector2(cx + 20, cy + 1), Vector2(cx + 16, cy - 1.5), Vector2(cx + 16, cy + 3.5)
-	]), Color(1.0, 0.65, 0.2, a * 0.8))
-	draw_colored_polygon(PackedVector2Array([
-		Vector2(cx + 19, cy + 1), Vector2(cx + 17, cy - 0.5), Vector2(cx + 17, cy + 2.5)
-	]), Color(1.0, 0.9, 0.5, a * 0.5))
-
-func _draw_avatar_mage(cx: float, cy: float, a: float) -> void:
-	var t := GM.game_time
-	# Animated flames at base (color gradient: red core -> orange -> yellow tip)
-	for i in range(6):
-		var fx: float = cx - 10 + float(i) * 4.0
-		var fy: float = cy + 14
-		var flame_h: float = 6 + 3 * sin(t * 4.5 + float(i) * 1.3)
-		var flame_sway: float = sin(t * 3.0 + float(i) * 2.0) * 1.5
-		draw_colored_polygon(PackedVector2Array([
-			Vector2(fx + flame_sway, fy - flame_h), Vector2(fx + 3, fy), Vector2(fx - 3, fy)
-		]), Color(0.9, 0.15, 0.05, a * 0.5))
-		draw_colored_polygon(PackedVector2Array([
-			Vector2(fx + flame_sway * 0.7, fy - flame_h * 0.75), Vector2(fx + 2, fy - 1), Vector2(fx - 2, fy - 1)
-		]), Color(1.0, 0.5, 0.1, a * 0.6))
-		draw_colored_polygon(PackedVector2Array([
-			Vector2(fx + flame_sway * 0.4, fy - flame_h * 0.45), Vector2(fx + 1.2, fy - 2), Vector2(fx - 1.2, fy - 2)
-		]), Color(1.0, 0.9, 0.35, a * 0.5))
-	# Drop shadow
-	draw_circle(Vector2(cx + 1, cy + 2), 17, Color(0, 0, 0, a * 0.3))
-	# Base platform layered
-	draw_circle(Vector2(cx, cy), 18, Color(0.15, 0.03, 0.2, a))
-	draw_circle(Vector2(cx, cy), 16, Color(0.22, 0.06, 0.28, a))
-	draw_circle(Vector2(cx - 1, cy - 1), 13, Color(0.28, 0.08, 0.32, a * 0.5))
-	draw_arc(Vector2(cx, cy), 18, 0, TAU, 32, Color(0.65, 0.25, 0.85, a * 0.55), 1.5)
-	draw_arc(Vector2(cx, cy), 17, PI * 1.0, PI * 1.6, 10, Color(0.8, 0.4, 1.0, a * 0.2), 1.0)
-	# Wide flowing robe with multiple fold layers
-	draw_colored_polygon(PackedVector2Array([
-		Vector2(cx - 5, cy - 2), Vector2(cx + 5, cy - 2),
-		Vector2(cx + 13, cy + 15), Vector2(cx - 13, cy + 15)
-	]), Color(0.35, 0.08, 0.48, a))
-	draw_colored_polygon(PackedVector2Array([
-		Vector2(cx - 3, cy - 1), Vector2(cx + 3, cy - 1),
-		Vector2(cx + 9, cy + 14), Vector2(cx - 9, cy + 14)
-	]), Color(0.42, 0.1, 0.58, a))
-	draw_colored_polygon(PackedVector2Array([
-		Vector2(cx - 1, cy), Vector2(cx + 2, cy),
-		Vector2(cx + 5, cy + 13), Vector2(cx - 3, cy + 13)
-	]), Color(0.52, 0.16, 0.68, a))
-	# Robe edge highlights
-	draw_line(Vector2(cx - 5, cy - 2), Vector2(cx - 13, cy + 15), Color(0.6, 0.2, 0.78, a * 0.35), 1.0)
-	draw_line(Vector2(cx + 5, cy - 2), Vector2(cx + 13, cy + 15), Color(0.6, 0.2, 0.78, a * 0.35), 1.0)
-	# Robe rune marks (animated glow)
-	var rune_glow: float = 0.3 + 0.4 * sin(t * 2.5)
-	draw_circle(Vector2(cx, cy + 4), 1.8, Color(1, 0.5, 0.9, a * rune_glow))
-	draw_circle(Vector2(cx, cy + 4), 1.0, Color(1, 0.8, 1.0, a * rune_glow * 0.6))
-	draw_circle(Vector2(cx - 3, cy + 8), 1.2, Color(1, 0.5, 0.9, a * rune_glow * 0.7))
-	draw_circle(Vector2(cx + 3, cy + 8), 1.2, Color(1, 0.5, 0.9, a * rune_glow * 0.7))
-	draw_circle(Vector2(cx - 1, cy + 12), 1.0, Color(1, 0.5, 0.9, a * rune_glow * 0.5))
-	draw_circle(Vector2(cx + 1, cy + 12), 1.0, Color(1, 0.5, 0.9, a * rune_glow * 0.5))
-	# Head with layered shading
-	draw_circle(Vector2(cx, cy - 5), 5.8, Color(0.42, 0.1, 0.58, a))
-	draw_circle(Vector2(cx, cy - 5), 5.0, Color(0.5, 0.14, 0.65, a))
-	draw_circle(Vector2(cx - 0.5, cy - 5.5), 3.5, Color(0.6, 0.18, 0.75, a * 0.5))
-	# Pointed hat with layered shading
-	draw_colored_polygon(PackedVector2Array([
-		Vector2(cx + 1, cy - 20), Vector2(cx + 8, cy - 4), Vector2(cx - 7, cy - 4)
-	]), Color(0.38, 0.06, 0.52, a))
-	draw_colored_polygon(PackedVector2Array([
-		Vector2(cx + 1, cy - 19), Vector2(cx + 5, cy - 5), Vector2(cx - 4, cy - 5)
-	]), Color(0.45, 0.1, 0.6, a * 0.7))
-	# Hat highlight edges
-	draw_line(Vector2(cx + 1, cy - 20), Vector2(cx + 8, cy - 4), Color(0.6, 0.2, 0.78, a * 0.6), 1.0)
-	draw_line(Vector2(cx + 1, cy - 20), Vector2(cx - 7, cy - 4), Color(0.55, 0.15, 0.7, a * 0.3), 1.0)
-	# Hat band with gem
-	draw_line(Vector2(cx - 8, cy - 4), Vector2(cx + 9, cy - 4), Color(0.7, 0.28, 0.88, a), 2.8)
-	draw_line(Vector2(cx - 8, cy - 4), Vector2(cx + 9, cy - 4), Color(0.85, 0.4, 1.0, a * 0.3), 1.2)
-	draw_circle(Vector2(cx, cy - 4), 2.5, Color(1, 0.55, 0.15, a * 0.7))
-	draw_circle(Vector2(cx, cy - 4), 1.5, Color(1, 0.8, 0.4, a * 0.9))
-	# Floating arcane runes orbiting the hat
-	for i in range(4):
-		var rune_angle: float = t * 1.8 + float(i) * TAU / 4.0
-		var rune_dist: float = 10 + sin(t * 1.2 + float(i) * 1.5) * 2.0
-		var rx: float = cx + cos(rune_angle) * rune_dist
-		var ry: float = cy - 12 + sin(rune_angle) * rune_dist * 0.4
-		var rune_a: float = 0.4 + 0.3 * sin(t * 2.0 + float(i) * 1.8)
-		draw_circle(Vector2(rx, ry), 2.5, Color(0.8, 0.4, 1.0, a * rune_a * 0.25))
-		draw_circle(Vector2(rx, ry), 1.2, Color(0.9, 0.6, 1.0, a * rune_a))
-		draw_line(Vector2(rx - 1.5, ry), Vector2(rx + 1.5, ry), Color(1, 0.7, 1.0, a * rune_a * 0.6), 0.8)
-		draw_line(Vector2(rx, ry - 1.5), Vector2(rx, ry + 1.5), Color(1, 0.7, 1.0, a * rune_a * 0.6), 0.8)
-	# Glowing eyes (animated)
-	var eye_pulse: float = 0.7 + 0.3 * sin(t * 3.5)
-	draw_circle(Vector2(cx - 2, cy - 6), 2.2, Color(0.8, 0.3, 1.0, a * 0.2))
-	draw_circle(Vector2(cx + 2, cy - 6), 2.2, Color(0.8, 0.3, 1.0, a * 0.2))
-	draw_circle(Vector2(cx - 2, cy - 6), 1.3, Color(0.9, 0.5, 1.0, a * eye_pulse))
-	draw_circle(Vector2(cx + 2, cy - 6), 1.3, Color(0.9, 0.5, 1.0, a * eye_pulse))
-	draw_circle(Vector2(cx - 2, cy - 6), 0.6, Color(1, 0.8, 1.0, a * eye_pulse))
-	draw_circle(Vector2(cx + 2, cy - 6), 0.6, Color(1, 0.8, 1.0, a * eye_pulse))
-	# Staff (left side, detailed with wrap)
-	draw_line(Vector2(cx - 8, cy - 8), Vector2(cx - 8, cy + 12), Color(0.4, 0.22, 0.15, a), 3.0)
-	draw_line(Vector2(cx - 7, cy - 8), Vector2(cx - 7, cy + 12), Color(0.55, 0.35, 0.22, a), 1.2)
-	for si in range(4):
-		var sy: float = cy - 4 + float(si) * 5.0
-		draw_line(Vector2(cx - 9.5, sy), Vector2(cx - 6.5, sy + 2), Color(0.5, 0.3, 0.15, a * 0.5), 1.0)
-	# Staff orb (animated pulsing with rotating ring)
-	var orb_pulse: float = 0.6 + 0.4 * sin(t * 3.0)
-	draw_circle(Vector2(cx - 8, cy - 10), 7, Color(1, 0.4, 0.08, a * 0.12 * orb_pulse))
-	draw_circle(Vector2(cx - 8, cy - 10), 5, Color(1, 0.48, 0.12, a * 0.3))
-	draw_circle(Vector2(cx - 8, cy - 10), 3.5, Color(1, 0.6, 0.2, a * 0.55))
-	draw_circle(Vector2(cx - 8, cy - 10), 2.0, Color(1, 0.8, 0.4, a * orb_pulse))
-	# Rotating ring around staff orb
-	draw_arc(Vector2(cx - 8, cy - 10), 6, t * 2.0, t * 2.0 + PI * 1.2, 12, Color(1, 0.6, 0.25, a * 0.5 * orb_pulse), 1.2)
-	draw_arc(Vector2(cx - 8, cy - 10), 6, t * 2.0 + PI, t * 2.0 + PI * 2.2, 12, Color(1, 0.6, 0.25, a * 0.3 * orb_pulse), 0.8)
-
-func _draw_avatar_necro(cx: float, cy: float, a: float) -> void:
-	var t := GM.game_time
-	# Subtle vortex pattern in green aura
-	var aura_pulse: float = 0.12 + 0.07 * sin(t * 2.0)
-	draw_circle(Vector2(cx, cy), 23, Color(0.08, 0.5, 0.2, a * aura_pulse * 0.5))
-	draw_circle(Vector2(cx, cy), 21, Color(0.1, 0.6, 0.25, a * aura_pulse))
-	draw_circle(Vector2(cx, cy), 19, Color(0.08, 0.45, 0.2, a * aura_pulse * 0.7))
-	# Vortex swirl arcs
-	for vi in range(3):
-		var va: float = t * 1.2 + float(vi) * TAU / 3.0
-		var vr: float = 18 + sin(t * 0.8 + float(vi)) * 3.0
-		draw_arc(Vector2(cx, cy), vr, va, va + 1.2, 8, Color(0.15, 0.7, 0.35, a * aura_pulse * 0.6), 1.0)
-	# Floating bone fragments around the character
-	for bi in range(4):
-		var bone_angle: float = t * 0.9 + float(bi) * TAU / 4.0
-		var bone_dist: float = 16 + sin(t * 1.5 + float(bi) * 1.7) * 3.0
-		var bfx: float = cx + cos(bone_angle) * bone_dist
-		var bfy: float = cy + sin(bone_angle) * bone_dist * 0.65
-		var bone_rot: float = bone_angle + t * 1.5
-		var bone_a: float = 0.35 + 0.2 * sin(t * 2.0 + float(bi))
-		var bl: float = 3.0
-		draw_line(
-			Vector2(bfx - cos(bone_rot) * bl, bfy - sin(bone_rot) * bl),
-			Vector2(bfx + cos(bone_rot) * bl, bfy + sin(bone_rot) * bl),
-			Color(0.85, 0.82, 0.7, a * bone_a), 1.5)
-		draw_circle(Vector2(bfx - cos(bone_rot) * bl, bfy - sin(bone_rot) * bl), 1.0, Color(0.9, 0.87, 0.75, a * bone_a))
-		draw_circle(Vector2(bfx + cos(bone_rot) * bl, bfy + sin(bone_rot) * bl), 1.0, Color(0.9, 0.87, 0.75, a * bone_a))
-	# Drop shadow
-	draw_circle(Vector2(cx + 1, cy + 2), 17, Color(0, 0, 0, a * 0.3))
-	# Base platform layered
-	draw_circle(Vector2(cx, cy), 18, Color(0.04, 0.15, 0.08, a))
-	draw_circle(Vector2(cx, cy), 16, Color(0.06, 0.2, 0.1, a))
-	draw_circle(Vector2(cx - 1, cy - 1), 13, Color(0.08, 0.25, 0.13, a * 0.5))
-	draw_arc(Vector2(cx, cy), 18, 0, TAU, 32, Color(0.25, 0.85, 0.45, a * 0.5), 1.5)
-	# Tattered robe with wispy dissolving edges
-	draw_colored_polygon(PackedVector2Array([
-		Vector2(cx - 6, cy - 6), Vector2(cx + 6, cy - 6),
-		Vector2(cx + 11, cy + 14), Vector2(cx - 11, cy + 14)
-	]), Color(0.08, 0.25, 0.12, a))
-	draw_colored_polygon(PackedVector2Array([
-		Vector2(cx - 4, cy - 5), Vector2(cx + 4, cy - 5),
-		Vector2(cx + 8, cy + 13), Vector2(cx - 8, cy + 13)
-	]), Color(0.12, 0.32, 0.16, a))
-	draw_colored_polygon(PackedVector2Array([
-		Vector2(cx - 1, cy - 4), Vector2(cx + 2, cy - 4),
-		Vector2(cx + 4, cy + 13), Vector2(cx - 3, cy + 13)
-	]), Color(0.16, 0.4, 0.22, a))
-	# Tattered hem tendrils (wispy, dissolving)
-	for ti in range(7):
-		var ttx: float = cx - 9 + float(ti) * 3.0
-		var tendril_len: float = 4.0 + sin(t * 2.5 + float(ti) * 1.1) * 2.5
-		var tendril_sway: float = sin(t * 1.8 + float(ti) * 0.9) * 2.0
-		var tendril_a: float = 0.5 - float(ti % 3) * 0.1
-		draw_line(Vector2(ttx, cy + 14), Vector2(ttx + tendril_sway, cy + 14 + tendril_len), Color(0.08, 0.28, 0.14, a * tendril_a), 1.2)
-		draw_line(Vector2(ttx, cy + 14 + tendril_len * 0.5), Vector2(ttx + tendril_sway * 1.3, cy + 14 + tendril_len + 1.5), Color(0.1, 0.35, 0.18, a * tendril_a * 0.4), 0.8)
-	# Hood with depth layers
-	draw_colored_polygon(PackedVector2Array([
-		Vector2(cx, cy - 16), Vector2(cx + 9, cy - 4), Vector2(cx - 9, cy - 4)
-	]), Color(0.06, 0.2, 0.1, a))
-	draw_colored_polygon(PackedVector2Array([
-		Vector2(cx, cy - 15), Vector2(cx + 6, cy - 5), Vector2(cx - 6, cy - 5)
-	]), Color(0.1, 0.28, 0.14, a))
-	draw_colored_polygon(PackedVector2Array([
-		Vector2(cx, cy - 14), Vector2(cx + 4, cy - 6), Vector2(cx - 4, cy - 6)
-	]), Color(0.14, 0.35, 0.18, a * 0.6))
-	draw_line(Vector2(cx, cy - 16), Vector2(cx + 9, cy - 4), Color(0.2, 0.5, 0.25, a * 0.3), 1.0)
-	# Skull face with more detail
-	draw_circle(Vector2(cx, cy - 5), 5.8, Color(0.78, 0.78, 0.72, a))
-	draw_circle(Vector2(cx, cy - 5), 5.2, Color(0.85, 0.85, 0.8, a))
-	draw_circle(Vector2(cx - 0.5, cy - 5.5), 4.0, Color(0.92, 0.92, 0.87, a * 0.6))
-	# Skull crack details
-	draw_line(Vector2(cx - 1.5, cy - 9), Vector2(cx - 0.5, cy - 7), Color(0.55, 0.55, 0.5, a), 0.8)
-	draw_line(Vector2(cx - 0.5, cy - 7), Vector2(cx + 0.5, cy - 5.5), Color(0.55, 0.55, 0.5, a), 0.8)
-	draw_line(Vector2(cx + 0.5, cy - 5.5), Vector2(cx + 1.5, cy - 4.5), Color(0.6, 0.6, 0.55, a * 0.6), 0.6)
-	draw_line(Vector2(cx + 2, cy - 9), Vector2(cx + 2.5, cy - 7.5), Color(0.55, 0.55, 0.5, a * 0.7), 0.7)
-	# Glowing eye sockets
-	var eye_glow: float = 0.65 + 0.35 * sin(t * 3.2)
-	draw_circle(Vector2(cx - 2, cy - 6), 2.5, Color(0.1, 0.7, 0.25, a * 0.2))
-	draw_circle(Vector2(cx + 2, cy - 6), 2.5, Color(0.1, 0.7, 0.25, a * 0.2))
-	draw_circle(Vector2(cx - 2, cy - 6), 1.5, Color(0.15, 0.9, 0.35, a * eye_glow))
-	draw_circle(Vector2(cx + 2, cy - 6), 1.5, Color(0.15, 0.9, 0.35, a * eye_glow))
-	draw_circle(Vector2(cx - 2, cy - 6), 0.7, Color(0.4, 1.0, 0.6, a * eye_glow))
-	draw_circle(Vector2(cx + 2, cy - 6), 0.7, Color(0.4, 1.0, 0.6, a * eye_glow))
-	# Nose cavity
-	draw_colored_polygon(PackedVector2Array([
-		Vector2(cx, cy - 3.5), Vector2(cx + 1.4, cy - 1.8), Vector2(cx - 1.4, cy - 1.8)
-	]), Color(0.04, 0.12, 0.04, a))
-	# Jaw with articulation (slight open/close)
-	var jaw_open: float = 0.3 + 0.15 * sin(t * 1.8)
-	for i in range(5):
-		var utx: float = cx - 2.5 + float(i) * 1.2
-		draw_line(Vector2(utx, cy - 1.5), Vector2(utx, cy - 0.5 - jaw_open * 0.3), Color(0.82, 0.82, 0.77, a), 0.8)
-	draw_arc(Vector2(cx, cy - 2.5 + jaw_open), 3.8, 0.2, PI - 0.2, 8, Color(0.75, 0.75, 0.7, a), 1.2)
-	for i in range(4):
-		var ltx: float = cx - 2.0 + float(i) * 1.3
-		draw_line(Vector2(ltx, cy - 0.5 + jaw_open * 0.5), Vector2(ltx, cy - 1.2), Color(0.82, 0.82, 0.77, a * 0.8), 0.7)
-	# Staff (right side, bone-like with segments)
-	draw_line(Vector2(cx + 8, cy - 13), Vector2(cx + 8, cy + 11), Color(0.3, 0.18, 0.08, a), 3.0)
-	draw_line(Vector2(cx + 9, cy - 12), Vector2(cx + 9, cy + 10), Color(0.45, 0.3, 0.15, a), 1.2)
-	# Staff joint knobs
-	draw_circle(Vector2(cx + 8.5, cy - 4), 2.0, Color(0.5, 0.35, 0.15, a))
-	draw_circle(Vector2(cx + 8.5, cy - 4), 1.2, Color(0.6, 0.45, 0.22, a * 0.6))
-	draw_circle(Vector2(cx + 8.5, cy + 4), 2.0, Color(0.5, 0.35, 0.15, a))
-	draw_circle(Vector2(cx + 8.5, cy + 4), 1.2, Color(0.6, 0.45, 0.22, a * 0.6))
-	# Staff skull orb (pulsing green, layered)
-	var orb_pulse: float = 0.6 + 0.4 * sin(t * 2.5)
-	draw_circle(Vector2(cx + 8, cy - 14), 8, Color(0.12, 0.7, 0.3, a * 0.1 * orb_pulse))
-	draw_circle(Vector2(cx + 8, cy - 14), 6, Color(0.18, 0.8, 0.35, a * 0.2))
-	draw_circle(Vector2(cx + 8, cy - 14), 4, Color(0.25, 0.9, 0.4, a * 0.4))
-	draw_circle(Vector2(cx + 8, cy - 14), 2.5, Color(0.35, 1.0, 0.55, a * orb_pulse))
-	# Soul wisps with fading trails
-	for i in range(4):
-		var angle: float = t * (1.3 + float(i) * 0.4) + float(i) * TAU / 4.0
-		var dist: float = 14 + 4 * sin(t * 1.0 + float(i) * 1.3)
-		var wx: float = cx + cos(angle) * dist
-		var wy: float = cy + sin(angle) * (dist * 0.65)
-		var wisp_a: float = 0.35 + 0.2 * sin(t * 3.0 + float(i) * 2.0)
-		# Trail (3 fading positions behind)
-		for trail_i in range(3):
-			var trail_t: float = t - float(trail_i + 1) * 0.08
-			var trail_angle: float = trail_t * (1.3 + float(i) * 0.4) + float(i) * TAU / 4.0
-			var trail_dist: float = 14 + 4 * sin(trail_t * 1.0 + float(i) * 1.3)
-			var trail_x: float = cx + cos(trail_angle) * trail_dist
-			var trail_y: float = cy + sin(trail_angle) * (trail_dist * 0.65)
-			var trail_a: float = wisp_a * (0.4 - float(trail_i) * 0.12)
-			draw_circle(Vector2(trail_x, trail_y), 1.5, Color(0.2, 0.8, 0.4, a * trail_a * 0.3))
-		# Main wisp
-		draw_circle(Vector2(wx, wy), 3.5, Color(0.18, 0.85, 0.38, a * wisp_a * 0.3))
-		draw_circle(Vector2(wx, wy), 2.0, Color(0.3, 1.0, 0.5, a * wisp_a))
-		draw_circle(Vector2(wx, wy), 0.8, Color(0.6, 1.0, 0.7, a * wisp_a * 0.7))
-
-func _draw_avatar_lucifer(cx: float, cy: float, a: float) -> void:
-	var t := GM.game_time
-	# Hellfire particle bursts (periodic)
-	var burst_phase: float = fmod(t * 0.6, 2.0)
-	for i in range(8):
-		var seed_f: float = float(i) * 2.3 + 0.7
-		var life: float = fmod(t * 0.7 + seed_f * 0.4, 1.5) / 1.5
-		var burst_a: float = (1.0 - life) * (0.5 + 0.3 * sin(burst_phase * PI))
-		var bpx: float = cx + sin(seed_f * 4.1 + t * 0.5) * (8 + life * 14)
-		var bpy: float = cy + cos(seed_f * 2.7 + t * 0.3) * (6 + life * 10) - life * 8
-		var sz: float = 1.5 + (1.0 - life) * 1.5
-		draw_circle(Vector2(bpx, bpy), sz, Color(1, 0.4, 0.0, a * burst_a * 0.3))
-		draw_circle(Vector2(bpx, bpy), sz * 0.5, Color(1, 0.7, 0.2, a * burst_a))
-	# Inverted burning halo (behind/below head)
-	var halo_pulse: float = 0.5 + 0.2 * sin(t * 2.0)
-	draw_arc(Vector2(cx, cy - 2), 14, 0, TAU, 28, Color(1.0, 0.35, 0.0, a * 0.12 * halo_pulse), 3.0)
-	draw_arc(Vector2(cx, cy - 2), 13, 0, TAU, 24, Color(1.0, 0.5, 0.1, a * 0.18 * halo_pulse), 2.0)
-	draw_arc(Vector2(cx, cy - 2), 12, 0, TAU, 20, Color(1.0, 0.65, 0.2, a * 0.1 * halo_pulse), 1.0)
-	# Drop shadow (deeper for imposing figure)
-	draw_circle(Vector2(cx + 1, cy + 2), 18, Color(0, 0, 0, a * 0.35))
-	# Hellfire aura (pulsing, multi-layered)
-	var aura_pulse: float = 0.15 + 0.1 * sin(t * 2.5)
-	draw_circle(Vector2(cx, cy), 25, Color(1.0, 0.25, 0.0, a * aura_pulse * 0.5))
-	draw_circle(Vector2(cx, cy), 23, Color(1.0, 0.3, 0.0, a * aura_pulse))
-	draw_circle(Vector2(cx, cy), 21, Color(1.0, 0.2, 0.0, a * aura_pulse * 0.7))
-	# Base platform layered with infernal glow
-	draw_circle(Vector2(cx, cy), 18, Color(0.22, 0.05, 0.01, a))
-	draw_circle(Vector2(cx, cy), 16, Color(0.3, 0.08, 0.02, a))
-	draw_circle(Vector2(cx - 1, cy - 1), 13, Color(0.38, 0.1, 0.04, a * 0.4))
-	draw_arc(Vector2(cx, cy), 18, 0, TAU, 32, Color(1.0, 0.45, 0.05, a * 0.6), 2.0)
-	draw_arc(Vector2(cx, cy), 17, PI * 0.5, PI * 1.2, 10, Color(1.0, 0.6, 0.15, a * 0.25), 1.0)
-	# Infernal runes circling the base
-	for ri in range(6):
-		var rune_angle: float = t * 0.8 + float(ri) * TAU / 6.0
-		var rune_r: float = 17
-		var rrx: float = cx + cos(rune_angle) * rune_r
-		var rry: float = cy + sin(rune_angle) * rune_r * 0.35 + 4
-		var rune_a: float = 0.4 + 0.3 * sin(t * 1.5 + float(ri) * 1.0)
-		draw_circle(Vector2(rrx, rry), 1.8, Color(1, 0.5, 0.1, a * rune_a * 0.4))
-		draw_line(Vector2(rrx - 1, rry - 1), Vector2(rrx + 1, rry + 1), Color(1, 0.7, 0.3, a * rune_a * 0.6), 0.8)
-		draw_line(Vector2(rrx + 1, rry - 1), Vector2(rrx - 1, rry + 1), Color(1, 0.7, 0.3, a * rune_a * 0.6), 0.8)
-	# Bat-like wings with segmented membrane (drawn before body)
-	var wing_flap: float = sin(t * 1.8) * 2.0
-	var lw1 := Vector2(cx - 8, cy - 3)
-	var lw2 := Vector2(cx - 18, cy - 14 + wing_flap)
-	var lw3 := Vector2(cx - 22, cy - 8 + wing_flap * 0.7)
-	var lw4 := Vector2(cx - 20, cy + 0 + wing_flap * 0.3)
-	var lw5 := Vector2(cx - 15, cy + 5)
-	draw_colored_polygon(PackedVector2Array([lw1, lw2, lw3, lw4, lw5]), Color(0.12, 0.02, 0.0, a * 0.8))
-	draw_line(lw1, lw2, Color(0.25, 0.06, 0.02, a * 0.9), 1.5)
-	draw_line(lw1, lw3, Color(0.22, 0.05, 0.02, a * 0.7), 1.2)
-	draw_line(lw1, lw4, Color(0.2, 0.04, 0.01, a * 0.6), 1.0)
-	draw_line(lw2, lw3, Color(0.18, 0.04, 0.01, a * 0.5), 0.8)
-	draw_line(lw3, lw4, Color(0.18, 0.04, 0.01, a * 0.5), 0.8)
-	draw_line(lw1, lw2, Color(1.0, 0.4, 0.05, a * 0.35), 1.0)
-	draw_line(lw2, lw3, Color(1.0, 0.35, 0.0, a * 0.25), 0.8)
-	var rw1 := Vector2(cx + 8, cy - 3)
-	var rw2 := Vector2(cx + 18, cy - 14 + wing_flap)
-	var rw3 := Vector2(cx + 22, cy - 8 + wing_flap * 0.7)
-	var rw4 := Vector2(cx + 20, cy + 0 + wing_flap * 0.3)
-	var rw5 := Vector2(cx + 15, cy + 5)
-	draw_colored_polygon(PackedVector2Array([rw1, rw2, rw3, rw4, rw5]), Color(0.12, 0.02, 0.0, a * 0.8))
-	draw_line(rw1, rw2, Color(0.25, 0.06, 0.02, a * 0.9), 1.5)
-	draw_line(rw1, rw3, Color(0.22, 0.05, 0.02, a * 0.7), 1.2)
-	draw_line(rw1, rw4, Color(0.2, 0.04, 0.01, a * 0.6), 1.0)
-	draw_line(rw2, rw3, Color(0.18, 0.04, 0.01, a * 0.5), 0.8)
-	draw_line(rw3, rw4, Color(0.18, 0.04, 0.01, a * 0.5), 0.8)
-	draw_line(rw1, rw2, Color(1.0, 0.4, 0.05, a * 0.35), 1.0)
-	draw_line(rw2, rw3, Color(1.0, 0.35, 0.0, a * 0.25), 0.8)
-	# Body — imposing dark armored torso
-	draw_colored_polygon(PackedVector2Array([
-		Vector2(cx - 8, cy - 5), Vector2(cx + 8, cy - 5),
-		Vector2(cx + 10, cy + 14), Vector2(cx - 10, cy + 14)
-	]), Color(0.15, 0.03, 0.01, a))
-	draw_colored_polygon(PackedVector2Array([
-		Vector2(cx - 6, cy - 3), Vector2(cx + 6, cy - 3),
-		Vector2(cx + 7, cy + 12), Vector2(cx - 7, cy + 12)
-	]), Color(0.22, 0.06, 0.02, a))
-	draw_colored_polygon(PackedVector2Array([
-		Vector2(cx - 2, cy - 2), Vector2(cx + 3, cy - 2),
-		Vector2(cx + 4, cy + 10), Vector2(cx - 3, cy + 10)
-	]), Color(0.35, 0.1, 0.04, a))
-	draw_line(Vector2(cx - 6, cy - 3), Vector2(cx - 7, cy + 12), Color(0.5, 0.15, 0.05, a * 0.4), 1.0)
-	draw_line(Vector2(cx + 6, cy - 3), Vector2(cx + 7, cy + 12), Color(0.5, 0.15, 0.05, a * 0.4), 1.0)
-	# Shoulder pauldrons
-	draw_colored_polygon(PackedVector2Array([
-		Vector2(cx - 9, cy - 4), Vector2(cx - 5, cy - 7),
-		Vector2(cx - 1, cy - 4), Vector2(cx - 5, cy - 2)
-	]), Color(0.3, 0.08, 0.03, a))
-	draw_line(Vector2(cx - 5, cy - 7), Vector2(cx - 1, cy - 4), Color(0.55, 0.18, 0.06, a * 0.5), 1.0)
-	draw_colored_polygon(PackedVector2Array([
-		Vector2(cx + 9, cy - 4), Vector2(cx + 5, cy - 7),
-		Vector2(cx + 1, cy - 4), Vector2(cx + 5, cy - 2)
-	]), Color(0.3, 0.08, 0.03, a))
-	draw_line(Vector2(cx + 5, cy - 7), Vector2(cx + 9, cy - 4), Color(0.55, 0.18, 0.06, a * 0.5), 1.0)
-	# Head with layered shading
-	draw_circle(Vector2(cx, cy - 8), 6.5, Color(0.2, 0.04, 0.01, a))
-	draw_circle(Vector2(cx, cy - 8), 5.5, Color(0.28, 0.07, 0.03, a))
-	draw_circle(Vector2(cx - 0.5, cy - 8.5), 4.0, Color(0.38, 0.12, 0.05, a * 0.5))
-	# Crown of inverted thorns (dark fire)
-	var crown_glow: float = 0.6 + 0.3 * sin(t * 2.5)
-	draw_line(Vector2(cx, cy - 13), Vector2(cx, cy - 19), Color(0.3, 0.05, 0.0, a), 2.5)
-	draw_line(Vector2(cx, cy - 16), Vector2(cx, cy - 19), Color(0.5, 0.15, 0.02, a * crown_glow), 1.5)
-	draw_line(Vector2(cx - 4, cy - 12), Vector2(cx - 7, cy - 18), Color(0.3, 0.05, 0.0, a), 2.2)
-	draw_line(Vector2(cx - 6, cy - 16), Vector2(cx - 7, cy - 18), Color(0.5, 0.15, 0.02, a * crown_glow), 1.3)
-	draw_line(Vector2(cx + 4, cy - 12), Vector2(cx + 7, cy - 18), Color(0.3, 0.05, 0.0, a), 2.2)
-	draw_line(Vector2(cx + 6, cy - 16), Vector2(cx + 7, cy - 18), Color(0.5, 0.15, 0.02, a * crown_glow), 1.3)
-	# Outer thorns (larger, dramatic)
-	draw_line(Vector2(cx - 5, cy - 12), Vector2(cx - 10, cy - 21), Color(0.85, 0.28, 0.04, a), 3.0)
-	draw_line(Vector2(cx - 10, cy - 21), Vector2(cx - 12, cy - 25), Color(1.0, 0.5, 0.1, a), 2.0)
-	draw_line(Vector2(cx - 11, cy - 23), Vector2(cx - 12, cy - 25), Color(1.0, 0.7, 0.2, a * crown_glow), 1.2)
-	draw_line(Vector2(cx + 5, cy - 12), Vector2(cx + 10, cy - 21), Color(0.85, 0.28, 0.04, a), 3.0)
-	draw_line(Vector2(cx + 10, cy - 21), Vector2(cx + 12, cy - 25), Color(1.0, 0.5, 0.1, a), 2.0)
-	draw_line(Vector2(cx + 11, cy - 23), Vector2(cx + 12, cy - 25), Color(1.0, 0.7, 0.2, a * crown_glow), 1.2)
-	# Thorn tip flames
-	for thi in range(3):
-		var thx_arr: Array = [cx, cx - 12, cx + 12]
-		var thy_arr: Array = [-19.0, -25.0, -25.0]
-		var thx: float = thx_arr[thi]
-		var thy: float = cy + thy_arr[thi]
-		var fl_h: float = 3.0 + sin(t * 5.0 + float(thi) * 2.0) * 1.5
-		draw_colored_polygon(PackedVector2Array([
-			Vector2(thx, thy - fl_h), Vector2(thx + 1.5, thy), Vector2(thx - 1.5, thy)
-		]), Color(1.0, 0.5, 0.0, a * 0.6 * crown_glow))
-		draw_colored_polygon(PackedVector2Array([
-			Vector2(thx, thy - fl_h * 0.5), Vector2(thx + 0.8, thy - 0.5), Vector2(thx - 0.8, thy - 0.5)
-		]), Color(1.0, 0.8, 0.3, a * 0.4 * crown_glow))
-	# Burning eyes (intense rapid pulse)
-	var eye_glow: float = 0.7 + 0.3 * sin(t * 5.0)
-	draw_circle(Vector2(cx - 3, cy - 9), 3.5, Color(1, 0.45, 0.0, a * 0.2))
-	draw_circle(Vector2(cx + 3, cy - 9), 3.5, Color(1, 0.45, 0.0, a * 0.2))
-	draw_circle(Vector2(cx - 3, cy - 9), 2.0, Color(1, 0.65, 0.0, a * eye_glow))
-	draw_circle(Vector2(cx + 3, cy - 9), 2.0, Color(1, 0.65, 0.0, a * eye_glow))
-	draw_circle(Vector2(cx - 3, cy - 9), 1.0, Color(1, 0.95, 0.5, a * eye_glow))
-	draw_circle(Vector2(cx + 3, cy - 9), 1.0, Color(1, 0.95, 0.5, a * eye_glow))
-	# Animated multi-layer hellfire ring
-	for layer in range(3):
-		var layer_speed: float = 1.2 + float(layer) * 0.4
-		var layer_count: int = 5 + layer * 2
-		var layer_r: float = 15 + float(layer) * 2.0
-		for i in range(layer_count):
-			var angle: float = t * layer_speed + float(i) * TAU / float(layer_count) + float(layer) * 0.5
-			var dist: float = layer_r + 2 * sin(t * 2.5 + float(i) + float(layer))
-			var fx: float = cx + cos(angle) * dist
-			var fy: float = cy + sin(angle) * dist * 0.65
-			var fire_a: float = 0.25 + 0.15 * sin(t * 4.0 + float(i) * 1.5 + float(layer))
-			var fire_size: float = 2.0 - float(layer) * 0.4
-			draw_circle(Vector2(fx, fy), fire_size + 1.0, Color(1, 0.3 + float(layer) * 0.1, 0.0, a * fire_a * 0.25))
-			draw_circle(Vector2(fx, fy), fire_size, Color(1, 0.6 + float(layer) * 0.1, 0.15, a * fire_a))
-
-func _draw_avatar_hades(cx: float, cy: float, a: float) -> void:
-	# Drop shadow
-	draw_circle(Vector2(cx + 1, cy + 2), 17, Color(0, 0, 0, a * 0.25))
-	# Buff aura (pulsing blue-purple, shows when buff active)
-	var is_buffing: bool = false
-	for t_check in GM.towers:
-		if t_check.get("type") == "hades" and t_check.get("buff_active_timer", 0.0) > 0:
-			is_buffing = true
-			break
-	var aura_intensity: float = 0.2 if is_buffing else 0.08
-	var aura_pulse: float = aura_intensity + 0.06 * sin(GM.game_time * 3.0)
-	draw_circle(Vector2(cx, cy), 22, Color(0.3, 0.2, 0.9, a * aura_pulse))
-	# Base platform with dark royal glow
-	draw_circle(Vector2(cx, cy), 18, Color(0.08, 0.05, 0.2, a))
-	draw_arc(Vector2(cx, cy), 18, 0, TAU, 24, Color(0.3, 0.2, 0.9, a * 0.5), 1.5)
-	# Dark robe body
-	draw_colored_polygon(PackedVector2Array([
-		Vector2(cx - 6, cy - 4), Vector2(cx + 6, cy - 4),
-		Vector2(cx + 12, cy + 14), Vector2(cx - 12, cy + 14)
-	]), Color(0.1, 0.06, 0.25, a))
-	# Robe fold highlight
-	draw_colored_polygon(PackedVector2Array([
-		Vector2(cx - 1, cy - 2), Vector2(cx + 2, cy - 2),
-		Vector2(cx + 4, cy + 13), Vector2(cx - 3, cy + 13)
-	]), Color(0.15, 0.08, 0.35, a))
-	# Runic symbols on robe (animated glow)
-	var rune_glow: float = 0.3 + 0.3 * sin(GM.game_time * 2.0)
-	draw_circle(Vector2(cx, cy + 4), 1.5, Color(0.4, 0.3, 1.0, a * rune_glow))
-	draw_circle(Vector2(cx - 2, cy + 8), 1.0, Color(0.4, 0.3, 1.0, a * rune_glow * 0.7))
-	draw_circle(Vector2(cx + 2, cy + 8), 1.0, Color(0.4, 0.3, 1.0, a * rune_glow * 0.7))
-	# Head with crown
-	draw_circle(Vector2(cx, cy - 7), 5.5, Color(0.15, 0.08, 0.3, a))
-	draw_circle(Vector2(cx, cy - 7), 4.5, Color(0.2, 0.12, 0.4, a))
-	# Crown of Hades (bident-style points)
-	draw_line(Vector2(cx - 3, cy - 11), Vector2(cx - 4, cy - 18), Color(0.4, 0.3, 0.9, a), 2.0)
-	draw_line(Vector2(cx + 3, cy - 11), Vector2(cx + 4, cy - 18), Color(0.4, 0.3, 0.9, a), 2.0)
-	draw_line(Vector2(cx - 4, cy - 18), Vector2(cx - 5, cy - 20), Color(0.5, 0.4, 1.0, a), 1.5)
-	draw_line(Vector2(cx + 4, cy - 18), Vector2(cx + 5, cy - 20), Color(0.5, 0.4, 1.0, a), 1.5)
-	# Glowing eyes (deep purple)
-	var eye_pulse: float = 0.7 + 0.3 * sin(GM.game_time * 3.5)
-	draw_circle(Vector2(cx - 2, cy - 8), 2.0, Color(0.5, 0.3, 1.0, a * 0.2))
-	draw_circle(Vector2(cx + 2, cy - 8), 2.0, Color(0.5, 0.3, 1.0, a * 0.2))
-	draw_circle(Vector2(cx - 2, cy - 8), 1.2, Color(0.6, 0.4, 1.0, a * eye_pulse))
-	draw_circle(Vector2(cx + 2, cy - 8), 1.2, Color(0.6, 0.4, 1.0, a * eye_pulse))
-	# Bident staff (right side)
-	draw_line(Vector2(cx + 9, cy - 10), Vector2(cx + 9, cy + 12), Color(0.3, 0.2, 0.5, a), 2.5)
-	draw_line(Vector2(cx + 7, cy - 12), Vector2(cx + 7, cy - 16), Color(0.4, 0.3, 0.8, a), 2.0)
-	draw_line(Vector2(cx + 11, cy - 12), Vector2(cx + 11, cy - 16), Color(0.4, 0.3, 0.8, a), 2.0)
-	# Staff orb (pulsing blue)
-	var orb_pulse: float = 0.6 + 0.4 * sin(GM.game_time * 2.5)
-	draw_circle(Vector2(cx + 9, cy - 12), 5, Color(0.3, 0.2, 0.9, a * 0.15 * orb_pulse))
-	draw_circle(Vector2(cx + 9, cy - 12), 3, Color(0.4, 0.3, 1.0, a * 0.35))
-	draw_circle(Vector2(cx + 9, cy - 12), 2, Color(0.5, 0.4, 1.0, a * orb_pulse))
-	# Speed buff particles (orbiting)
-	if is_buffing:
-		var t := GM.game_time
-		for i in range(4):
-			var angle: float = t * 3.0 + float(i) * TAU / 4.0
-			var dist: float = 15
-			var bx: float = cx + cos(angle) * dist
-			var by: float = cy + sin(angle) * dist * 0.6
-			draw_circle(Vector2(bx, by), 2.5, Color(0.4, 0.3, 1.0, a * 0.5))
-			draw_circle(Vector2(bx, by), 1.5, Color(0.6, 0.5, 1.0, a * 0.8))
-
-func _draw_avatar_cocytus(cx: float, cy: float, a: float) -> void:
-	var t := GM.game_time
-	# Cold mist drifting from base
-	for mi in range(6):
-		var seed_m: float = float(mi) * 2.1 + 0.4
-		var life: float = fmod(t * 0.3 + seed_m, 2.5) / 2.5
-		var mx: float = cx + sin(seed_m * 3.3 + t * 0.4) * (10 + life * 8)
-		var my: float = cy + 12 - life * 6.0
-		var ma: float = (1.0 - life) * 0.25
-		var msize: float = 2.0 + life * 3.0
-		draw_circle(Vector2(mx, my), msize, Color(0.7, 0.85, 1.0, a * ma))
-	# Orbiting ice fragments
-	for fi in range(6):
-		var fangle: float = t * 1.2 + float(fi) * TAU / 6.0
-		var fdist: float = 15 + sin(t * 1.8 + float(fi) * 1.3) * 3.0
-		var fx: float = cx + cos(fangle) * fdist
-		var fy: float = cy + sin(fangle) * fdist * 0.55
-		var frot: float = fangle + t * 2.0
-		var fa: float = 0.4 + 0.2 * sin(t * 2.5 + float(fi))
-		# Diamond-shaped ice shard
-		draw_colored_polygon(PackedVector2Array([
-			Vector2(fx + cos(frot) * 3, fy + sin(frot) * 3),
-			Vector2(fx + cos(frot + PI / 2) * 1.2, fy + sin(frot + PI / 2) * 1.2),
-			Vector2(fx + cos(frot + PI) * 3, fy + sin(frot + PI) * 3),
-			Vector2(fx + cos(frot - PI / 2) * 1.2, fy + sin(frot - PI / 2) * 1.2),
-		]), Color(0.7, 0.9, 1.0, a * fa))
-	# Drop shadow
-	draw_circle(Vector2(cx + 1, cy + 2), 17, Color(0, 0, 0, a * 0.25))
-	# Frost aura (pulsing cold blue)
-	var aura_pulse: float = 0.1 + 0.06 * sin(t * 2.0)
-	draw_circle(Vector2(cx, cy), 22, Color(0.5, 0.75, 1.0, a * aura_pulse))
-	draw_circle(Vector2(cx, cy), 20, Color(0.6, 0.85, 1.0, a * aura_pulse * 0.6))
-	# Base platform — icy blue
-	draw_circle(Vector2(cx, cy), 18, Color(0.1, 0.15, 0.25, a))
-	draw_circle(Vector2(cx, cy), 16, Color(0.15, 0.22, 0.35, a))
-	draw_arc(Vector2(cx, cy), 18, 0, TAU, 32, Color(0.5, 0.75, 1.0, a * 0.5), 1.5)
-	# Spectral body — translucent robes with frost veins
-	draw_colored_polygon(PackedVector2Array([
-		Vector2(cx - 6, cy - 4), Vector2(cx + 6, cy - 4),
-		Vector2(cx + 10, cy + 14), Vector2(cx - 10, cy + 14)
-	]), Color(0.12, 0.18, 0.3, a * 0.9))
-	draw_colored_polygon(PackedVector2Array([
-		Vector2(cx - 4, cy - 3), Vector2(cx + 4, cy - 3),
-		Vector2(cx + 7, cy + 13), Vector2(cx - 7, cy + 13)
-	]), Color(0.18, 0.28, 0.45, a * 0.8))
-	# Frost vein lines on robe
-	var vein_glow: float = 0.4 + 0.3 * sin(t * 2.0)
-	draw_line(Vector2(cx - 1, cy), Vector2(cx - 3, cy + 10), Color(0.5, 0.8, 1.0, a * vein_glow * 0.4), 0.8)
-	draw_line(Vector2(cx + 2, cy), Vector2(cx + 4, cy + 10), Color(0.5, 0.8, 1.0, a * vein_glow * 0.4), 0.8)
-	draw_line(Vector2(cx, cy + 2), Vector2(cx - 1, cy + 12), Color(0.6, 0.85, 1.0, a * vein_glow * 0.3), 0.6)
-	# Head — pale spectral
-	draw_circle(Vector2(cx, cy - 7), 6.0, Color(0.2, 0.3, 0.45, a))
-	draw_circle(Vector2(cx, cy - 7), 5.0, Color(0.35, 0.5, 0.7, a))
-	draw_circle(Vector2(cx - 0.5, cy - 7.5), 3.5, Color(0.5, 0.7, 0.9, a * 0.4))
-	# Crystalline ice crown (5 sharp spikes)
-	var crown_glow: float = 0.6 + 0.3 * sin(t * 2.5)
-	for ci in range(5):
-		var ca: float = -PI * 0.8 + float(ci) * PI * 0.4
-		var spike_h: float = 8.0 + float(2 - absi(ci - 2)) * 4.0  # center spike tallest
-		var base_x: float = cx + cos(ca) * 4.0
-		var base_y: float = cy - 12
-		var tip_x: float = cx + cos(ca) * 3.0
-		var tip_y: float = cy - 12 - spike_h
-		draw_line(Vector2(base_x, base_y), Vector2(tip_x, tip_y), Color(0.5, 0.8, 1.0, a * 0.8), 2.0)
-		draw_line(Vector2(base_x, base_y), Vector2(tip_x, tip_y), Color(0.8, 0.95, 1.0, a * crown_glow * 0.5), 1.0)
-		# Sparkle at tip
-		draw_circle(Vector2(tip_x, tip_y), 1.2, Color(0.8, 0.95, 1.0, a * crown_glow * 0.6))
-	# Pale empty white eyes
-	var eye_pulse: float = 0.7 + 0.3 * sin(t * 3.0)
-	draw_circle(Vector2(cx - 2.5, cy - 8), 2.2, Color(0.4, 0.6, 0.9, a * 0.2))
-	draw_circle(Vector2(cx + 2.5, cy - 8), 2.2, Color(0.4, 0.6, 0.9, a * 0.2))
-	draw_circle(Vector2(cx - 2.5, cy - 8), 1.4, Color(0.7, 0.9, 1.0, a * eye_pulse))
-	draw_circle(Vector2(cx + 2.5, cy - 8), 1.4, Color(0.7, 0.9, 1.0, a * eye_pulse))
-	draw_circle(Vector2(cx - 2.5, cy - 8), 0.6, Color(1, 1, 1, a * eye_pulse))
-	draw_circle(Vector2(cx + 2.5, cy - 8), 0.6, Color(1, 1, 1, a * eye_pulse))
-	# Frost staff (right side)
-	draw_line(Vector2(cx + 9, cy - 14), Vector2(cx + 9, cy + 12), Color(0.3, 0.45, 0.6, a), 2.5)
-	draw_line(Vector2(cx + 10, cy - 13), Vector2(cx + 10, cy + 11), Color(0.5, 0.7, 0.9, a * 0.5), 1.0)
-	# Ice crystal at staff top
-	var orb_pulse: float = 0.6 + 0.4 * sin(t * 3.0)
-	draw_circle(Vector2(cx + 9, cy - 15), 6, Color(0.4, 0.7, 1.0, a * 0.1 * orb_pulse))
-	draw_circle(Vector2(cx + 9, cy - 15), 4, Color(0.5, 0.8, 1.0, a * 0.3))
-	draw_circle(Vector2(cx + 9, cy - 15), 2.5, Color(0.7, 0.92, 1.0, a * orb_pulse))
-	# Rotating frost ring around crystal
-	draw_arc(Vector2(cx + 9, cy - 15), 5.5, t * 2.5, t * 2.5 + PI * 1.2, 12, Color(0.6, 0.85, 1.0, a * 0.4 * orb_pulse), 1.0)
 
 # ═══════════════════════════════════════════════════════
-# ENEMY AVATARS
+# 3D MODEL AVATARS
 # ═══════════════════════════════════════════════════════
 
-func _draw_enemy_scout(ex: float, ey: float, er: float, flash: bool) -> void:
-	var col: Color = Color(1, 0.2, 0.2) if flash else Color(1.0, 0.87, 0.27)
-	var t := GM.game_time
-	# Shadow
-	draw_circle(Vector2(ex + 1, ey + 1), er, Color(0, 0, 0, 0.2))
-	# Speed lines trailing behind (3 fading streaks)
-	for i in range(3):
-		var trail_off: float = float(i + 1) * 3.5
-		var trail_a: float = 0.18 - float(i) * 0.05
-		draw_line(Vector2(ex - er - trail_off, ey - 2), Vector2(ex - er - trail_off + 2, ey - 2), Color(col.r, col.g, col.b, trail_a), 1.0)
-		draw_line(Vector2(ex - er - trail_off, ey + 2), Vector2(ex - er - trail_off + 2, ey + 2), Color(col.r, col.g, col.b, trail_a), 1.0)
-	# Light robe body (tapered shape)
-	var robe_col: Color = col.darkened(0.15) if not flash else col
-	draw_colored_polygon(PackedVector2Array([
-		Vector2(ex - er * 0.5, ey - er * 0.3), Vector2(ex + er * 0.5, ey - er * 0.3),
-		Vector2(ex + er * 0.7, ey + er * 0.8), Vector2(ex - er * 0.7, ey + er * 0.8)
-	]), robe_col)
-	# Robe highlight (center fold)
-	draw_line(Vector2(ex, ey - er * 0.2), Vector2(ex, ey + er * 0.7), col.lightened(0.15), 1.0)
-	# Head (small circle on top)
-	draw_circle(Vector2(ex, ey - er * 0.5), er * 0.38, col.lightened(0.1))
-	# Feathered wings (2-3 segments each side, animated flutter)
-	var flutter: float = sin(t * 8.0) * 0.15
-	var wc := col.lightened(0.35)
-	var wc2 := col.lightened(0.25)
-	# Left wing feathers
-	draw_colored_polygon(PackedVector2Array([
-		Vector2(ex - er * 0.5, ey - er * 0.1),
-		Vector2(ex - er - 4, ey - er * 0.6 + flutter * er),
-		Vector2(ex - er - 2, ey + er * 0.1)
-	]), wc)
-	draw_colored_polygon(PackedVector2Array([
-		Vector2(ex - er * 0.4, ey + er * 0.1),
-		Vector2(ex - er - 5, ey - er * 0.3 + flutter * er * 0.8),
-		Vector2(ex - er - 3, ey + er * 0.4)
-	]), wc2)
-	# Right wing feathers
-	draw_colored_polygon(PackedVector2Array([
-		Vector2(ex + er * 0.5, ey - er * 0.1),
-		Vector2(ex + er + 4, ey - er * 0.6 - flutter * er),
-		Vector2(ex + er + 2, ey + er * 0.1)
-	]), wc)
-	draw_colored_polygon(PackedVector2Array([
-		Vector2(ex + er * 0.4, ey + er * 0.1),
-		Vector2(ex + er + 5, ey - er * 0.3 - flutter * er * 0.8),
-		Vector2(ex + er + 3, ey + er * 0.4)
-	]), wc2)
-	# Halo with golden glow
-	var halo_y := ey - er - 2
-	draw_circle(Vector2(ex, halo_y), 4.5, Color(1, 0.95, 0.4, 0.15))
-	draw_arc(Vector2(ex, halo_y), 3.5, 0, TAU, 14, Color(1, 0.95, 0.5, 0.9), 1.2)
-	draw_arc(Vector2(ex, halo_y), 3.0, 0, TAU, 14, Color(1, 1, 0.7, 0.4), 0.8)
-	# Small bright eyes
-	draw_circle(Vector2(ex - 1.2, ey - er * 0.55), 0.8, Color(0.2, 0.15, 0.0))
+# Converts a 2D screen-space direction (dx, dy) to the Y-axis angle
+# that the 3D model should face.
+#
+# Camera setup: position (1.2, 1.6, 1.2) looking at (0, 0.45, 0).
+# Camera's right axis in world = (0.707, 0, -0.707)
+# Ground-plane projection (y=0):
+#   screen_dx = 0.707 * (dX - dZ)
+#   screen_dy = 0.397 * (dX + dZ)   (screen +Y is down in 2D)
+#
+# KayKit models' default forward is +Z (verified from angle-0 preview).
+# At rotation.y = θ, forward = (sin(θ), 0, cos(θ)).
+# Solving dx/dy ratio gives:
+#   θ = atan2(dx + 1.785*dy, 1.785*dy - dx)
+#
+# The 1.785 factor (≈ 0.707 / 0.397) accounts for the camera tilt — vertical
+# movement on screen is compressed vs horizontal due to the look-down angle.
+func _screen_to_model_angle(dx: float, dy: float) -> float:
+	return atan2(dx + 1.785 * dy, 1.785 * dy - dx)
 
-func _draw_enemy_knight(ex: float, ey: float, er: float, flash: bool) -> void:
-	var col: Color = Color(1, 0.2, 0.2) if flash else Color(0.91, 0.91, 0.91)
-	var dark_col: Color = col.darkened(0.25)
-	# Shadow
-	draw_circle(Vector2(ex + 1, ey + 2), er, Color(0, 0, 0, 0.25))
-	# Armored body (trapezoid torso)
-	draw_colored_polygon(PackedVector2Array([
-		Vector2(ex - er * 0.6, ey - er * 0.3), Vector2(ex + er * 0.6, ey - er * 0.3),
-		Vector2(ex + er * 0.8, ey + er * 0.9), Vector2(ex - er * 0.8, ey + er * 0.9)
-	]), dark_col)
-	# Armor chest plate highlight
-	draw_colored_polygon(PackedVector2Array([
-		Vector2(ex - er * 0.35, ey - er * 0.1), Vector2(ex + er * 0.35, ey - er * 0.1),
-		Vector2(ex + er * 0.4, ey + er * 0.5), Vector2(ex - er * 0.4, ey + er * 0.5)
-	]), col)
-	# Shoulder pauldrons (two arcs on each side)
-	draw_circle(Vector2(ex - er * 0.65, ey - er * 0.15), er * 0.3, col.lightened(0.05))
-	draw_circle(Vector2(ex + er * 0.65, ey - er * 0.15), er * 0.3, col.lightened(0.05))
-	# Metallic shine on pauldrons
-	draw_arc(Vector2(ex - er * 0.65, ey - er * 0.15), er * 0.25, PI + 0.5, TAU - 0.5, 6, Color(1, 1, 1, 0.5), 1.0)
-	draw_arc(Vector2(ex + er * 0.65, ey - er * 0.15), er * 0.25, PI + 0.5, TAU - 0.5, 6, Color(1, 1, 1, 0.5), 1.0)
-	# Helmet (rounded top with ridge)
-	draw_circle(Vector2(ex, ey - er * 0.5), er * 0.45, dark_col)
-	draw_arc(Vector2(ex, ey - er * 0.5), er * 0.45, PI + 0.2, TAU - 0.2, 10, col, 1.5)
-	# Helmet ridge crest
-	draw_line(Vector2(ex, ey - er * 0.95), Vector2(ex, ey - er * 0.5), col.lightened(0.15), 2.0)
-	# T-shaped visor slit
-	draw_line(Vector2(ex - er * 0.25, ey - er * 0.5), Vector2(ex + er * 0.25, ey - er * 0.5), Color(0.15, 0.15, 0.25), 1.5)
-	draw_line(Vector2(ex, ey - er * 0.5), Vector2(ex, ey - er * 0.25), Color(0.15, 0.15, 0.25), 1.5)
-	# Shield on left side (kite shield shape)
-	var sx := ex - er * 0.7
-	var sy := ey + er * 0.1
-	draw_colored_polygon(PackedVector2Array([
-		Vector2(sx, sy - er * 0.5), Vector2(sx + er * 0.4, sy - er * 0.3),
-		Vector2(sx + er * 0.35, sy + er * 0.4), Vector2(sx, sy + er * 0.6),
-		Vector2(sx - er * 0.35, sy + er * 0.4), Vector2(sx - er * 0.4, sy - er * 0.3)
-	]), Color(0.75, 0.75, 0.8))
-	# Cross emblem on shield
-	draw_line(Vector2(sx, sy - er * 0.3), Vector2(sx, sy + er * 0.35), Color(0.85, 0.15, 0.15), 1.5)
-	draw_line(Vector2(sx - er * 0.2, sy), Vector2(sx + er * 0.2, sy), Color(0.85, 0.15, 0.15), 1.5)
-	# Metallic shine on body
-	draw_line(Vector2(ex + er * 0.1, ey - er * 0.05), Vector2(ex + er * 0.15, ey + er * 0.4), Color(1, 1, 1, 0.3), 1.0)
+func _draw_tower_model(tower: Dictionary, cx: float, cy: float, a: float) -> void:
+	var type_key: String = tower["type"]
 
-func _draw_enemy_hunter(ex: float, ey: float, er: float, flash: bool) -> void:
-	var col: Color = Color(1, 0.2, 0.2) if flash else Color(0.27, 0.87, 1.0)
-	var t := GM.game_time
-	# Afterimage trail (3 fading copies behind)
-	for i in range(3):
-		var trail_dist: float = float(i + 1) * 4.0
-		var trail_a: float = 0.12 - float(i) * 0.035
-		var trail_r: float = er * (0.8 - float(i) * 0.15)
-		draw_circle(Vector2(ex - trail_dist, ey), trail_r, Color(col.r, col.g, col.b, trail_a))
-	# Shadow (faint, fast-moving)
-	draw_circle(Vector2(ex + 1, ey + 1), er * 0.8, Color(0, 0, 0, 0.15))
-	# Sleek body (slightly elongated horizontally)
-	draw_colored_polygon(PackedVector2Array([
-		Vector2(ex + er * 0.6, ey - er * 0.5), Vector2(ex + er * 0.3, ey + er * 0.7),
-		Vector2(ex - er * 0.5, ey + er * 0.6), Vector2(ex - er * 0.6, ey - er * 0.4)
-	]), col.darkened(0.1))
-	draw_circle(Vector2(ex, ey), er * 0.75, col)
-	# Swept-back pointed hood/cowl
-	draw_colored_polygon(PackedVector2Array([
-		Vector2(ex - er * 0.4, ey - er * 0.4), Vector2(ex + er * 0.3, ey - er * 0.5),
-		Vector2(ex + er * 0.1, ey - er * 1.0), Vector2(ex - er * 0.6, ey - er * 0.8),
-		Vector2(ex - er - 3, ey - er * 0.5)
-	]), col.darkened(0.2))
-	# Hood edge highlight
-	draw_line(Vector2(ex - er - 3, ey - er * 0.5), Vector2(ex + er * 0.1, ey - er * 1.0), col.lightened(0.2), 1.0)
-	# Single focused eye (large, glowing)
-	draw_circle(Vector2(ex + er * 0.15, ey - er * 0.15), 2.2, Color(0, 0, 0, 0.5))
-	draw_circle(Vector2(ex + er * 0.15, ey - er * 0.15), 1.6, Color(1, 1, 1, 0.9))
-	draw_circle(Vector2(ex + er * 0.2, ey - er * 0.15), 0.8, Color(0.1, 0.5, 0.7))
-	# Small crossbow on right side
-	var bx := ex + er * 0.5
-	var by := ey + er * 0.1
-	draw_line(Vector2(bx, by), Vector2(bx + er * 0.6, by), Color(0.5, 0.35, 0.2), 1.5)
-	draw_line(Vector2(bx + er * 0.5, by - er * 0.35), Vector2(bx + er * 0.5, by + er * 0.35), Color(0.5, 0.35, 0.2), 1.5)
-	draw_line(Vector2(bx + er * 0.5, by - er * 0.35), Vector2(bx + er * 0.15, by), Color(0.6, 0.55, 0.4, 0.6), 0.8)
-	draw_line(Vector2(bx + er * 0.5, by + er * 0.35), Vector2(bx + er * 0.15, by), Color(0.6, 0.55, 0.4, 0.6), 0.8)
-	# Dynamic speed chevrons (animated pulse)
-	var chev_a: float = 0.3 + 0.2 * sin(t * 6.0)
-	var chev_col := Color(0.2, 0.7, 0.9, chev_a)
-	for i in range(3):
-		var cx_off: float = -er - 3.0 - float(i) * 3.5
-		var chev_size: float = 3.0 - float(i) * 0.5
-		draw_line(Vector2(ex + cx_off, ey - chev_size), Vector2(ex + cx_off + 2, ey), chev_col, 1.5)
-		draw_line(Vector2(ex + cx_off, ey + chev_size), Vector2(ex + cx_off + 2, ey), chev_col, 1.5)
+	# Compute facing angle — tower faces its target (or keeps last angle if no target)
+	var angle: float = tower.get("facing_angle", 0.0)
+	var target = tower.get("target")
+	if target != null and target is Dictionary and target.get("alive", false):
+		var dx: float = target["x"] - cx
+		var dy: float = target["y"] - cy
+		angle = _screen_to_model_angle(dx, dy)
+		tower["facing_angle"] = angle
 
-func _draw_enemy_war(ex: float, ey: float, er: float, flash: bool) -> void:
-	var col: Color = Color(1, 0.2, 0.2) if flash else Color(1.0, 0.53, 0.27)
-	var t := GM.game_time
-	# Shadow (heavy)
-	draw_circle(Vector2(ex + 1, ey + 2), er, Color(0, 0, 0, 0.3))
-	# Hulking armored body (wide trapezoid)
-	draw_colored_polygon(PackedVector2Array([
-		Vector2(ex - er * 0.7, ey - er * 0.4), Vector2(ex + er * 0.7, ey - er * 0.4),
-		Vector2(ex + er * 0.9, ey + er * 0.9), Vector2(ex - er * 0.9, ey + er * 0.9)
-	]), col.darkened(0.2))
-	# Inner armor plate
-	draw_colored_polygon(PackedVector2Array([
-		Vector2(ex - er * 0.4, ey - er * 0.2), Vector2(ex + er * 0.4, ey - er * 0.2),
-		Vector2(ex + er * 0.45, ey + er * 0.6), Vector2(ex - er * 0.45, ey + er * 0.6)
-	]), col)
-	# Battle scars (dark lines across body)
-	draw_line(Vector2(ex - er * 0.3, ey - er * 0.1), Vector2(ex + er * 0.2, ey + er * 0.3), Color(0.3, 0.15, 0.05, 0.6), 1.0)
-	draw_line(Vector2(ex + er * 0.1, ey + er * 0.1), Vector2(ex - er * 0.15, ey + er * 0.55), Color(0.3, 0.15, 0.05, 0.5), 1.0)
-	# Shoulder spikes
-	draw_colored_polygon(PackedVector2Array([
-		Vector2(ex - er * 0.7, ey - er * 0.3), Vector2(ex - er - 3, ey - er - 2),
-		Vector2(ex - er * 0.5, ey - er * 0.15)
-	]), Color(0.6, 0.3, 0.1))
-	draw_colored_polygon(PackedVector2Array([
-		Vector2(ex + er * 0.7, ey - er * 0.3), Vector2(ex + er + 3, ey - er - 2),
-		Vector2(ex + er * 0.5, ey - er * 0.15)
-	]), Color(0.6, 0.3, 0.1))
-	# Heavy spiked helmet
-	draw_circle(Vector2(ex, ey - er * 0.55), er * 0.45, col.darkened(0.15))
-	draw_arc(Vector2(ex, ey - er * 0.55), er * 0.45, PI + 0.3, TAU - 0.3, 8, col.lightened(0.1), 1.5)
-	# Helmet spike (large central)
-	draw_colored_polygon(PackedVector2Array([
-		Vector2(ex, ey - er - 6), Vector2(ex + 2.5, ey - er + 1), Vector2(ex - 2.5, ey - er + 1)
-	]), Color(0.7, 0.35, 0.1))
-	# Side helmet spikes
-	draw_line(Vector2(ex - er * 0.35, ey - er * 0.7), Vector2(ex - er * 0.5, ey - er - 3), Color(0.6, 0.3, 0.1), 1.5)
-	draw_line(Vector2(ex + er * 0.35, ey - er * 0.7), Vector2(ex + er * 0.5, ey - er - 3), Color(0.6, 0.3, 0.1), 1.5)
-	# Angry red eyes with glow
-	var eye_glow: float = 0.7 + 0.3 * sin(t * 5.0)
-	draw_circle(Vector2(ex - er * 0.2, ey - er * 0.55), 2.5, Color(1, 0.2, 0.0, 0.25 * eye_glow))
-	draw_circle(Vector2(ex + er * 0.2, ey - er * 0.55), 2.5, Color(1, 0.2, 0.0, 0.25 * eye_glow))
-	draw_line(Vector2(ex - er * 0.35, ey - er * 0.6), Vector2(ex - er * 0.1, ey - er * 0.5), Color(1, 0.3, 0.1, eye_glow), 1.5)
-	draw_line(Vector2(ex + er * 0.35, ey - er * 0.6), Vector2(ex + er * 0.1, ey - er * 0.5), Color(1, 0.3, 0.1, eye_glow), 1.5)
-	# Large broadsword held upright (right side)
-	var sx := ex + er * 0.5
-	var sy := ey
-	# Blade
-	draw_line(Vector2(sx, sy + er * 0.3), Vector2(sx, sy - er - 4), Color(0.85, 0.85, 0.9), 2.5)
-	draw_line(Vector2(sx + 0.8, sy - er * 0.3), Vector2(sx + 0.8, sy - er - 3), Color(1, 1, 1, 0.4), 1.0)
-	# Crossguard
-	draw_line(Vector2(sx - 3, sy + er * 0.1), Vector2(sx + 3, sy + er * 0.1), Color(0.7, 0.6, 0.2), 2.0)
-	# Pommel
-	draw_circle(Vector2(sx, sy + er * 0.45), 1.5, Color(0.7, 0.55, 0.15))
+	var tex: Texture2D = CharRenderer.get_texture(type_key, angle)
+	if tex == null:
+		draw_circle(Vector2(cx, cy), 18, tower["color"])
+		return
 
-func _draw_enemy_paladin(ex: float, ey: float, er: float, flash: bool) -> void:
-	var col: Color = Color(1, 0.2, 0.2) if flash else Color(1.0, 0.8, 0.0)
-	var t := GM.game_time
-	# Shadow (large)
-	draw_circle(Vector2(ex + 1, ey + 2), er, Color(0, 0, 0, 0.3))
-	# Divine radiance (pulsing outer glow, layered)
-	var divine_glow: float = 0.15 + 0.12 * sin(t * 2.0)
-	draw_circle(Vector2(ex, ey), er + 6, Color(1, 0.9, 0.3, divine_glow * 0.5))
-	draw_circle(Vector2(ex, ey), er + 4, Color(1, 0.9, 0.3, divine_glow))
-	draw_circle(Vector2(ex, ey), er + 2, Color(1, 0.85, 0.2, divine_glow * 1.3))
-	# Ornate wings (4+ segments each side, layered)
-	var wc1 := Color(1, 0.95, 0.7, 0.85)
-	var wc2_pal := Color(1, 0.92, 0.6, 0.8)
-	var wc3 := Color(1, 0.88, 0.5, 0.75)
-	var wc4 := Color(0.95, 0.85, 0.5, 0.7)
-	var wing_flutter: float = sin(t * 3.0) * 0.8
-	# Left wing (4 feather segments, top to bottom)
-	draw_colored_polygon(PackedVector2Array([
-		Vector2(ex - er * 0.6, ey - er * 0.3),
-		Vector2(ex - er - 8, ey - er - 4 + wing_flutter),
-		Vector2(ex - er - 6, ey - er * 0.5)
-	]), wc1)
-	draw_colored_polygon(PackedVector2Array([
-		Vector2(ex - er * 0.6, ey - er * 0.1),
-		Vector2(ex - er - 10, ey - er - 1 + wing_flutter * 0.7),
-		Vector2(ex - er - 7, ey + er * 0.1)
-	]), wc2_pal)
-	draw_colored_polygon(PackedVector2Array([
-		Vector2(ex - er * 0.5, ey + er * 0.1),
-		Vector2(ex - er - 9, ey - er * 0.2 + wing_flutter * 0.5),
-		Vector2(ex - er - 6, ey + er * 0.4)
-	]), wc3)
-	draw_colored_polygon(PackedVector2Array([
-		Vector2(ex - er * 0.4, ey + er * 0.3),
-		Vector2(ex - er - 7, ey + er * 0.1 + wing_flutter * 0.3),
-		Vector2(ex - er - 4, ey + er * 0.6)
-	]), wc4)
-	# Right wing (mirror)
-	draw_colored_polygon(PackedVector2Array([
-		Vector2(ex + er * 0.6, ey - er * 0.3),
-		Vector2(ex + er + 8, ey - er - 4 - wing_flutter),
-		Vector2(ex + er + 6, ey - er * 0.5)
-	]), wc1)
-	draw_colored_polygon(PackedVector2Array([
-		Vector2(ex + er * 0.6, ey - er * 0.1),
-		Vector2(ex + er + 10, ey - er - 1 - wing_flutter * 0.7),
-		Vector2(ex + er + 7, ey + er * 0.1)
-	]), wc2_pal)
-	draw_colored_polygon(PackedVector2Array([
-		Vector2(ex + er * 0.5, ey + er * 0.1),
-		Vector2(ex + er + 9, ey - er * 0.2 - wing_flutter * 0.5),
-		Vector2(ex + er + 6, ey + er * 0.4)
-	]), wc3)
-	draw_colored_polygon(PackedVector2Array([
-		Vector2(ex + er * 0.4, ey + er * 0.3),
-		Vector2(ex + er + 7, ey + er * 0.1 - wing_flutter * 0.3),
-		Vector2(ex + er + 4, ey + er * 0.6)
-	]), wc4)
-	# Full plate armor body
-	draw_colored_polygon(PackedVector2Array([
-		Vector2(ex - er * 0.6, ey - er * 0.4), Vector2(ex + er * 0.6, ey - er * 0.4),
-		Vector2(ex + er * 0.75, ey + er * 0.85), Vector2(ex - er * 0.75, ey + er * 0.85)
-	]), col.darkened(0.15))
-	# Golden trim lines on armor
-	draw_line(Vector2(ex - er * 0.55, ey - er * 0.35), Vector2(ex - er * 0.7, ey + er * 0.8), Color(1, 0.9, 0.4, 0.6), 1.0)
-	draw_line(Vector2(ex + er * 0.55, ey - er * 0.35), Vector2(ex + er * 0.7, ey + er * 0.8), Color(1, 0.9, 0.4, 0.6), 1.0)
-	# Prominent golden cross on chest
-	draw_line(Vector2(ex, ey - er * 0.3), Vector2(ex, ey + er * 0.5), Color(1, 1, 0.85), 2.5)
-	draw_line(Vector2(ex - er * 0.3, ey + er * 0.05), Vector2(ex + er * 0.3, ey + er * 0.05), Color(1, 1, 0.85), 2.5)
-	# Head
-	draw_circle(Vector2(ex, ey - er * 0.55), er * 0.35, col.darkened(0.1))
-	# Crown with jewels (5 points)
-	var crown_y := ey - er * 0.9
-	for i in range(5):
-		var cx_off: float = float(i - 2) * 2.5
-		var spike_h: float = 4.0 if i == 2 else 3.0
-		draw_line(Vector2(ex + cx_off, crown_y), Vector2(ex + cx_off, crown_y - spike_h), Color(1, 0.9, 0.3), 1.5)
-	# Jewel on center spike
-	draw_circle(Vector2(ex, crown_y - 4.5), 1.2, Color(1, 0.2, 0.2))
-	draw_circle(Vector2(ex, crown_y - 4.5), 0.7, Color(1, 0.5, 0.5, 0.8))
-	# Jewels on side spikes
-	draw_circle(Vector2(ex - 5, crown_y - 3.2), 0.9, Color(0.2, 0.4, 1.0))
-	draw_circle(Vector2(ex + 5, crown_y - 3.2), 0.9, Color(0.2, 0.4, 1.0))
-	# Majestic shield (left side, ornate)
-	var shx := ex - er * 0.65
-	var shy := ey + er * 0.15
-	draw_colored_polygon(PackedVector2Array([
-		Vector2(shx, shy - er * 0.45), Vector2(shx + er * 0.35, shy - er * 0.25),
-		Vector2(shx + er * 0.3, shy + er * 0.35), Vector2(shx, shy + er * 0.5),
-		Vector2(shx - er * 0.3, shy + er * 0.35), Vector2(shx - er * 0.35, shy - er * 0.25)
-	]), Color(0.85, 0.75, 0.15))
-	draw_arc(Vector2(shx, shy), er * 0.25, 0, TAU, 10, Color(1, 0.95, 0.5, 0.7), 1.0)
-	# Bright eyes
-	draw_circle(Vector2(ex - er * 0.15, ey - er * 0.55), 1.5, Color(1, 1, 0.8, 0.9))
-	draw_circle(Vector2(ex + er * 0.15, ey - er * 0.55), 1.5, Color(1, 1, 0.8, 0.9))
+	var tint: Color = CharRenderer.get_tint(type_key)
+	var mod_scale: float = CharRenderer.get_draw_scale(type_key)
+	var t: float = GM.game_time
 
-func _draw_enemy_monk(ex: float, ey: float, er: float, flash: bool) -> void:
-	var col: Color = Color(1, 0.2, 0.2) if flash else Color(0.53, 1.0, 0.53)
-	var t := GM.game_time
-	# Gentle healing glow (soft pulse)
-	var heal_pulse: float = 0.1 + 0.08 * sin(t * 2.5)
-	draw_circle(Vector2(ex, ey), er + 4, Color(0.4, 1.0, 0.5, heal_pulse * 0.4))
-	draw_circle(Vector2(ex, ey), er + 2, Color(0.5, 1.0, 0.6, heal_pulse))
-	# Shadow
-	draw_circle(Vector2(ex + 1, ey + 1), er * 0.9, Color(0, 0, 0, 0.15))
-	# Hooded robe body (wider at bottom)
-	var robe_dark := col.darkened(0.3) if not flash else col.darkened(0.1)
-	draw_colored_polygon(PackedVector2Array([
-		Vector2(ex - er * 0.45, ey - er * 0.4), Vector2(ex + er * 0.45, ey - er * 0.4),
-		Vector2(ex + er * 0.8, ey + er * 0.9), Vector2(ex - er * 0.8, ey + er * 0.9)
-	]), robe_dark)
-	# Robe fold highlights
-	draw_line(Vector2(ex - er * 0.15, ey), Vector2(ex - er * 0.25, ey + er * 0.8), col.darkened(0.15), 1.0)
-	draw_line(Vector2(ex + er * 0.15, ey), Vector2(ex + er * 0.25, ey + er * 0.8), col.darkened(0.15), 1.0)
-	# Hood (pointed top)
-	draw_colored_polygon(PackedVector2Array([
-		Vector2(ex - er * 0.5, ey - er * 0.3), Vector2(ex + er * 0.5, ey - er * 0.3),
-		Vector2(ex + er * 0.35, ey - er * 0.7), Vector2(ex, ey - er - 2),
-		Vector2(ex - er * 0.35, ey - er * 0.7)
-	]), robe_dark.lightened(0.05))
-	# Face area (lighter circle under hood)
-	draw_circle(Vector2(ex, ey - er * 0.35), er * 0.3, col.lightened(0.2))
-	# Peaceful closed eyes (gentle curves)
-	draw_arc(Vector2(ex - er * 0.15, ey - er * 0.38), 1.5, 0.3, PI - 0.3, 6, Color(0.2, 0.5, 0.2), 1.2)
-	draw_arc(Vector2(ex + er * 0.15, ey - er * 0.38), 1.5, 0.3, PI - 0.3, 6, Color(0.2, 0.5, 0.2), 1.2)
-	# Gentle smile
-	draw_arc(Vector2(ex, ey - er * 0.22), 1.5, 0.4, PI - 0.4, 6, Color(0.2, 0.5, 0.2, 0.5), 0.8)
-	# Prayer beads in arc (5 beads from left to right)
-	for i in range(5):
-		var angle: float = 0.3 + float(i) * 0.45
-		var bead_x: float = ex + cos(angle) * (er + 2)
-		var bead_y: float = ey + sin(angle) * (er + 2)
-		draw_circle(Vector2(bead_x, bead_y), 1.2, Color(0.75, 0.6, 0.2, 0.8))
-		draw_circle(Vector2(bead_x, bead_y), 0.7, Color(0.9, 0.8, 0.4, 0.5))
-	# Bead string connecting them
-	for i in range(4):
-		var a1: float = 0.3 + float(i) * 0.45
-		var a2: float = 0.3 + float(i + 1) * 0.45
-		draw_line(
-			Vector2(ex + cos(a1) * (er + 2), ey + sin(a1) * (er + 2)),
-			Vector2(ex + cos(a2) * (er + 2), ey + sin(a2) * (er + 2)),
-			Color(0.6, 0.5, 0.2, 0.4), 0.8)
-	# Small prayer book/scroll (right hand)
-	draw_colored_polygon(PackedVector2Array([
-		Vector2(ex + er * 0.4, ey + er * 0.1), Vector2(ex + er * 0.7, ey - er * 0.1),
-		Vector2(ex + er * 0.8, ey + er * 0.25), Vector2(ex + er * 0.5, ey + er * 0.45)
-	]), Color(0.85, 0.8, 0.6))
-	draw_line(Vector2(ex + er * 0.5, ey + er * 0.05), Vector2(ex + er * 0.65, ey + er * 0.3), Color(0.4, 0.35, 0.2, 0.5), 0.8)
-	# Leaf accents (small leaf shapes near shoulders)
-	draw_colored_polygon(PackedVector2Array([
-		Vector2(ex - er * 0.55, ey - er * 0.2), Vector2(ex - er * 0.7, ey - er * 0.5),
-		Vector2(ex - er * 0.45, ey - er * 0.35)
-	]), Color(0.3, 0.75, 0.3, 0.6))
-	draw_colored_polygon(PackedVector2Array([
-		Vector2(ex + er * 0.55, ey - er * 0.2), Vector2(ex + er * 0.7, ey - er * 0.5),
-		Vector2(ex + er * 0.45, ey - er * 0.35)
-	]), Color(0.3, 0.75, 0.3, 0.6))
-	# Halo (golden, subtle)
-	draw_arc(Vector2(ex, ey - er - 2.5), 3.5, 0, TAU, 14, Color(1, 0.95, 0.5, 0.6), 1.0)
+	# Base size for sprite in game pixels
+	var draw_size: float = 48.0 * mod_scale
+	var half: float = draw_size / 2.0
 
-func _draw_enemy_archangel(ex: float, ey: float, er: float, flash: bool) -> void:
-	var col: Color = Color(1, 0.2, 0.2) if flash else Color(1.0, 0.9, 0.5)
-	var t := GM.game_time
-	# Command aura (pulsing ring at distance)
-	var pulse := 0.5 + 0.5 * sin(t * 3.0)
-	draw_circle(Vector2(ex, ey), er + 8, Color(1, 0.85, 0.3, 0.08 * pulse))
-	draw_arc(Vector2(ex, ey), er + 7, 0, TAU, 28, Color(1, 0.85, 0.3, 0.3 * pulse), 1.5)
-	draw_arc(Vector2(ex, ey), er + 5, 0, TAU, 24, Color(1, 0.8, 0.2, 0.15 * pulse), 1.0)
-	# Shadow
-	draw_circle(Vector2(ex + 1, ey + 2), er, Color(0, 0, 0, 0.25))
-	# Military cape suggestion (flowing behind)
-	draw_colored_polygon(PackedVector2Array([
-		Vector2(ex - er * 0.4, ey - er * 0.2), Vector2(ex + er * 0.4, ey - er * 0.2),
-		Vector2(ex + er * 0.6, ey + er + 3), Vector2(ex - er * 0.6, ey + er + 3)
-	]), Color(0.6, 0.15, 0.15, 0.5))
-	# Large spread wings (3 feather segments each, wider than others)
-	var wc := Color(1, 0.95, 0.7, 0.9)
-	var wc2_arch := Color(1, 0.92, 0.65, 0.85)
-	var wc3_arch := Color(0.95, 0.88, 0.6, 0.8)
-	# Left wing
-	draw_colored_polygon(PackedVector2Array([
-		Vector2(ex - er * 0.5, ey - er * 0.3),
-		Vector2(ex - er - 10, ey - er - 5),
-		Vector2(ex - er - 7, ey - er * 0.3)
-	]), wc)
-	draw_colored_polygon(PackedVector2Array([
-		Vector2(ex - er * 0.5, ey),
-		Vector2(ex - er - 12, ey - er * 0.5),
-		Vector2(ex - er - 8, ey + er * 0.2)
-	]), wc2_arch)
-	draw_colored_polygon(PackedVector2Array([
-		Vector2(ex - er * 0.4, ey + er * 0.2),
-		Vector2(ex - er - 9, ey),
-		Vector2(ex - er - 5, ey + er * 0.5)
-	]), wc3_arch)
-	# Right wing
-	draw_colored_polygon(PackedVector2Array([
-		Vector2(ex + er * 0.5, ey - er * 0.3),
-		Vector2(ex + er + 10, ey - er - 5),
-		Vector2(ex + er + 7, ey - er * 0.3)
-	]), wc)
-	draw_colored_polygon(PackedVector2Array([
-		Vector2(ex + er * 0.5, ey),
-		Vector2(ex + er + 12, ey - er * 0.5),
-		Vector2(ex + er + 8, ey + er * 0.2)
-	]), wc2_arch)
-	draw_colored_polygon(PackedVector2Array([
-		Vector2(ex + er * 0.4, ey + er * 0.2),
-		Vector2(ex + er + 9, ey),
-		Vector2(ex + er + 5, ey + er * 0.5)
-	]), wc3_arch)
-	# Armored body
-	draw_colored_polygon(PackedVector2Array([
-		Vector2(ex - er * 0.55, ey - er * 0.35), Vector2(ex + er * 0.55, ey - er * 0.35),
-		Vector2(ex + er * 0.7, ey + er * 0.8), Vector2(ex - er * 0.7, ey + er * 0.8)
-	]), col.darkened(0.15))
-	# Armor highlight plate
-	draw_colored_polygon(PackedVector2Array([
-		Vector2(ex - er * 0.3, ey - er * 0.15), Vector2(ex + er * 0.3, ey - er * 0.15),
-		Vector2(ex + er * 0.35, ey + er * 0.5), Vector2(ex - er * 0.35, ey + er * 0.5)
-	]), col)
-	# Head
-	draw_circle(Vector2(ex, ey - er * 0.5), er * 0.35, col.darkened(0.1))
-	# Three-pointed crown
-	draw_line(Vector2(ex - 3.5, ey - er * 0.85), Vector2(ex - 2.5, ey - er - 5), Color(1, 0.85, 0.2), 1.5)
-	draw_line(Vector2(ex, ey - er * 0.85), Vector2(ex, ey - er - 7), Color(1, 0.85, 0.2), 2.0)
-	draw_line(Vector2(ex + 3.5, ey - er * 0.85), Vector2(ex + 2.5, ey - er - 5), Color(1, 0.85, 0.2), 1.5)
-	# Crown base band
-	draw_line(Vector2(ex - 4, ey - er * 0.85), Vector2(ex + 4, ey - er * 0.85), Color(1, 0.85, 0.2), 1.5)
-	# Stern bright eyes
-	draw_circle(Vector2(ex - er * 0.15, ey - er * 0.52), 1.8, Color(1, 1, 0.7, 0.3))
-	draw_circle(Vector2(ex + er * 0.15, ey - er * 0.52), 1.8, Color(1, 1, 0.7, 0.3))
-	draw_circle(Vector2(ex - er * 0.15, ey - er * 0.52), 1.0, Color(1, 1, 0.8, 0.9))
-	draw_circle(Vector2(ex + er * 0.15, ey - er * 0.52), 1.0, Color(1, 1, 0.8, 0.9))
-	# Scepter with glowing gem (right side)
-	var scepter_x := ex + er * 0.55
-	draw_line(Vector2(scepter_x, ey - er * 0.3), Vector2(scepter_x, ey + er * 0.7), Color(0.7, 0.6, 0.25), 2.0)
-	# Scepter gem (pulsing)
-	var gem_pulse: float = 0.6 + 0.4 * sin(t * 4.0)
-	draw_circle(Vector2(scepter_x, ey - er * 0.4), 3.5, Color(1, 0.85, 0.3, 0.2 * gem_pulse))
-	draw_circle(Vector2(scepter_x, ey - er * 0.4), 2.2, Color(1, 0.9, 0.4, 0.7))
-	draw_circle(Vector2(scepter_x, ey - er * 0.4), 1.3, Color(1, 1, 0.7, gem_pulse))
+	# Subtle ground shadow
+	_draw_cast_shadow(cx, cy, 16 * mod_scale, a)
 
-func _draw_enemy_guardian(ex: float, ey: float, er: float, flash: bool) -> void:
-	var col: Color = Color(1, 0.2, 0.2) if flash else Color(0.6, 0.8, 1.0)
-	var t := GM.game_time
-	# Protective aura dome (translucent)
-	var dome_pulse := 0.5 + 0.5 * sin(t * 2.5)
-	draw_circle(Vector2(ex, ey), er + 6, Color(0.3, 0.5, 1.0, 0.06 * dome_pulse))
-	draw_arc(Vector2(ex, ey), er + 5, PI + 0.3, TAU - 0.3, 16, Color(0.4, 0.6, 1.0, 0.2 * dome_pulse), 1.5)
-	draw_arc(Vector2(ex, ey), er + 4, 0, TAU, 24, Color(0.4, 0.6, 1.0, 0.3 * dome_pulse), 1.5)
-	# Shadow
-	draw_circle(Vector2(ex + 1, ey + 2), er, Color(0, 0, 0, 0.2))
-	# Small wings (behind body)
-	var wc := Color(0.7, 0.85, 1.0, 0.75)
-	draw_colored_polygon(PackedVector2Array([
-		Vector2(ex - er * 0.4, ey - er * 0.1),
-		Vector2(ex - er - 4, ey - er * 0.6),
-		Vector2(ex - er - 2, ey + er * 0.2)
-	]), wc)
-	draw_colored_polygon(PackedVector2Array([
-		Vector2(ex + er * 0.4, ey - er * 0.1),
-		Vector2(ex + er + 4, ey - er * 0.6),
-		Vector2(ex + er + 2, ey + er * 0.2)
-	]), wc)
-	# Layered armor plates body
-	draw_colored_polygon(PackedVector2Array([
-		Vector2(ex - er * 0.55, ey - er * 0.35), Vector2(ex + er * 0.55, ey - er * 0.35),
-		Vector2(ex + er * 0.7, ey + er * 0.8), Vector2(ex - er * 0.7, ey + er * 0.8)
-	]), col.darkened(0.2))
-	# Upper armor plate
-	draw_colored_polygon(PackedVector2Array([
-		Vector2(ex - er * 0.4, ey - er * 0.25), Vector2(ex + er * 0.4, ey - er * 0.25),
-		Vector2(ex + er * 0.45, ey + er * 0.15), Vector2(ex - er * 0.45, ey + er * 0.15)
-	]), col.darkened(0.05))
-	# Lower armor plate
-	draw_colored_polygon(PackedVector2Array([
-		Vector2(ex - er * 0.45, ey + er * 0.2), Vector2(ex + er * 0.45, ey + er * 0.2),
-		Vector2(ex + er * 0.55, ey + er * 0.65), Vector2(ex - er * 0.55, ey + er * 0.65)
-	]), col)
-	# Large shield (taking up left half of body) with cross and dome pattern
-	var shield_x := ex - er * 0.3
-	var shield_y := ey + er * 0.05
-	draw_colored_polygon(PackedVector2Array([
-		Vector2(shield_x, shield_y - er * 0.7), Vector2(shield_x + er * 0.55, shield_y - er * 0.45),
-		Vector2(shield_x + er * 0.5, shield_y + er * 0.55), Vector2(shield_x, shield_y + er * 0.75),
-		Vector2(shield_x - er * 0.5, shield_y + er * 0.55), Vector2(shield_x - er * 0.55, shield_y - er * 0.45)
-	]), Color(0.5, 0.65, 0.9))
-	# Shield border
-	draw_arc(Vector2(shield_x, shield_y), er * 0.5, 0, TAU, 16, Color(0.7, 0.8, 1.0, 0.6), 1.0)
-	# Cross on shield
-	draw_line(Vector2(shield_x, shield_y - er * 0.4), Vector2(shield_x, shield_y + er * 0.45), Color(0.85, 0.9, 1.0), 1.5)
-	draw_line(Vector2(shield_x - er * 0.3, shield_y), Vector2(shield_x + er * 0.3, shield_y), Color(0.85, 0.9, 1.0), 1.5)
-	# Dome arc on shield top
-	draw_arc(Vector2(shield_x, shield_y - er * 0.15), er * 0.3, PI + 0.3, TAU - 0.3, 8, Color(0.85, 0.9, 1.0, 0.7), 1.0)
-	# Head with helmet
-	draw_circle(Vector2(ex, ey - er * 0.5), er * 0.35, col.darkened(0.15))
-	draw_arc(Vector2(ex, ey - er * 0.5), er * 0.35, PI + 0.3, TAU - 0.3, 8, col, 1.5)
-	# Vigilant eyes (sharp, alert)
-	draw_circle(Vector2(ex - er * 0.12, ey - er * 0.52), 1.5, Color(0.3, 0.5, 0.95, 0.3))
-	draw_circle(Vector2(ex + er * 0.12, ey - er * 0.52), 1.5, Color(0.3, 0.5, 0.95, 0.3))
-	draw_circle(Vector2(ex - er * 0.12, ey - er * 0.52), 0.9, Color(0.5, 0.7, 1.0, 0.9))
-	draw_circle(Vector2(ex + er * 0.12, ey - er * 0.52), 0.9, Color(0.5, 0.7, 1.0, 0.9))
-	# Halo (bright blue)
-	draw_arc(Vector2(ex, ey - er - 2), 4, 0, TAU, 14, Color(0.5, 0.7, 1.0, 0.8), 1.5)
+	# Tower-specific aura effects (drawn UNDER the model)
+	match type_key:
+		"bone_marksman":
+			# Warm ember glow at base
+			draw_circle(Vector2(cx, cy + 2), 14, Color(0.8, 0.2, 0.1, 0.12 * a))
+		"inferno_warlock":
+			# Purple arcane circle at base
+			var pulse: float = 0.7 + 0.3 * sin(t * 3.0)
+			draw_circle(Vector2(cx, cy + 2), 16, Color(0.5, 0.15, 0.7, 0.1 * a * pulse))
+			draw_arc(Vector2(cx, cy + 2), 16, t * 0.8, t * 0.8 + TAU * 0.7, 12, Color(0.7, 0.3, 1.0, 0.2 * a * pulse), 1.0)
+		"soul_reaper":
+			# Green pulsing soul aura
+			var pulse: float = 0.6 + 0.4 * sin(t * 2.5)
+			draw_circle(Vector2(cx, cy + 2), 18, Color(0.15, 0.6, 0.3, 0.1 * a * pulse))
+			# Soul wisps orbiting
+			for wi in range(3):
+				var wa: float = t * 1.5 + wi * TAU / 3.0
+				var wr: float = 16.0 + sin(t * 2.0 + wi) * 3.0
+				var wx: float = cx + cos(wa) * wr
+				var wy: float = cy + sin(wa) * wr * 0.4
+				draw_circle(Vector2(wx, wy), 2.0, Color(0.3, 1.0, 0.5, 0.35 * a))
+		"lucifer":
+			# Hellfire aura — large, intense
+			var pulse: float = 0.7 + 0.3 * sin(t * 4.0)
+			draw_circle(Vector2(cx, cy), 22, Color(1.0, 0.3, 0.0, 0.12 * a * pulse))
+			draw_circle(Vector2(cx, cy), 18, Color(1.0, 0.5, 0.1, 0.08 * a * pulse))
+			# Orbiting fire ring
+			for fi in range(6):
+				var fa: float = t * 2.0 + fi * TAU / 6.0
+				var fr: float = 20.0
+				var fx: float = cx + cos(fa) * fr
+				var fy: float = cy + sin(fa) * fr * 0.45
+				draw_circle(Vector2(fx, fy), 2.5, Color(1.0, 0.5 + sin(t * 5 + fi) * 0.3, 0.1, 0.4 * a))
+		"hades":
+			# Blue-purple support aura
+			var is_buffing: bool = tower.get("buff_timer", 0.0) > 0
+			var aura_a: float = 0.15 if is_buffing else 0.06
+			draw_circle(Vector2(cx, cy + 2), 20, Color(0.3, 0.2, 0.8, aura_a * a))
+			# Runic symbols
+			for ri in range(3):
+				var ra: float = t * 0.6 + ri * TAU / 3.0
+				var rr: float = 16.0
+				var rx: float = cx + cos(ra) * rr
+				var ry: float = cy + sin(ra) * rr * 0.4
+				var rp: float = 0.5 + 0.5 * sin(t * 3.0 + ri * 2.0)
+				draw_circle(Vector2(rx, ry), 1.5, Color(0.5, 0.35, 1.0, 0.4 * a * rp))
+		"cocytus":
+			# Cold mist and frost aura
+			var pulse: float = 0.7 + 0.3 * sin(t * 2.0)
+			draw_circle(Vector2(cx, cy + 2), 16, Color(0.5, 0.8, 1.0, 0.08 * a * pulse))
+			# Orbiting ice fragments
+			for ii in range(4):
+				var ia: float = t * 1.2 + ii * TAU / 4.0
+				var ir: float = 14.0
+				var ix: float = cx + cos(ia) * ir
+				var iy: float = cy + sin(ia) * ir * 0.4 - 4
+				draw_rect(Rect2(ix - 1.5, iy - 1.5, 3, 3), Color(0.7, 0.92, 1.0, 0.4 * a))
 
-func _draw_enemy_michael(ex: float, ey: float, er: float, flash: bool) -> void:
-	var col: Color = Color(1, 0.2, 0.2) if flash else Color(1.0, 0.95, 0.8)
-	var t := GM.game_time
-	# Shadow (heavy, boss)
-	draw_circle(Vector2(ex + 1, ey + 2), er, Color(0, 0, 0, 0.35))
-	# Massive divine aura (multi-layered animated glow)
-	var divine_glow: float = 0.2 + 0.15 * sin(t * 2.0)
-	draw_circle(Vector2(ex, ey), er + 10, Color(1, 0.95, 0.5, divine_glow * 0.3))
-	draw_circle(Vector2(ex, ey), er + 7, Color(1, 0.93, 0.45, divine_glow * 0.5))
-	draw_circle(Vector2(ex, ey), er + 4, Color(1, 0.9, 0.4, divine_glow))
-	# Shield of faith pulse (holy ring)
-	var shield_pulse: float = 0.3 * sin(t * 4.0)
-	draw_arc(Vector2(ex, ey), er + 9, 0, TAU, 32, Color(1, 0.95, 0.7, maxf(0, shield_pulse * 0.5)), 2.0)
-	# Radiating light rays from center (4 rays, rotating slowly)
-	for i in range(4):
-		var ray_angle: float = t * 0.5 + float(i) * TAU / 4.0
-		var ray_a: float = 0.12 + 0.06 * sin(t * 3.0 + float(i))
-		var ray_end := Vector2(ex + cos(ray_angle) * (er + 12), ey + sin(ray_angle) * (er + 12))
-		draw_line(Vector2(ex + cos(ray_angle) * er, ey + sin(ray_angle) * er), ray_end, Color(1, 0.95, 0.6, ray_a), 2.0)
-	# Six-feathered wings (3 per side, layered large to small)
-	var wc := Color(1, 0.98, 0.85, 0.9)
-	var wing_bob: float = sin(t * 2.5) * 1.0
-	# Left wing - top feather (longest, sweeping up)
-	draw_colored_polygon(PackedVector2Array([
-		Vector2(ex - er * 0.5, ey - er * 0.4),
-		Vector2(ex - er - 12, ey - er - 8 + wing_bob),
-		Vector2(ex - er - 10, ey - er - 2 + wing_bob),
-		Vector2(ex - er - 6, ey - er * 0.2)
-	]), wc)
-	# Left wing - middle feather (widest)
-	draw_colored_polygon(PackedVector2Array([
-		Vector2(ex - er * 0.5, ey - er * 0.1),
-		Vector2(ex - er - 14, ey - er * 0.4 + wing_bob * 0.7),
-		Vector2(ex - er - 12, ey + er * 0.15 + wing_bob * 0.7),
-		Vector2(ex - er - 6, ey + er * 0.3)
-	]), wc.darkened(0.04))
-	# Left wing - bottom feather
-	draw_colored_polygon(PackedVector2Array([
-		Vector2(ex - er * 0.4, ey + er * 0.2),
-		Vector2(ex - er - 10, ey + er * 0.1 + wing_bob * 0.4),
-		Vector2(ex - er - 7, ey + er * 0.6 + wing_bob * 0.4),
-		Vector2(ex - er - 3, ey + er * 0.5)
-	]), wc.darkened(0.08))
-	# Wing feather edge highlights (left)
-	draw_line(Vector2(ex - er * 0.5, ey - er * 0.4), Vector2(ex - er - 12, ey - er - 8 + wing_bob), Color(1, 1, 0.9, 0.4), 1.0)
-	draw_line(Vector2(ex - er * 0.5, ey - er * 0.1), Vector2(ex - er - 14, ey - er * 0.4 + wing_bob * 0.7), Color(1, 1, 0.9, 0.3), 1.0)
-	# Right wing - top feather
-	draw_colored_polygon(PackedVector2Array([
-		Vector2(ex + er * 0.5, ey - er * 0.4),
-		Vector2(ex + er + 12, ey - er - 8 - wing_bob),
-		Vector2(ex + er + 10, ey - er - 2 - wing_bob),
-		Vector2(ex + er + 6, ey - er * 0.2)
-	]), wc)
-	# Right wing - middle feather
-	draw_colored_polygon(PackedVector2Array([
-		Vector2(ex + er * 0.5, ey - er * 0.1),
-		Vector2(ex + er + 14, ey - er * 0.4 - wing_bob * 0.7),
-		Vector2(ex + er + 12, ey + er * 0.15 - wing_bob * 0.7),
-		Vector2(ex + er + 6, ey + er * 0.3)
-	]), wc.darkened(0.04))
-	# Right wing - bottom feather
-	draw_colored_polygon(PackedVector2Array([
-		Vector2(ex + er * 0.4, ey + er * 0.2),
-		Vector2(ex + er + 10, ey + er * 0.1 - wing_bob * 0.4),
-		Vector2(ex + er + 7, ey + er * 0.6 - wing_bob * 0.4),
-		Vector2(ex + er + 3, ey + er * 0.5)
-	]), wc.darkened(0.08))
-	# Wing feather edge highlights (right)
-	draw_line(Vector2(ex + er * 0.5, ey - er * 0.4), Vector2(ex + er + 12, ey - er - 8 - wing_bob), Color(1, 1, 0.9, 0.4), 1.0)
-	draw_line(Vector2(ex + er * 0.5, ey - er * 0.1), Vector2(ex + er + 14, ey - er * 0.4 - wing_bob * 0.7), Color(1, 1, 0.9, 0.3), 1.0)
-	# Full divine armor body
-	draw_colored_polygon(PackedVector2Array([
-		Vector2(ex - er * 0.6, ey - er * 0.4), Vector2(ex + er * 0.6, ey - er * 0.4),
-		Vector2(ex + er * 0.75, ey + er * 0.85), Vector2(ex - er * 0.75, ey + er * 0.85)
-	]), col.darkened(0.15))
-	# Armor detail lines (golden trim)
-	draw_line(Vector2(ex - er * 0.55, ey - er * 0.35), Vector2(ex - er * 0.7, ey + er * 0.8), Color(1, 0.9, 0.5, 0.5), 1.0)
-	draw_line(Vector2(ex + er * 0.55, ey - er * 0.35), Vector2(ex + er * 0.7, ey + er * 0.8), Color(1, 0.9, 0.5, 0.5), 1.0)
-	# Golden cross armor emblem
-	draw_line(Vector2(ex, ey - er * 0.3), Vector2(ex, ey + er * 0.5), Color(1, 0.92, 0.55), 2.5)
-	draw_line(Vector2(ex - er * 0.35, ey + er * 0.05), Vector2(ex + er * 0.35, ey + er * 0.05), Color(1, 0.92, 0.55), 2.5)
-	# Head
-	draw_circle(Vector2(ex, ey - er * 0.55), er * 0.35, col.darkened(0.05))
-	# Crown of light (5 points with connecting band)
-	var crown_y := ey - er * 0.9
-	draw_line(Vector2(ex - 5, crown_y), Vector2(ex + 5, crown_y), Color(1, 0.95, 0.5), 1.5)
-	draw_line(Vector2(ex - 5, crown_y), Vector2(ex - 3, crown_y - 5), Color(1, 0.95, 0.5), 1.5)
-	draw_line(Vector2(ex - 2, crown_y), Vector2(ex - 1, crown_y - 4), Color(1, 0.95, 0.5), 1.5)
-	draw_line(Vector2(ex, crown_y), Vector2(ex, crown_y - 7), Color(1, 0.95, 0.5), 2.0)
-	draw_line(Vector2(ex + 2, crown_y), Vector2(ex + 1, crown_y - 4), Color(1, 0.95, 0.5), 1.5)
-	draw_line(Vector2(ex + 5, crown_y), Vector2(ex + 3, crown_y - 5), Color(1, 0.95, 0.5), 1.5)
-	# Blazing halo with rays
-	var halo_y := ey - er - 4
-	draw_circle(Vector2(ex, halo_y), 7, Color(1, 0.95, 0.5, 0.15))
-	draw_arc(Vector2(ex, halo_y), 5.5, 0, TAU, 18, Color(1, 0.95, 0.6, 0.7), 1.5)
-	draw_arc(Vector2(ex, halo_y), 4.5, 0, TAU, 16, Color(1, 1, 0.75, 0.4), 1.0)
-	# Short radiating rays from halo
-	for i in range(8):
-		var ray_a_val: float = float(i) * TAU / 8.0
-		var inner_r: float = 5.5
-		var outer_r: float = 7.5 + sin(t * 3.0 + float(i)) * 1.0
-		draw_line(
-			Vector2(ex + cos(ray_a_val) * inner_r, halo_y + sin(ray_a_val) * inner_r),
-			Vector2(ex + cos(ray_a_val) * outer_r, halo_y + sin(ray_a_val) * outer_r),
-			Color(1, 0.95, 0.5, 0.4), 1.0)
-	# Blazing eyes
-	var eye_glow: float = 0.8 + 0.2 * sin(t * 4.0)
-	draw_circle(Vector2(ex - er * 0.15, ey - er * 0.55), 2.2, Color(1, 0.9, 0.4, 0.3))
-	draw_circle(Vector2(ex + er * 0.15, ey - er * 0.55), 2.2, Color(1, 0.9, 0.4, 0.3))
-	draw_circle(Vector2(ex - er * 0.15, ey - er * 0.55), 1.3, Color(1, 1, 0.7, eye_glow))
-	draw_circle(Vector2(ex + er * 0.15, ey - er * 0.55), 1.3, Color(1, 1, 0.7, eye_glow))
-	# Flaming sword (right hand, longer and more dramatic)
-	var fsx := ex + er * 0.4
-	var fsy := ey - er * 0.2
-	# Blade
-	draw_line(Vector2(fsx, fsy + er * 0.2), Vector2(fsx + 3, fsy - er - 6), Color(1, 0.97, 0.85), 2.5)
-	draw_line(Vector2(fsx + 1, fsy - er * 0.4), Vector2(fsx + 3.5, fsy - er - 5), Color(1, 1, 1, 0.4), 1.0)
-	# Crossguard
-	draw_line(Vector2(fsx - 3, fsy + er * 0.05), Vector2(fsx + 5, fsy + er * 0.05), Color(0.85, 0.75, 0.2), 2.0)
-	# Flame on sword tip (animated)
-	var flame_tip_x := fsx + 3
-	var flame_tip_y := fsy - er - 6
-	var flame_h: float = 3.0 + 2.0 * sin(t * 7.0)
-	var flame_w: float = 1.5 + sin(t * 5.0) * 0.5
-	draw_colored_polygon(PackedVector2Array([
-		Vector2(flame_tip_x, flame_tip_y - flame_h),
-		Vector2(flame_tip_x + flame_w + 1, flame_tip_y + 1),
-		Vector2(flame_tip_x - flame_w - 1, flame_tip_y + 1)
-	]), Color(1, 0.6, 0.15, 0.7))
-	draw_colored_polygon(PackedVector2Array([
-		Vector2(flame_tip_x, flame_tip_y - flame_h * 0.6),
-		Vector2(flame_tip_x + flame_w, flame_tip_y + 1),
-		Vector2(flame_tip_x - flame_w, flame_tip_y + 1)
-	]), Color(1, 0.85, 0.3, 0.8))
-	# Fire particles floating off sword
-	for i in range(3):
-		var p_off_x: float = sin(t * 4.0 + float(i) * 2.0) * 2.0
-		var p_off_y: float = -fmod(t * 12.0 + float(i) * 5.0, 8.0)
-		var p_a: float = 0.6 * (1.0 - fmod(t * 12.0 + float(i) * 5.0, 8.0) / 8.0)
-		draw_circle(Vector2(flame_tip_x + p_off_x, flame_tip_y + p_off_y), 1.2, Color(1, 0.7, 0.2, p_a))
-	# Shield of faith (circular holy symbol on left)
-	var sh_faith_x := ex - er * 0.55
-	var sh_faith_y := ey + er * 0.1
-	draw_circle(Vector2(sh_faith_x, sh_faith_y), er * 0.4, Color(0.9, 0.85, 0.6, 0.6))
-	draw_arc(Vector2(sh_faith_x, sh_faith_y), er * 0.4, 0, TAU, 14, Color(1, 0.95, 0.6, 0.8), 1.5)
-	draw_line(Vector2(sh_faith_x, sh_faith_y - er * 0.25), Vector2(sh_faith_x, sh_faith_y + er * 0.25), Color(1, 0.95, 0.7), 1.5)
-	draw_line(Vector2(sh_faith_x - er * 0.2, sh_faith_y), Vector2(sh_faith_x + er * 0.2, sh_faith_y), Color(1, 0.95, 0.7), 1.5)
+	# Draw the 3D model texture
+	var rect := Rect2(cx - half, cy - half - 8, draw_size, draw_size)
+	var mod_color := Color(tint.r, tint.g, tint.b, a)
+	draw_texture_rect(tex, rect, false, mod_color)
 
-func _draw_enemy_zeus(ex: float, ey: float, er: float, flash: bool) -> void:
-	var col: Color = Color(1, 0.2, 0.2) if flash else Color(0.7, 0.8, 1.0)
-	var t := GM.game_time
-	# Shadow
-	draw_circle(Vector2(ex + 1, ey + 1), er, Color(0, 0, 0, 0.25))
-	# Storm cloud wisps around base (animated swirl)
-	for i in range(4):
-		var cloud_angle: float = t * 1.5 + float(i) * TAU / 4.0
-		var cloud_dist: float = er + 2 + sin(t * 2.0 + float(i)) * 1.5
-		var cx_cloud: float = ex + cos(cloud_angle) * cloud_dist
-		var cy_cloud: float = ey + sin(cloud_angle) * cloud_dist * 0.6 + er * 0.3
-		var cloud_a: float = 0.15 + 0.08 * sin(t * 2.5 + float(i) * 1.5)
-		draw_circle(Vector2(cx_cloud, cy_cloud), 3.0, Color(0.5, 0.55, 0.7, cloud_a))
-		draw_circle(Vector2(cx_cloud, cy_cloud), 1.8, Color(0.6, 0.65, 0.8, cloud_a * 1.3))
-	# Storm aura (crackling, pulsing)
-	var storm_pulse: float = 0.3 + 0.3 * abs(sin(t * 5.0))
-	draw_circle(Vector2(ex, ey), er + 4, Color(0.5, 0.6, 1.0, 0.08 * storm_pulse))
-	draw_arc(Vector2(ex, ey), er + 4, 0, TAU, 20, Color(0.6, 0.7, 1.0, 0.25 * storm_pulse), 1.5)
-	# Robed body (toga-like)
-	draw_colored_polygon(PackedVector2Array([
-		Vector2(ex - er * 0.55, ey - er * 0.35), Vector2(ex + er * 0.55, ey - er * 0.35),
-		Vector2(ex + er * 0.75, ey + er * 0.85), Vector2(ex - er * 0.75, ey + er * 0.85)
-	]), col.darkened(0.15))
-	# Toga drape (diagonal fold)
-	draw_line(Vector2(ex + er * 0.4, ey - er * 0.3), Vector2(ex - er * 0.3, ey + er * 0.6), col.lightened(0.1), 1.5)
-	draw_colored_polygon(PackedVector2Array([
-		Vector2(ex - er * 0.35, ey - er * 0.15), Vector2(ex + er * 0.15, ey - er * 0.3),
-		Vector2(ex + er * 0.3, ey + er * 0.3), Vector2(ex - er * 0.15, ey + er * 0.5)
-	]), col)
-	# Head
-	draw_circle(Vector2(ex, ey - er * 0.5), er * 0.4, col.lightened(0.1))
-	# Flowing beard (white, detailed)
-	var beard_col := Color(0.92, 0.92, 1.0, 0.7)
-	draw_arc(Vector2(ex, ey - er * 0.2), er * 0.4, 0.2, PI - 0.2, 8, beard_col, 2.0)
-	draw_line(Vector2(ex - er * 0.25, ey - er * 0.1), Vector2(ex - er * 0.35, ey + er * 0.4), beard_col, 1.5)
-	draw_line(Vector2(ex, ey - er * 0.05), Vector2(ex, ey + er * 0.5), beard_col, 1.5)
-	draw_line(Vector2(ex + er * 0.25, ey - er * 0.1), Vector2(ex + er * 0.35, ey + er * 0.4), beard_col, 1.5)
-	# Beard wave detail
-	draw_arc(Vector2(ex - er * 0.15, ey + er * 0.15), er * 0.2, 0.5, PI - 0.5, 6, Color(0.85, 0.85, 0.95, 0.4), 1.0)
-	draw_arc(Vector2(ex + er * 0.15, ey + er * 0.15), er * 0.2, 0.5, PI - 0.5, 6, Color(0.85, 0.85, 0.95, 0.4), 1.0)
-	# Laurel wreath crown (leaves on both sides)
-	var wreath_col := Color(0.85, 0.8, 0.15)
-	# Left leaves
-	for i in range(3):
-		var la: float = PI + 0.6 + float(i) * 0.4
-		var lx: float = ex + cos(la) * (er * 0.55)
-		var ly: float = ey - er * 0.5 + sin(la) * (er * 0.45)
-		draw_colored_polygon(PackedVector2Array([
-			Vector2(lx, ly), Vector2(lx - 2.5, ly - 1.5), Vector2(lx - 1, ly + 1.5)
-		]), wreath_col)
-	# Right leaves
-	for i in range(3):
-		var la: float = -0.6 - float(i) * 0.4
-		var lx: float = ex + cos(la) * (er * 0.55)
-		var ly: float = ey - er * 0.5 + sin(la) * (er * 0.45)
-		draw_colored_polygon(PackedVector2Array([
-			Vector2(lx, ly), Vector2(lx + 2.5, ly - 1.5), Vector2(lx + 1, ly + 1.5)
-		]), wreath_col)
-	# Lightning bolt symbol held in hand (prominent, right side)
-	var bolt_x := ex + er * 0.5
-	var bolt_y := ey - er * 0.2
-	var bolt_col := Color(1, 1, 0.4, 0.95)
-	# Jagged lightning shape
-	draw_line(Vector2(bolt_x, bolt_y - er * 0.7), Vector2(bolt_x + 2, bolt_y - er * 0.3), bolt_col, 2.0)
-	draw_line(Vector2(bolt_x + 2, bolt_y - er * 0.3), Vector2(bolt_x - 1, bolt_y - er * 0.1), bolt_col, 2.0)
-	draw_line(Vector2(bolt_x - 1, bolt_y - er * 0.1), Vector2(bolt_x + 2, bolt_y + er * 0.3), bolt_col, 2.0)
-	draw_line(Vector2(bolt_x + 2, bolt_y + er * 0.3), Vector2(bolt_x, bolt_y + er * 0.6), bolt_col, 2.0)
-	# Bolt glow
-	draw_circle(Vector2(bolt_x + 0.5, bolt_y), er * 0.4, Color(0.8, 0.85, 1.0, 0.15))
-	# Electric eyes that flash
-	var eye_flash: float = 0.5 + 0.5 * abs(sin(t * 6.0))
-	draw_circle(Vector2(ex - er * 0.18, ey - er * 0.55), 2.0, Color(0.7, 0.8, 1.0, 0.25))
-	draw_circle(Vector2(ex + er * 0.18, ey - er * 0.55), 2.0, Color(0.7, 0.8, 1.0, 0.25))
-	draw_circle(Vector2(ex - er * 0.18, ey - er * 0.55), 1.2, Color(0.85, 0.9, 1.0, eye_flash))
-	draw_circle(Vector2(ex + er * 0.18, ey - er * 0.55), 1.2, Color(0.85, 0.9, 1.0, eye_flash))
-	# Eye lightning sparks (tiny arcs from eyes when flashing)
-	if eye_flash > 0.8:
-		draw_line(Vector2(ex - er * 0.18, ey - er * 0.55), Vector2(ex - er * 0.35, ey - er * 0.7), Color(0.9, 0.95, 1.0, 0.6), 1.0)
-		draw_line(Vector2(ex + er * 0.18, ey - er * 0.55), Vector2(ex + er * 0.35, ey - er * 0.7), Color(0.9, 0.95, 1.0, 0.6), 1.0)
-	# Crackling electric arcs around body (animated jagged lines)
-	for i in range(4):
-		var arc_angle: float = t * 3.5 + float(i) * TAU / 4.0
-		var arc_r: float = er + 2.5
-		var ax1: float = ex + cos(arc_angle) * arc_r
-		var ay1: float = ey + sin(arc_angle) * arc_r
-		var bolt_a: float = 0.2 + 0.5 * abs(sin(t * 8.0 + float(i) * 2.5))
-		# First segment
-		var mid_x: float = ax1 + cos(arc_angle + 0.8) * 3.0
-		var mid_y: float = ay1 + sin(arc_angle + 0.8) * 3.0 - 2
-		draw_line(Vector2(ax1, ay1), Vector2(mid_x, mid_y), Color(0.8, 0.9, 1.0, bolt_a), 1.5)
-		# Second segment (jagged)
-		var end_x: float = mid_x + cos(arc_angle - 0.5) * 2.5
-		var end_y: float = mid_y - 3
-		draw_line(Vector2(mid_x, mid_y), Vector2(end_x, end_y), Color(1, 1, 0.7, bolt_a * 0.7), 1.0)
-	# Lightning strike animation (periodic dramatic bolt from above)
-	var strike_phase: float = fmod(t * 1.5, 3.0)
-	if strike_phase < 0.3:
-		var strike_a: float = 1.0 - strike_phase / 0.3
-		var sx_strike := ex + sin(t * 7.0) * 3.0
-		draw_line(Vector2(sx_strike, ey - er - 15), Vector2(sx_strike + 2, ey - er - 8), Color(1, 1, 0.8, strike_a * 0.6), 2.0)
-		draw_line(Vector2(sx_strike + 2, ey - er - 8), Vector2(sx_strike - 1, ey - er - 3), Color(1, 1, 0.7, strike_a * 0.5), 1.5)
-		draw_line(Vector2(sx_strike - 1, ey - er - 3), Vector2(sx_strike + 1, ey - er), Color(1, 1, 0.6, strike_a * 0.4), 1.0)
+	# Tower-specific overlay effects (drawn OVER the model)
+	match type_key:
+		"bone_marksman":
+			# Rising ember particles
+			for ei in range(4):
+				var seed_f: float = float(ei) * 1.7
+				var life: float = fmod(t * 0.8 + seed_f, 2.0) / 2.0
+				var ex: float = cx + sin(seed_f * 3.1 + t * 0.7) * 8.0
+				var ey: float = cy - life * 25.0
+				var ea: float = (1.0 - life) * 0.5
+				draw_circle(Vector2(ex, ey), 1.2, Color(1, 0.5, 0.1, a * ea))
+		"inferno_warlock":
+			# Floating arcane runes above head
+			for ri in range(3):
+				var ra: float = t * 1.2 + ri * TAU / 3.0
+				var rr: float = 8.0
+				var rx: float = cx + cos(ra) * rr
+				var ry: float = cy - 18 + sin(ra) * rr * 0.3
+				var rp: float = 0.6 + 0.4 * sin(t * 4.0 + ri * 2.0)
+				draw_circle(Vector2(rx, ry), 1.5, Color(1.0, 0.5, 0.9, 0.5 * a * rp))
+		"soul_reaper":
+			# Floating bone fragments above
+			for bi in range(3):
+				var ba: float = t * 1.0 + bi * TAU / 3.0
+				var br: float = 10.0 + sin(t * 1.5 + bi) * 3.0
+				var bx: float = cx + cos(ba) * br
+				var by: float = cy - 12 + sin(t * 2.0 + bi * 1.3) * 4.0
+				draw_line(Vector2(bx - 2, by), Vector2(bx + 2, by), Color(0.85, 0.8, 0.65, 0.4 * a), 1.5)
+		"lucifer":
+			# Crown of flame tips
+			for ci in range(3):
+				var flame_h: float = 6.0 + sin(t * 5.0 + ci * 1.5) * 3.0
+				var fx: float = cx - 4 + ci * 4
+				draw_line(Vector2(fx, cy - 22), Vector2(fx, cy - 22 - flame_h), Color(1.0, 0.6, 0.1, 0.6 * a), 1.5)
+				draw_circle(Vector2(fx, cy - 22 - flame_h), 1.5, Color(1.0, 0.9, 0.3, 0.5 * a))
+		"cocytus":
+			# Cold mist rising
+			for mi in range(4):
+				var mp: float = fmod(t * 0.5 + mi * 0.5, 2.0) / 2.0
+				var mx: float = cx + sin(t * 0.8 + mi * 2.0) * 8.0
+				var my: float = cy + 6 - mp * 20.0
+				var ma: float = (1.0 - mp) * 0.25
+				draw_circle(Vector2(mx, my), 3.0, Color(0.7, 0.9, 1.0, a * ma))
 
-func _draw_enemy_raphael(ex: float, ey: float, er: float, flash: bool) -> void:
-	var col: Color = Color(1, 0.2, 0.2) if flash else Color(0.5, 0.95, 0.6)
-	var t := GM.game_time
-	# Healing glow (dual-layer pulse)
-	var heal_pulse: float = 0.4 + 0.3 * sin(t * 2.5)
-	draw_circle(Vector2(ex, ey), er + 4, Color(0.3, 0.9, 0.45, 0.08 * heal_pulse))
-	draw_circle(Vector2(ex, ey), er + 2, Color(0.4, 1.0, 0.5, 0.12 * heal_pulse))
-	# Shadow
-	draw_circle(Vector2(ex + 1, ey + 1), er, Color(0, 0, 0, 0.2))
-	# Body (robed healer)
-	draw_circle(Vector2(ex, ey), er, col)
-	draw_circle(Vector2(ex, ey), er * 0.7, col.lightened(0.1))
-	# Robe fold
-	draw_arc(Vector2(ex, ey), er * 0.5, 0.3, PI - 0.3, 8, col.darkened(0.15), 1.5)
-	# Head with hood
-	draw_arc(Vector2(ex, ey - er * 0.2), er * 0.75, PI + 0.4, TAU - 0.4, 10, col.darkened(0.25), 2.5)
-	# Serene closed eyes
-	draw_arc(Vector2(ex - 2, ey - 1), 1.3, 0.2, PI - 0.2, 6, Color(0.2, 0.6, 0.3), 1.0)
-	draw_arc(Vector2(ex + 2, ey - 1), 1.3, 0.2, PI - 0.2, 6, Color(0.2, 0.6, 0.3), 1.0)
-	# Small feathered wings
-	var wc := Color(0.6, 1.0, 0.7, 0.7)
-	draw_colored_polygon(PackedVector2Array([
-		Vector2(ex - er, ey), Vector2(ex - er - 4, ey - 3), Vector2(ex - er - 2, ey + 2)
-	]), wc)
-	draw_colored_polygon(PackedVector2Array([
-		Vector2(ex + er, ey), Vector2(ex + er + 4, ey - 3), Vector2(ex + er + 2, ey + 2)
-	]), wc)
-	# Staff with leaf/cross top
-	draw_line(Vector2(ex + er * 0.4, ey - 1), Vector2(ex + er * 0.4, ey + er * 0.7), Color(0.5, 0.35, 0.2), 1.5)
-	draw_circle(Vector2(ex + er * 0.4, ey - 2), 2.0, Color(0.4, 0.9, 0.45, 0.6))
-	draw_circle(Vector2(ex + er * 0.4, ey - 2), 1.2, Color(0.5, 1.0, 0.6, heal_pulse))
-	# Golden halo
-	draw_arc(Vector2(ex, ey - er - 2), 3.5, 0, TAU, 12, Color(0.8, 1.0, 0.6, 0.7), 1.0)
-	# Leaf accents
-	draw_colored_polygon(PackedVector2Array([
-		Vector2(ex - er * 0.6, ey - er * 0.3), Vector2(ex - er * 0.6 - 2, ey - er * 0.3 - 1),
-		Vector2(ex - er * 0.6 - 1, ey - er * 0.3 + 1)
-	]), Color(0.3, 0.8, 0.4, 0.5))
-	# Expanding healing pulse ring (periodic)
-	var pulse_phase: float = fmod(t * 0.3, 1.0)
-	var ring_r: float = er + pulse_phase * 10.0
-	var ring_a: float = (1.0 - pulse_phase) * 0.3
-	draw_arc(Vector2(ex, ey), ring_r, 0, TAU, 16, Color(0.4, 1.0, 0.5, ring_a), 1.0)
+func _draw_enemy_model(enemy: Dictionary, ex: float, ey: float, er: float, flash: bool) -> void:
+	var type_key: String = enemy["type"]
+
+	# Compute facing angle — enemy faces direction of movement along path
+	var angle: float = enemy.get("facing_angle", 0.0)
+	var path_px: Array[Vector2] = Config.path_pixels
+	var path_idx: int = enemy.get("path_index", 0)
+	if path_idx >= 0 and path_idx < path_px.size() - 1:
+		var next_pt: Vector2 = path_px[path_idx + 1]
+		var dx: float = next_pt.x - ex
+		var dy: float = next_pt.y - ey
+		if dx * dx + dy * dy > 0.01:
+			angle = _screen_to_model_angle(dx, dy)
+			enemy["facing_angle"] = angle
+
+	var tex: Texture2D = CharRenderer.get_texture(type_key, angle)
+	if tex == null:
+		var body_color: Color = Color(1, 0.2, 0.2) if flash else enemy["color"]
+		draw_circle(Vector2(ex, ey), er, body_color)
+		return
+
+	var tint: Color = CharRenderer.get_tint(type_key)
+	var mod_scale: float = CharRenderer.get_draw_scale(type_key)
+	var t: float = GM.game_time
+
+	# Draw size scales with both config scale and enemy radius
+	var draw_size: float = (er * 2 + 20) * mod_scale
+	var half: float = draw_size / 2.0
+
+	# Ground shadow
+	_draw_cast_shadow(ex, ey, er * mod_scale, 0.8)
+
+	# Type-specific under-effects
+	match type_key:
+		"grand_paladin", "archangel_michael":
+			# Divine radiance for bosses
+			var pulse: float = 0.6 + 0.4 * sin(t * 2.5)
+			draw_circle(Vector2(ex, ey), er + 6, Color(1.0, 0.9, 0.5, 0.08 * pulse))
+			draw_circle(Vector2(ex, ey), er + 3, Color(1.0, 0.95, 0.7, 0.05 * pulse))
+		"archangel_marshal":
+			# Command aura ring
+			var pulse: float = 0.5 + 0.5 * sin(t * 3.0)
+			draw_arc(Vector2(ex, ey), er + 8, 0, TAU, 16, Color(1.0, 0.9, 0.4, 0.15 * pulse), 1.0)
+		"holy_sentinel":
+			# Protective dome
+			var pulse: float = 0.6 + 0.4 * sin(t * 2.0)
+			draw_arc(Vector2(ex, ey), er + 6, 0, TAU, 20, Color(0.5, 0.7, 1.0, 0.15 * pulse), 1.5)
+		"zeus":
+			# Storm cloud wisps
+			for ci in range(3):
+				var ca: float = t * 1.5 + ci * TAU / 3.0
+				var cr: float = er + 4
+				var cx_c: float = ex + cos(ca) * cr
+				var cy_c: float = ey + sin(ca) * cr * 0.5
+				draw_circle(Vector2(cx_c, cy_c), 3.0, Color(0.6, 0.65, 0.8, 0.15))
+		"archangel_raphael", "temple_cleric":
+			# Healing glow
+			var pulse: float = 0.5 + 0.5 * sin(t * 2.0)
+			draw_circle(Vector2(ex, ey), er + 3, Color(0.4, 0.9, 0.5, 0.08 * pulse))
+
+	# Draw the 3D model texture
+	var rect := Rect2(ex - half, ey - half - 4, draw_size, draw_size)
+	var flash_color := Color(1.3, 0.8, 0.8, 1.0) if flash else Color(tint.r, tint.g, tint.b, 1.0)
+	draw_texture_rect(tex, rect, false, flash_color)
+
+	# Type-specific over-effects
+	match type_key:
+		"seraph_scout":
+			# Golden halo
+			draw_arc(Vector2(ex, ey - er - 2), 4, 0, TAU, 12, Color(1, 0.9, 0.4, 0.6), 1.0)
+		"swift_ranger":
+			# Speed afterimage
+			for si in range(2):
+				var off: float = float(si + 1) * 5.0
+				var sa: float = 0.15 - float(si) * 0.06
+				draw_texture_rect(tex, Rect2(ex - half - off, ey - half - 4, draw_size, draw_size), false, Color(tint.r, tint.g, tint.b, sa))
+		"war_titan":
+			# Angry eye glow
+			var glow_a: float = 0.5 + 0.3 * sin(t * 5.0)
+			draw_circle(Vector2(ex - 2, ey - er * 0.3), 2.0, Color(1.0, 0.3, 0.1, glow_a))
+			draw_circle(Vector2(ex + 2, ey - er * 0.3), 2.0, Color(1.0, 0.3, 0.1, glow_a))
+		"grand_paladin":
+			# Golden crown glow
+			for ci in range(3):
+				var fx: float = ex - 3 + ci * 3
+				draw_circle(Vector2(fx, ey - er - 4), 1.5, Color(1.0, 0.85, 0.2, 0.6))
+		"archangel_michael":
+			# Wing-like light rays
+			for wi in range(4):
+				var wa: float = PI * 0.7 + wi * 0.15
+				var wl: float = er + 8 + sin(t * 2.0 + wi) * 3.0
+				draw_line(
+					Vector2(ex + cos(wa) * er * 0.5, ey + sin(wa) * er * 0.3),
+					Vector2(ex + cos(wa) * wl, ey + sin(wa) * wl * 0.4),
+					Color(1.0, 0.95, 0.7, 0.25), 1.5
+				)
+				draw_line(
+					Vector2(ex - cos(wa) * er * 0.5, ey + sin(wa) * er * 0.3),
+					Vector2(ex - cos(wa) * wl, ey + sin(wa) * wl * 0.4),
+					Color(1.0, 0.95, 0.7, 0.25), 1.5
+				)
+			# Flaming sword sparkles
+			for si in range(3):
+				var sp: float = fmod(t * 2.0 + si * 0.6, 1.5) / 1.5
+				var sx: float = ex + 6 + sin(t * 4.0 + si) * 3.0
+				var sy: float = ey - er * 0.5 - sp * 12.0
+				draw_circle(Vector2(sx, sy), 1.0, Color(1.0, 0.7, 0.2, (1.0 - sp) * 0.5))
+		"zeus":
+			# Crackling electric arcs
+			for ai in range(3):
+				var aa: float = t * 3.0 + ai * TAU / 3.0
+				var ar: float = er + 5
+				var ax1: float = ex + cos(aa) * ar
+				var ay1: float = ey + sin(aa) * ar * 0.5
+				var ax2: float = ax1 + sin(t * 8 + ai) * 4
+				var ay2: float = ay1 + cos(t * 6 + ai) * 3
+				draw_line(Vector2(ax1, ay1), Vector2(ax2, ay2), Color(0.8, 0.9, 1.0, 0.5), 1.5)
+		"archangel_raphael":
+			# Healing staff glow
+			var glow_p: float = 0.5 + 0.5 * sin(t * 3.0)
+			draw_circle(Vector2(ex + 5, ey - er * 0.4), 3.0, Color(0.4, 1.0, 0.5, 0.3 * glow_p))
 
 # ═══════════════════════════════════════════════════════
 # INPUT
