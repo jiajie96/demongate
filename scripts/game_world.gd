@@ -36,6 +36,7 @@ func _process(dt: float) -> void:
 	GM.update_towers(dt)
 	GM.update_projectiles(dt)
 	GM.update_effects(dt)
+	_update_facing_angles(dt)
 
 	# Track mouse in local coordinates
 	var local_mouse := get_local_mouse_position()
@@ -1128,6 +1129,56 @@ func _draw_die_face(cx: float, cy: float, value: int, size: float, alpha: float,
 # 3D MODEL AVATARS
 # ═══════════════════════════════════════════════════════
 
+# Rotation speed for character facing — radians per second.
+# ~10 rad/sec ≈ one full revolution in 0.6s, snappy but not instant.
+const FACING_TURN_SPEED := 10.0
+
+# Interpolates `current` angle toward `target` by at most `max_delta` radians,
+# taking the shortest path around the unit circle.
+func _smooth_angle(current: float, target: float, max_delta: float) -> float:
+	var delta: float = wrapf(target - current, -PI, PI)
+	if absf(delta) <= max_delta:
+		return target
+	return current + signf(delta) * max_delta
+
+# Called each frame to smoothly rotate tower/enemy facing angles toward their
+# current target/movement direction. Runs in _process (not _draw) so we have dt.
+func _update_facing_angles(dt: float) -> void:
+	var max_turn: float = FACING_TURN_SPEED * dt
+
+	# Towers face their current target
+	for t in GM.towers:
+		var target = t.get("target")
+		if target == null or not (target is Dictionary) or not target.get("alive", false):
+			continue
+		var dx: float = target["x"] - t["x"]
+		var dy: float = target["y"] - t["y"]
+		if dx * dx + dy * dy < 0.01:
+			continue
+		var target_angle: float = _screen_to_model_angle(dx, dy)
+		var current: float = t.get("facing_angle", target_angle)
+		t["facing_angle"] = _smooth_angle(current, target_angle, max_turn)
+
+	# Enemies face the waypoint they are currently walking toward.
+	# path_index is the waypoint the enemy is moving toward — using path_index
+	# (not path_index + 1) means they turn only when they reach a corner.
+	var path_px: Array[Vector2] = Config.path_pixels
+	for e in GM.enemies:
+		if not e["alive"]:
+			continue
+		var path_idx: int = e.get("path_index", 0)
+		if path_idx < 0 or path_idx >= path_px.size():
+			continue
+		var target_pt: Vector2 = path_px[path_idx]
+		var dx: float = target_pt.x - e["x"]
+		var dy: float = target_pt.y - e["y"]
+		if dx * dx + dy * dy < 0.01:
+			continue
+		var target_angle: float = _screen_to_model_angle(dx, dy)
+		# Initialize to target on first frame to avoid spinning from 0
+		var current: float = e.get("facing_angle", target_angle)
+		e["facing_angle"] = _smooth_angle(current, target_angle, max_turn)
+
 # Converts a 2D screen-space direction (dx, dy) to the Y-axis angle
 # that the 3D model should face.
 #
@@ -1149,16 +1200,8 @@ func _screen_to_model_angle(dx: float, dy: float) -> float:
 
 func _draw_tower_model(tower: Dictionary, cx: float, cy: float, a: float) -> void:
 	var type_key: String = tower["type"]
-
-	# Compute facing angle — tower faces its target (or keeps last angle if no target)
+	# Facing angle is smooth-interpolated each frame in _update_facing_angles.
 	var angle: float = tower.get("facing_angle", 0.0)
-	var target = tower.get("target")
-	if target != null and target is Dictionary and target.get("alive", false):
-		var dx: float = target["x"] - cx
-		var dy: float = target["y"] - cy
-		angle = _screen_to_model_angle(dx, dy)
-		tower["facing_angle"] = angle
-
 	var tex: Texture2D = CharRenderer.get_texture(type_key, angle)
 	if tex == null:
 		draw_circle(Vector2(cx, cy), 18, tower["color"])
@@ -1284,19 +1327,8 @@ func _draw_tower_model(tower: Dictionary, cx: float, cy: float, a: float) -> voi
 
 func _draw_enemy_model(enemy: Dictionary, ex: float, ey: float, er: float, flash: bool) -> void:
 	var type_key: String = enemy["type"]
-
-	# Compute facing angle — enemy faces direction of movement along path
+	# Facing angle is smooth-interpolated each frame in _update_facing_angles.
 	var angle: float = enemy.get("facing_angle", 0.0)
-	var path_px: Array[Vector2] = Config.path_pixels
-	var path_idx: int = enemy.get("path_index", 0)
-	if path_idx >= 0 and path_idx < path_px.size() - 1:
-		var next_pt: Vector2 = path_px[path_idx + 1]
-		var dx: float = next_pt.x - ex
-		var dy: float = next_pt.y - ey
-		if dx * dx + dy * dy > 0.01:
-			angle = _screen_to_model_angle(dx, dy)
-			enemy["facing_angle"] = angle
-
 	var tex: Texture2D = CharRenderer.get_texture(type_key, angle)
 	if tex == null:
 		var body_color: Color = Color(1, 0.2, 0.2) if flash else enemy["color"]

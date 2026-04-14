@@ -3,6 +3,10 @@ extends Control
 var tower_type: String = ""
 var tower_color: Color = Color.WHITE
 
+func _ready() -> void:
+	if not CharRenderer.is_textures_ready():
+		CharRenderer.textures_ready.connect(queue_redraw, CONNECT_ONE_SHOT)
+
 func _draw() -> void:
 	var cx: float = size.x / 2.0
 	var cy: float = size.y / 2.0
@@ -12,7 +16,7 @@ func _draw() -> void:
 	var tex: Texture2D = CharRenderer.get_texture(tower_type, 0.0)
 	if tex != null:
 		var tint: Color = CharRenderer.get_tint(tower_type)
-		var icon_size: float = 32.0 * s
+		var icon_size: float = 24.0 * s
 		var half: float = icon_size / 2.0
 
 		# Colored aura circle behind the model

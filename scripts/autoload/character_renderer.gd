@@ -10,7 +10,7 @@ extends Node
 # ═══════════════════════════════════════════════════════
 
 const VIEWPORT_SIZE := 128
-const NUM_ANGLES := 8  # N, NE, E, SE, S, SW, W, NW (45° increments)
+const NUM_ANGLES := 16  # 22.5° increments for smoother rotation
 
 var _angle_textures: Dictionary = {}  # type_key -> Array[Texture2D] (NUM_ANGLES entries)
 var _scene_cache: Dictionary = {}      # model_key -> PackedScene
