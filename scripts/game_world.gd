@@ -1,5 +1,8 @@
 extends Node2D
 
+const TEX_DEMON_MAW := preload("res://assets/art/bestial_fangs.png")
+const TEX_HEAVEN_HERALD := preload("res://assets/art/angel_wings.png")
+
 var font: Font
 var T: int  # tile size shorthand
 var _base_position: Vector2
@@ -9,6 +12,7 @@ func _ready() -> void:
 	T = Config.TILE_SIZE
 	_base_position = position  # preserve scene-configured offset (10, 55)
 	Audio.start_music()
+	_spawn_ambient_particles()
 
 func _process(dt: float) -> void:
 	# Screen shake — always update position even when paused/menu
@@ -102,6 +106,127 @@ func _draw_ground_ao(cx: float, cy: float, radius: float, alpha: float = 1.0) ->
 	# Dark ring at the very bottom of the entity (contact shadow)
 	draw_arc(Vector2(cx, cy), radius - 1, -0.3, PI + 0.3, 16, Color(0, 0, 0, 0.12 * alpha), 2.0)
 
+# ═══════════════════════════════════════════════════════
+# AMBIENT PARTICLES (persistent GPUParticles2D emitters)
+# Spawned at startup; loop continuously; never free.
+# ═══════════════════════════════════════════════════════
+func _spawn_ambient_particles() -> void:
+	var w: float = Config.GAME_WIDTH
+	var h: float = Config.GAME_HEIGHT
+	var heaven_bot: float = h * 0.25  # top 25% = heaven zone
+
+	# --- Hell zone: rising fire embers across the bottom ---
+	_make_ambient_emitter(
+		preload("res://assets/vfx/particles/fire_01.png"),
+		Vector2(w * 0.5, h + 10),  # emit from just below bottom of screen
+		Vector2(w * 1.2, 20),       # wide box emission area
+		12,    # amount
+		3.0,   # lifetime
+		40.0,  # vel min (upward)
+		80.0,  # vel max
+		15.0,  # spread (degrees)
+		Color(1.0, 0.55, 0.1, 0.22),
+		Color(1.0, 0.2, 0.0, 0.0),
+		0.1, 0.22,
+		Vector2(0, -30),  # gravity pushes up (fire rises)
+		-90.0             # direction: up
+	)
+
+	# --- Heaven zone: drifting light sparkles across the top ---
+	_make_ambient_emitter(
+		preload("res://assets/vfx/particles/star_04.png"),
+		Vector2(w * 0.5, -10),
+		Vector2(w * 1.2, heaven_bot + 10),
+		20,    # amount — fewer, more spread out
+		5.0,   # long life — gentle drift
+		10.0,  # slow vel
+		25.0,
+		360.0, # full spread
+		Color(1.0, 0.95, 0.8, 0.5),
+		Color(0.9, 0.95, 1.0, 0.0),
+		0.1, 0.25,
+		Vector2(0, 8),  # gently drift down
+		90.0
+	)
+
+	# --- Spawn portal — continuous golden flare particles ---
+	var spawn_cell: Vector2i = Config.MAP_PATH[0]
+	var sx: float = spawn_cell.x * T + T / 2.0
+	var sy: float = spawn_cell.y * T + T / 2.0
+	_make_ambient_emitter(
+		preload("res://assets/vfx/particles/flare_01.png"),
+		Vector2(sx, sy),
+		Vector2(8, 8),
+		12,
+		1.2,
+		20.0,
+		50.0,
+		30.0,  # mostly upward
+		Color(1.0, 0.9, 0.5, 0.7),
+		Color(1.0, 0.75, 0.3, 0.0),
+		0.2, 0.5,
+		Vector2(0, -60),  # rise
+		-90.0
+	)
+
+	# --- Hell's Core — sparse embers drifting from the demon maw ---
+	var core_cell: Vector2i = Config.MAP_PATH[Config.MAP_PATH.size() - 1]
+	var cx: float = core_cell.x * T + T / 2.0
+	var cy: float = core_cell.y * T + T / 2.0
+	_make_ambient_emitter(
+		preload("res://assets/vfx/particles/fire_01.png"),
+		Vector2(cx, cy - 5),
+		Vector2(10, 3),
+		4,
+		1.1,
+		15.0,
+		35.0,
+		20.0,
+		Color(1.0, 0.55, 0.12, 0.28),
+		Color(0.4, 0.05, 0.0, 0.0),
+		0.10, 0.20,
+		Vector2(0, -20),
+		-90.0
+	)
+
+func _make_ambient_emitter(tex: Texture2D, pos: Vector2, box: Vector2,
+		amount: int, lifetime: float, vel_min: float, vel_max: float,
+		spread: float, start_color: Color, end_color: Color,
+		scale_min: float, scale_max: float,
+		gravity: Vector2, angle_deg: float) -> GPUParticles2D:
+	var p := GPUParticles2D.new()
+	p.position = pos
+	p.texture = tex
+	p.amount = amount
+	p.lifetime = lifetime
+	p.preprocess = lifetime  # pre-warm so particles are already on screen at start
+	p.emitting = true
+	p.show_behind_parent = false
+
+	var mat := ParticleProcessMaterial.new()
+	mat.emission_shape = ParticleProcessMaterial.EMISSION_SHAPE_BOX
+	mat.emission_box_extents = Vector3(box.x * 0.5, box.y * 0.5, 0)
+	mat.direction = Vector3(cos(deg_to_rad(angle_deg)), sin(deg_to_rad(angle_deg)), 0)
+	mat.spread = spread
+	mat.initial_velocity_min = vel_min
+	mat.initial_velocity_max = vel_max
+	mat.gravity = Vector3(gravity.x, gravity.y, 0)
+	mat.scale_min = scale_min
+	mat.scale_max = scale_max
+	mat.damping_min = 2.0
+	mat.damping_max = 8.0
+
+	var gradient := Gradient.new()
+	gradient.set_color(0, start_color)
+	gradient.set_color(1, end_color)
+	var gtx := GradientTexture1D.new()
+	gtx.gradient = gradient
+	mat.color_ramp = gtx
+
+	p.process_material = mat
+	add_child(p)
+	return p
+
 func _draw_map() -> void:
 	# Background gradient: celestial blue (top) → hellish dark (bottom)
 	for gr in range(Config.GRID_ROWS):
@@ -122,60 +247,98 @@ func _draw_map() -> void:
 	# Ambient atmosphere layer
 	_draw_ambient()
 
-	# Spawn marker — heavenly golden portal (brighter)
+	# Spawn marker — heaven herald (angel-wings icon by Lorc, CC BY 3.0)
 	var spawn_cell: Vector2i = Config.MAP_PATH[0]
 	var sx: float = spawn_cell.x * T + T / 2.0
 	var sy: float = spawn_cell.y * T + T / 2.0
-	var sp_pulse: float = 0.5 + 0.5 * sin(GM.game_time * 2.5)
-	# Outer golden glow — increased alphas
-	draw_circle(Vector2(sx, sy), 16, Color(1.0, 0.85, 0.4, 0.12 + sp_pulse * 0.08))
-	draw_circle(Vector2(sx, sy), 11, Color(1.0, 0.9, 0.6, 0.18 + sp_pulse * 0.12))
-	# Core light
-	draw_circle(Vector2(sx, sy), 6, Color(1.0, 0.95, 0.8, 0.75))
-	draw_circle(Vector2(sx, sy), 3, Color(1.0, 1.0, 0.95, 0.9))
-	# Golden ring
-	draw_arc(Vector2(sx, sy), 12, 0, TAU, 20, Color(1.0, 0.85, 0.5, 0.5 + sp_pulse * 0.2), 1.5)
-	# Light rays upward
-	for ri in range(5):
-		var ray_angle: float = -PI / 2.0 + (float(ri) - 2.0) * 0.25
-		var ray_len: float = 18.0 + sp_pulse * 8.0
-		var ray_end := Vector2(sx + cos(ray_angle) * ray_len, sy + sin(ray_angle) * ray_len)
-		draw_line(Vector2(sx, sy), ray_end, Color(1.0, 0.9, 0.6, 0.22 + sp_pulse * 0.14), 1.0)
-	draw_string(font, Vector2(sx - 24, sy + T * 0.7), Locale.t("SPAWN"), HORIZONTAL_ALIGNMENT_CENTER, 48, 10, Color(1.0, 0.92, 0.7))
+	_draw_heaven_herald(sx, sy)
 
-	# Core marker — Hell's Core with vivid fire
+	# Core marker — Hell's Core: demon maw facing the path (north)
 	var core_cell: Vector2i = Config.MAP_PATH[Config.MAP_PATH.size() - 1]
 	var cx: float = core_cell.x * T + T / 2.0
 	var cy: float = core_cell.y * T + T / 2.0
-
-	# Intense fire glow layers — brighter alphas
-	var pulse: float = 0.5 + 0.5 * sin(GM.game_time * 3.0)
-	for i in range(6):
-		var glow_r: float = T * (1.1 - float(i) * 0.15)
-		var glow_a: float = (0.3 + 0.2 * pulse) * float(i + 1) * 0.12
-		draw_circle(Vector2(cx, cy), glow_r, Color(1, 0.18 + float(i) * 0.04, 0.06, glow_a))
-	# Fire tongues around core — more vivid
-	for fi in range(8):
-		var fa: float = GM.game_time * 2.5 + float(fi) * TAU / 8.0
-		var fdist: float = 16.0 + 6.0 * sin(GM.game_time * 4.0 + float(fi) * 1.7)
-		var fx: float = cx + cos(fa) * fdist
-		var fy: float = cy + sin(fa) * fdist
-		var fh: float = 4.0 + 3.0 * sin(GM.game_time * 5.0 + float(fi))
-		draw_circle(Vector2(fx, fy), fh, Color(1, 0.45, 0.08, 0.3 * pulse))
-		draw_circle(Vector2(fx, fy), fh * 0.5, Color(1, 0.65, 0.2, 0.5 * pulse))
-
-	draw_circle(Vector2(cx, cy), 12, Color(0.95, 0.15, 0.06))
-	draw_circle(Vector2(cx, cy), 8, Config.COLOR_CORE)
-	draw_arc(Vector2(cx, cy), 14, 0, TAU, 24, Color(1, 0.35, 0.12, 0.55 + pulse * 0.25), 1.5)
-	draw_string(font, Vector2(cx - 40, cy - 18), Locale.t("HELL'S CORE"), HORIZONTAL_ALIGNMENT_CENTER, 80, 9, Color(1, 0.88, 0.82))
+	_draw_hell_maw(cx, cy)
 
 	# Core HP bar on map
 	var bar_w: float = 40.0
-	var bar_h: float = 5.0
+	var bar_h: float = 3.0
 	var hp_ratio: float = GM.core_hp / GM.core_max_hp
-	draw_rect(Rect2(cx - bar_w / 2, cy + 16, bar_w, bar_h), Config.COLOR_HEALTH_BG)
+	var bar_y: float = cy + 20
+	draw_rect(Rect2(cx - bar_w / 2, bar_y, bar_w, bar_h), Config.COLOR_HEALTH_BG)
 	var hp_color := Config.COLOR_HEALTH_HP if hp_ratio > 0.3 else Config.COLOR_HEALTH_LOW
-	draw_rect(Rect2(cx - bar_w / 2, cy + 16, bar_w * hp_ratio, bar_h), hp_color)
+	draw_rect(Rect2(cx - bar_w / 2, bar_y, bar_w * hp_ratio, bar_h), hp_color)
+
+func _draw_heaven_herald(sx: float, sy: float) -> void:
+	# Sprite-based heaven herald (angel-wings icon by Lorc, CC BY 3.0).
+	# Wings extend up off the spawn tile; figure body sits at the path mouth.
+	# Counterpoint to the demon maw at the other end of the path.
+	var gt := GM.game_time
+	var pulse: float = 0.5 + 0.5 * sin(gt * 2.5)
+
+	# Center the sprite slightly south of spawn so wings poke up above the
+	# spawn tile and the figure aligns with the path entry point.
+	var center := Vector2(sx, sy + 9)
+	var size: float = 46.0
+	var half: float = size * 0.5
+
+	# Soft golden divine aura behind the herald
+	for i in range(4):
+		var glow_r: float = 26.0 - float(i) * 4.0
+		var glow_a: float = (0.10 + 0.06 * pulse) * (4 - i) * 0.18
+		draw_circle(center, glow_r, Color(1.0, 0.88, 0.45, glow_a))
+
+	# Light shafts radiating upward — divine beams pouring from on high
+	for ri in range(5):
+		var ray_angle: float = -PI * 0.5 + (float(ri) - 2.0) * 0.30
+		var ray_len: float = 18.0 + pulse * 7.0
+		var ray_end: Vector2 = center + Vector2(cos(ray_angle), sin(ray_angle)) * ray_len
+		draw_line(center, ray_end, Color(1.0, 0.93, 0.65, 0.25 + pulse * 0.15), 1.0)
+
+	# Drop shadow (subtle warm)
+	draw_texture_rect(TEX_HEAVEN_HERALD, Rect2(center.x - half, center.y - half + 1.5, size, size),
+		false, Color(0.45, 0.32, 0.10, 0.30))
+	# Main sprite — gold-cream divine tint
+	draw_texture_rect(TEX_HEAVEN_HERALD, Rect2(center.x - half, center.y - half, size, size),
+		false, Color(1.0, 0.92, 0.62, 1.0))
+	# Bright halo rim — slightly larger pass with soft warm-white
+	draw_texture_rect(TEX_HEAVEN_HERALD,
+		Rect2(center.x - half - 0.8, center.y - half - 0.8, size + 1.6, size + 1.6),
+		false, Color(1.0, 0.97, 0.78, 0.28))
+
+	# Bright divine core spark in the herald's chest
+	draw_circle(center, 3.5 * pulse, Color(1, 0.97, 0.85, 0.85))
+	draw_circle(center, 1.8 * pulse, Color(1, 1, 0.95, 0.95))
+
+	# Label
+	draw_string(font, Vector2(sx - 24, sy + T * 0.7), Locale.t("SPAWN"),
+		HORIZONTAL_ALIGNMENT_CENTER, 48, 10, Color(1.0, 0.92, 0.7))
+
+func _draw_hell_maw(cx: float, cy: float) -> void:
+	# Sprite-based demon maw (bestial-fangs icon by Lorc, CC BY 3.0).
+	# The source icon is in profile with the mouth opening toward the right;
+	# we rotate -90° so the fangs gape UP toward the incoming path.
+	var gt := GM.game_time
+
+	# Sprite — dark purple-black tint; rotated so mouth faces north
+	var size: float = 54.0
+	var half: float = size * 0.5
+	draw_set_transform(Vector2(cx, cy), -PI * 0.5, Vector2.ONE)
+	draw_texture_rect(TEX_DEMON_MAW, Rect2(-half, -half + 1.0, size, size),
+		false, Color(0, 0, 0, 0.35))
+	draw_texture_rect(TEX_DEMON_MAW, Rect2(-half, -half, size, size),
+		false, Color(0.10, 0.04, 0.08, 1.0))
+	draw_set_transform(Vector2.ZERO, 0, Vector2.ONE)
+
+	# Faint ember glow inside the open mouth — subtle, not a bonfire.
+	var mouth_cx: float = cx + 1.5
+	var mouth_cy: float = cy - 6.0
+	var ip: float = 0.8 + 0.2 * sin(gt * 2.2)
+	draw_circle(Vector2(mouth_cx, mouth_cy), 4.0 * ip, Color(0.9, 0.25, 0.08, 0.35))
+	draw_circle(Vector2(mouth_cx, mouth_cy), 1.8 * ip, Color(1.0, 0.6, 0.2, 0.5))
+
+	# Label
+	draw_string(font, Vector2(cx - 40, cy - 38), Locale.t("HELL'S CORE"),
+		HORIZONTAL_ALIGNMENT_CENTER, 80, 9, Color(1, 0.88, 0.82))
 
 func _draw_ambient() -> void:
 	var t := GM.game_time
@@ -196,27 +359,23 @@ func _draw_ambient() -> void:
 		if sparkle_a > 0.35:
 			draw_circle(Vector2(sx, sy), 1.4, Color(1.0, 0.95, 0.85, sparkle_a * 0.7))
 
-	# Hell zone (bottom rows 8-11): rising embers and heat glow
+	# Hell zone (bottom rows 8-11): soft heat glow
 	var hell_top: float = float(8 * T)
-	# Bottom edge fire glow — brighter
-	var fire_glow_a: float = 0.06 + 0.03 * sin(t * 1.5)
+	var fire_glow_a: float = 0.035 + 0.015 * sin(t * 1.5)
 	draw_rect(Rect2(0, float(10 * T), Config.GAME_WIDTH, float(2 * T)), Color(1, 0.2, 0.0, fire_glow_a))
-	draw_rect(Rect2(0, float(11 * T), Config.GAME_WIDTH, float(T)), Color(1, 0.15, 0.0, fire_glow_a * 1.5))
-	# Rising ember particles — more vivid
-	for ei in range(16):
+	draw_rect(Rect2(0, float(11 * T), Config.GAME_WIDTH, float(T)), Color(1, 0.15, 0.0, fire_glow_a * 1.4))
+	# Rising ember particles — sparse, low alpha
+	for ei in range(7):
 		var seed_val: float = float(ei) * 53.91
 		var ex: float = fmod(seed_val * 41.3, Config.GAME_WIDTH)
-		# Embers rise from bottom, cycling
 		var ey_cycle: float = fmod(seed_val * 17.7 + t * (15.0 + fmod(seed_val, 10.0)), float(4 * T))
 		var ey: float = float(Config.GAME_HEIGHT) - ey_cycle
 		if ey >= hell_top:
-			var ember_life: float = ey_cycle / float(4 * T)  # 0=just spawned, 1=faded
-			var ember_a: float = (1.0 - ember_life) * 0.7
-			var ember_r: float = 1.8 + (1.0 - ember_life) * 1.2
-			# Slight horizontal drift
+			var ember_life: float = ey_cycle / float(4 * T)
+			var ember_a: float = (1.0 - ember_life) * 0.35
+			var ember_r: float = 1.4 + (1.0 - ember_life) * 0.8
 			ex += sin(t * 2.0 + seed_val) * 4.0
 			draw_circle(Vector2(ex, ey), ember_r, Color(1, 0.55, 0.15, ember_a))
-			draw_circle(Vector2(ex, ey), ember_r * 0.5, Color(1, 0.85, 0.35, ember_a * 0.8))
 
 func _draw_foreground_particles() -> void:
 	var t := GM.game_time
@@ -233,22 +392,19 @@ func _draw_foreground_particles() -> void:
 		draw_circle(Vector2(fx, fy), mote_r * 2.0, Color(0.9, 0.95, 1.0, mote_a * 0.4))
 		draw_circle(Vector2(fx, fy), mote_r, Color(0.95, 0.97, 1.0, mote_a))
 
-	# Hell zone: floating ash and cinder — more vivid
+	# Hell zone: floating ash and cinder — sparse, muted
 	var hell_top_y: float = float(8 * T)
-	for i in range(10):
+	for i in range(5):
 		var seed_f: float = float(i) * 61.47
 		var fx: float = fmod(seed_f * 29.3, float(Config.GAME_WIDTH))
-		fx += sin(t * 0.5 + seed_f) * 12.0  # gentle horizontal sway
-		# Slow rise
+		fx += sin(t * 0.5 + seed_f) * 12.0
 		var fy_cycle: float = fmod(seed_f * 11.3 + t * 8.0, float(4 * T))
 		var fy: float = float(Config.GAME_HEIGHT) - fy_cycle
 		if fy >= hell_top_y:
 			var ash_life: float = fy_cycle / float(4 * T)
-			var ash_a: float = (1.0 - ash_life) * 0.12
-			var ash_r: float = 3.0 + (1.0 - ash_life) * 2.0
-			# Soft warm glow — more saturated
+			var ash_a: float = (1.0 - ash_life) * 0.07
+			var ash_r: float = 2.5 + (1.0 - ash_life) * 1.5
 			draw_circle(Vector2(fx, fy), ash_r, Color(1.0, 0.45, 0.18, ash_a))
-			draw_circle(Vector2(fx, fy), ash_r * 0.4, Color(1.0, 0.75, 0.35, ash_a * 1.8))
 
 	# Mid-zone: universal dust motes — slightly more visible
 	for i in range(6):
@@ -349,22 +505,24 @@ func _draw_ground_tile(rx: float, ry: float, c: int, r: int) -> void:
 
 	# Decorative details — different for heaven vs hell
 	if g > 0.5:
-		# Hell side: bright orange geometric dots and ember glows
+		# Hell side: muted geometric dots and ember glows
 		var hell_fade: float = (g - 0.5) * 2.0
-		if h % 7 == 0:
+		if h % 11 == 0:
 			var dx := rx + float(h % 28) + 10
+			@warning_ignore("integer_division")
 			var dy := ry + float((h / 20) % 28) + 10
-			draw_circle(Vector2(dx, dy), 2.0, Color(1.0, 0.55, 0.15, 0.5 * hell_fade))
-			draw_circle(Vector2(dx, dy), 4.0, Color(1.0, 0.4, 0.1, 0.2 * hell_fade))
-		elif h % 11 == 0:
+			draw_circle(Vector2(dx, dy), 1.5, Color(1.0, 0.55, 0.15, 0.25 * hell_fade))
+		elif h % 17 == 0:
 			var ex := rx + float(h % 28) + 10
+			@warning_ignore("integer_division")
 			var ey := ry + float((h / 28) % 28) + 10
-			var glow := 0.35 + 0.25 * sin(GM.game_time * 2.5 + float(h) * 0.01)
-			draw_circle(Vector2(ex, ey), 2.5, Color(1.0, 0.5, 0.15, glow * hell_fade))
+			var glow := 0.2 + 0.15 * sin(GM.game_time * 2.5 + float(h) * 0.01)
+			draw_circle(Vector2(ex, ey), 2.0, Color(1.0, 0.5, 0.15, glow * hell_fade))
 	else:
 		# Heaven side: simple 4-point star sparkles
 		if h % 8 == 0:
 			var sx := rx + float(h % 30) + 9
+			@warning_ignore("integer_division")
 			var sy := ry + float((h / 30) % 30) + 9
 			var twinkle := 0.35 + 0.35 * sin(GM.game_time * 3.5 + float(h) * 0.02)
 			var star_len: float = 3.0
@@ -411,6 +569,7 @@ func _draw_path_tile(rx: float, ry: float, c: int, r: int) -> void:
 func _draw_guardian_zone() -> void:
 	if not GM._has_alive_type("holy_sentinel"):
 		return
+	@warning_ignore("integer_division")
 	var half := Config.path_pixels.size() / 2
 	var pulse := 0.3 + 0.15 * sin(GM.game_time * 2.0)
 	# Highlight protected path tiles with blue overlay
@@ -458,27 +617,28 @@ func _draw_towers() -> void:
 				var bpy: float = cy + 10 * build_a - 20 * (1.0 - build_a)
 				draw_circle(Vector2(cx + cos(ba) * br, bpy), 1.5, Color(1, 0.8, 0.4, build_a * 0.5))
 
+		# REDESIGN: Cocytus cone — persistent translucent fan showing kill zone
+		if t.get("is_beam_cone", false):
+			_draw_cone_overlay(t, cx, cy, a)
+
 		_draw_tower_model(t, cx, cy, a)
 
-		# Hades buff aura — pale golden ring rising vertically
+		# Hades buff aura — blue-purple arcane rings rising from buffed allies
 		if t.get("hades_buffed", false):
 			var buff_t: float = GM.game_time * 1.8
-			# Two rings at different phases, rising upward and fading
 			for ri in range(2):
 				var phase: float = fmod(buff_t + ri * 0.5, 1.0)
-				var ring_y: float = cy + 10 - phase * 28  # rise from bottom to top
-				var ring_a: float = (1.0 - phase) * 0.45  # fade as it rises
-				var ring_w: float = 16.0 - phase * 4.0    # shrink slightly as it rises
-				var ring_h: float = 5.0 - phase * 2.0     # flatten at top
-				# Draw as an ellipse approximation (horizontal arc squished vertically)
+				var ring_y: float = cy + 10 - phase * 28
+				var ring_a: float = (1.0 - phase) * 0.55
+				var ring_w: float = 16.0 - phase * 4.0
+				var ring_h: float = 5.0 - phase * 2.0
 				var pts := PackedVector2Array()
 				for si in range(24):
 					var angle: float = si * TAU / 24.0
 					pts.append(Vector2(cx + cos(angle) * ring_w, ring_y + sin(angle) * ring_h))
-				if pts.size() > 1:
-					for si in range(pts.size()):
-						var next_i: int = (si + 1) % pts.size()
-						draw_line(pts[si], pts[next_i], Color(1.0, 0.9, 0.5, ring_a), 1.5)
+				for si in range(pts.size()):
+					var next_i: int = (si + 1) % pts.size()
+					draw_line(pts[si], pts[next_i], Color(0.75, 0.55, 1.0, ring_a), 1.5)
 
 		# Selected highlight
 		if GM.selected_tower != null and GM.selected_tower.get("id") == t["id"]:
@@ -523,6 +683,9 @@ func _draw_towers() -> void:
 					# Green pulse ring
 					draw_arc(tp, 10 * flash_a, 0, TAU, 16, Color(0.2, 0.9, 0.4, 0.4 * flash_a), 2.0)
 					draw_circle(tp, 4 * flash_a, Color(0.4, 1, 0.6, 0.5 * flash_a))
+				"cocytus":
+					# No muzzle flash — the cone stream is the visual.
+					pass
 				_:
 					draw_circle(tp, 10 * flash_a, Color(fc.r, fc.g, fc.b, 0.3 * flash_a))
 					draw_circle(tp, 5 * flash_a, Color(1, 0.9, 0.7, 0.4 * flash_a))
@@ -539,9 +702,38 @@ func _draw_towers() -> void:
 # ═══════════════════════════════════════════════════════
 # ENEMIES
 # ═══════════════════════════════════════════════════════
+func _draw_cone_overlay(tower: Dictionary, cx: float, cy: float, a: float) -> void:
+	# No boundary lines — stream alone communicates the cone.
+	var range_px: float = tower["range"]
+	var half_angle: float = Config.TOWER_DATA[tower["type"]]["cone_half_angle"]
+	# Oscillating sweep: ±15° (30° total arc) around the set facing
+	var sweep: float = sin(GM.game_time * 1.5) * deg_to_rad(15.0)
+	var facing: float = tower["facing_angle"] + sweep
+
+	# BLIZZARD STREAM — dense flowing snow along effective facing
+	var stream_t: float = fmod(GM.game_time * 1.4, 1.0)
+	for si in range(12):
+		var phase: float = fmod(stream_t + si * 0.083, 1.0)
+		var r_pt: float = range_px * phase
+		var lane: float = fmod(float(si) * 0.31, 1.0) * 2.0 - 1.0  # -1..1 across cone
+		var drift: float = sin(GM.game_time * 2.5 + si * 0.9) * 0.25
+		var ang: float = facing + (lane + drift) * half_angle * 0.75
+		var sx: float = cx + cos(ang) * r_pt
+		var sy: float = cy + sin(ang) * r_pt
+		var life: float = 1.0 - abs(phase - 0.5) * 2.0   # 0→1→0
+		var shard_a: float = life * 0.9 * a
+		var size: float = 1.5 + life * 2.8
+		draw_circle(Vector2(sx, sy), size, Color(0.85, 0.97, 1.0, shard_a))
+		draw_circle(Vector2(sx, sy), size + 2.5, Color(0.55, 0.85, 1.0, shard_a * 0.35))
+
 func _draw_enemies() -> void:
 	var gt: float = GM.game_time
 	var has_commander: bool = GM._has_alive_type("archangel_marshal")
+	# Cache NEC towers for slow-zone mote visual
+	var nec_towers: Array = []
+	for t in GM.towers:
+		if t["type"] == "soul_reaper" and not t["is_disabled"]:
+			nec_towers.append(t)
 
 	for e in GM.enemies:
 		if not e["alive"]:
@@ -555,6 +747,42 @@ func _draw_enemies() -> void:
 		# Subtle floating bob — each enemy has a unique phase based on id
 		var bob: float = sin(gt * 2.0 + e["id"] * 1.7) * 1.2
 		ey += bob
+
+		# REDESIGN: COC frost mark — snowflake icon floating above enemy
+		if e.get("frost_timer", 0.0) > 0:
+			var fr_life: float = clampf(e["frost_timer"] / 0.3, 0.0, 1.0)
+			var fsx: float = ex
+			var fsy: float = ey - er - 6
+			var fcol := Color(0.75, 0.95, 1.0, 0.9 * fr_life)
+			var fcol2 := Color(0.55, 0.85, 1.0, 0.6 * fr_life)
+			# 6-arm snowflake — three crossing lines rotating slowly
+			var spin: float = gt * 0.8 + e["id"] * 0.3
+			var arm_len: float = 4.5
+			for ai in range(3):
+				var ang: float = spin + ai * PI / 3.0
+				var ax: float = cos(ang) * arm_len
+				var ay: float = sin(ang) * arm_len
+				draw_line(Vector2(fsx - ax, fsy - ay), Vector2(fsx + ax, fsy + ay), fcol, 1.4)
+			# Center glow
+			draw_circle(Vector2(fsx, fsy), 1.8, fcol)
+			draw_circle(Vector2(fsx, fsy), 3.0, fcol2)
+			# Frosted body tint — faint blue overlay on sprite
+			draw_circle(Vector2(ex, ey), er + 1, Color(0.55, 0.85, 1.0, 0.18 * fr_life))
+
+		# REDESIGN: NEC slow-zone mark — cold ice-mote ring on slowed enemies
+		var is_slowed_by_aura := false
+		for n in nec_towers:
+			var ndx: float = e["x"] - n["x"]
+			var ndy: float = e["y"] - n["y"]
+			if ndx * ndx + ndy * ndy <= n["range"] * n["range"]:
+				is_slowed_by_aura = true
+				break
+		if is_slowed_by_aura:
+			for mi in range(2):
+				var ma: float = -gt * 1.4 + e["id"] * 0.3 + mi * PI
+				var mx: float = ex + cos(ma) * (er + 3)
+				var my: float = ey + sin(ma) * (er + 3) * 0.5 + 2
+				draw_circle(Vector2(mx, my), 1.3, Color(0.5, 1.0, 0.7, 0.7))
 
 		# Spawn fade-in portal effect
 		var spawn_t: float = e.get("spawn_timer", 0.0)
@@ -667,7 +895,7 @@ func _draw_proj_arrow(px: float, py: float, angle: float, color: Color) -> void:
 	var perp := Vector2(-dir.y, dir.x)
 	var pos := Vector2(px, py)
 
-	# Multi-segment trail — 4 afterimages fading back
+	# Ember trail — 4 afterimages fading back (kept — looks great)
 	for ti in range(4):
 		var trail_pos := pos - dir * (5.0 + ti * 6.0)
 		var trail_a := 0.25 - ti * 0.05
@@ -680,31 +908,43 @@ func _draw_proj_arrow(px: float, py: float, angle: float, color: Color) -> void:
 		var ep := pos - dir * offset + perp * sin(GM.game_time * 10.0 + ti * 2.0) * 3.0
 		draw_circle(ep, 1.0, Color(1, 0.6, 0.15, 0.3))
 
-	# Arrow head — sharp elongated triangle
-	var tip := pos + dir * 6
-	var left := pos - dir * 5 + perp * 2.8
-	var right := pos - dir * 5 - perp * 2.8
-	draw_colored_polygon(PackedVector2Array([tip, left, right]), color)
+	# 3D arrow sprite (pre-rendered) — rotates to match flight direction
+	var tex: Texture2D = CharRenderer.get_projectile_texture("arrow", angle)
+	if tex != null:
+		var arrow_size: float = 28.0
+		var half: float = arrow_size * 0.5
+		var rect := Rect2(pos.x - half, pos.y - half, arrow_size, arrow_size)
+		draw_texture_rect(tex, rect, false, color)
+	else:
+		# Fallback: procedural triangle (original)
+		var tip := pos + dir * 6
+		var left := pos - dir * 5 + perp * 2.8
+		var right := pos - dir * 5 - perp * 2.8
+		draw_colored_polygon(PackedVector2Array([tip, left, right]), color)
+		draw_circle(pos + dir * 4, 1.5, Color(1, 0.9, 0.5, 0.9))
 
-	# Bright tip
-	draw_circle(pos + dir * 4, 1.5, Color(1, 0.9, 0.5, 0.9))
-
-func _draw_proj_fireball(px: float, py: float, color: Color) -> void:
+func _draw_proj_fireball(px: float, py: float, _color: Color) -> void:
+	# Inferno Warlock projectile — arcane orb (no longer a fireball)
 	var pos := Vector2(px, py)
-	var pulse: float = 0.85 + 0.15 * sin(GM.game_time * 18.0)
+	var t: float = GM.game_time
+	var pulse: float = 0.9 + 0.1 * sin(t * 10.0)
 
-	# Outer glow — bold and bright
-	draw_circle(pos, 10 * pulse, Color(1, 0.35, 0.08, 0.15))
+	# Outer purple glow
+	draw_circle(pos, 7 * pulse, Color(0.7, 0.3, 1.0, 0.12))
 
-	# Fire ring
-	draw_arc(pos, 7 * pulse, 0, TAU, 16, Color(1, 0.55, 0.2, 0.5), 1.5)
+	# Two orbiting runes (small dots tracing around the orb)
+	for i in range(2):
+		var a: float = t * 6.0 + i * PI
+		var orbit_x: float = pos.x + cos(a) * 4.5
+		var orbit_y: float = pos.y + sin(a) * 4.5
+		draw_circle(Vector2(orbit_x, orbit_y), 1.2, Color(1.0, 0.75, 1.0, 0.75))
 
-	# Core — purple/orange
-	draw_circle(pos, 5.0, Color(0.75, 0.25, 0.95, 0.9))
-	draw_circle(pos, 3.0, Color(1, 0.55, 0.85, 0.95))
+	# Core — bright magenta
+	draw_circle(pos, 3.5, Color(0.85, 0.4, 1.0, 0.8))
+	draw_circle(pos, 2.2, Color(1.0, 0.7, 1.0, 0.9))
 
 	# White-hot center
-	draw_circle(pos, 1.5, Color(1, 1, 1, 0.9))
+	draw_circle(pos, 1.1, Color(1, 1, 1, 0.85))
 
 func _draw_proj_necro(px: float, py: float, angle: float, color: Color) -> void:
 	var dir := Vector2(cos(angle), sin(angle))
@@ -731,37 +971,51 @@ func _draw_proj_necro(px: float, py: float, angle: float, color: Color) -> void:
 # ═══════════════════════════════════════════════════════
 # EFFECTS
 # ═══════════════════════════════════════════════════════
+# Spawn a one-shot GPUParticles2D burst for the given effect type.
+# Particles render on top of / alongside the existing procedural draw.
+func _spawn_particle_for_effect(e: Dictionary, pos: Vector2) -> void:
+	match e["type"]:
+		"aoe":
+			ParticleSpawner.spawn_aoe_burst(self, pos, e.get("radius", 60.0))
+		"death":
+			ParticleSpawner.spawn_death_puff(self, pos, e.get("color", Color.WHITE))
+		"lucifer_wave":
+			# Intentionally no burst at Lucifer's feet — the expanding wave
+			# ring + halo-bloom (in _draw_tower_model) sells the cast.
+			pass
+		"lucifer_hit":
+			ParticleSpawner.spawn_lucifer_hit(self, pos)
+		"hades_wave":
+			ParticleSpawner.spawn_hades_wave(self, pos, e.get("radius", 130.0))
+		"ice_burst":
+			ParticleSpawner.spawn_ice_burst(self, pos, e.get("radius", 10.0))
+		"heal_pulse":
+			ParticleSpawner.spawn_heal_pulse(self, pos)
+		"michael_shield":
+			ParticleSpawner.spawn_michael_shield(self, pos)
+
 func _draw_effects() -> void:
 	for e in GM.effects:
+		# Skip effects still in their pending/delay window — nothing drawn,
+		# no particle spawn, until the delay elapses.
+		if e.get("delay", 0.0) > 0.0:
+			continue
 		var alpha: float = clampf(e["timer"] / 0.5, 0.0, 1.0)
 		var pos := Vector2(e["x"], e["y"])
 
+		# Spawn particle burst once per effect (on first draw frame)
+		if not e.get("particle_spawned", false):
+			_spawn_particle_for_effect(e, pos)
+			e["particle_spawned"] = true
+
 		match e["type"]:
 			"death":
-				var expand: float = (1.0 - alpha) * 25.0
-				var col: Color = e["color"]
-				# Bold expanding ring
-				draw_arc(pos, e["radius"] + expand, 0, TAU, 24, Color(col.r, col.g, col.b, alpha * 0.9), 2.5)
-				# Triangular shards radiating outward
-				for i in range(6):
-					var pa: float = i * TAU / 6.0 + e["radius"] * 0.1
-					var outer_r: float = e["radius"] + expand * 0.8
-					var shard := Vector2(e["x"] + cos(pa) * outer_r, e["y"] + sin(pa) * outer_r)
-					draw_circle(shard, 2.0 * alpha, Color(1, 0.95, 0.8, alpha * 0.7))
-				# Center flash
-				draw_circle(pos, 6 * alpha, Color(1, 0.95, 0.8, alpha * 0.6))
-				draw_circle(pos, 3 * alpha, Color(1, 1, 1, alpha * 0.4))
+				# GPU puff does the heavy lift — keep procedural to a soft fade.
+				draw_circle(pos, 3.5 * alpha, Color(1, 0.95, 0.8, alpha * 0.22))
 			"aoe":
-				# Shockwave — expanding ring
+				# Arcane shockwave — single purple ring
 				var ring_r: float = e["radius"] * (1.0 - alpha * 0.2)
-				draw_arc(pos, ring_r, 0, TAU, 36, Color(1, 0.55, 0.15, alpha * 0.7), 2.5)
-				# Inner ring
-				draw_arc(pos, ring_r * 0.6, 0, TAU, 24, Color(1, 0.4, 0.1, alpha * 0.35), 1.5)
-				# Fill — soft gradient
-				draw_circle(pos, e["radius"] * 0.7, Color(1, 0.47, 0.12, alpha * 0.08))
-				# Center flash
-				draw_circle(pos, 10 * alpha, Color(1, 0.85, 0.4, alpha * 0.5))
-				draw_circle(pos, 5 * alpha, Color(1, 1, 0.8, alpha * 0.4))
+				draw_arc(pos, ring_r, 0, TAU, 36, Color(0.9, 0.4, 1.0, alpha * 0.6), 2.0)
 			"hit_spark":
 				var spark_alpha: float = clampf(e["timer"] / 0.2, 0.0, 1.0)
 				var progress: float = 1.0 - spark_alpha  # 0 at spawn → 1 at end
@@ -823,48 +1077,146 @@ func _draw_effects() -> void:
 				draw_arc(pos, r, 0, TAU, 24, Color(1, 0.2, 0.1, alpha * 0.6), 2.0)
 				draw_circle(pos, r * 0.4, Color(1, 0.3, 0, alpha * 0.3))
 			"lucifer_hit":
-				# Fire burst on enemy when Lucifer's pulse hits
-				var hit_a: float = clampf(e["timer"] / 0.4, 0.0, 1.0)
-				var burst_progress: float = 1.0 - hit_a
+				# Lightning blitz — vertical jagged bolt striking down onto the
+				# enemy when Lucifer's pulse ring sweeps across them. Short-lived
+				# (~0.22s) for a snappy strike, not a lingering burst.
+				var hit_a: float = clampf(e["timer"] / 0.22, 0.0, 1.0)
 				var er: float = e["radius"]
-				# Expanding fire ring
-				var ring_r: float = er + burst_progress * 14.0
-				draw_arc(pos, ring_r, 0, TAU, 20, Color(1, 0.45, 0.08, hit_a * 0.6), 2.0)
-				# Inner bright flash
-				draw_circle(pos, (er + 4) * hit_a, Color(1, 0.6, 0.15, hit_a * 0.3))
-				draw_circle(pos, er * hit_a * 0.6, Color(1, 0.85, 0.4, hit_a * 0.5))
-				# Fire spark streaks radiating outward
-				for si in range(8):
-					var sa: float = si * TAU / 8.0 + e["x"] * 0.17
-					var sr_inner: float = er * 0.5 + burst_progress * 4.0
-					var sr_outer: float = er + burst_progress * 16.0
-					var p1 := Vector2(e["x"] + cos(sa) * sr_inner, e["y"] + sin(sa) * sr_inner)
-					var p2 := Vector2(e["x"] + cos(sa) * sr_outer, e["y"] + sin(sa) * sr_outer)
-					draw_line(p1, p2, Color(1, 0.5, 0.1, hit_a * 0.5), 1.5)
+				var bolt_h: float = 160.0  # how far above the enemy the bolt starts
+				var top := Vector2(e["x"], e["y"] - bolt_h)
+				# Build a jagged polyline from top straight down to the impact.
+				# Seed per-effect so each strike has a unique but stable zigzag.
+				var seed_f: float = e["x"] * 0.041 + e["y"] * 0.073
+				var n_segs: int = 7
+				var pts := PackedVector2Array()
+				pts.append(top)
+				for si in range(1, n_segs):
+					var t_frac: float = float(si) / float(n_segs)
+					var jitter: float = sin(seed_f * 13.0 + float(si) * 4.17) * 10.0 * (1.0 - t_frac * 0.6)
+					var jx: float = e["x"] + jitter
+					var jy: float = e["y"] - bolt_h * (1.0 - t_frac)
+					pts.append(Vector2(jx, jy))
+				pts.append(pos)
+				# Outer glow pass — wide, cyan-white
+				for si in range(pts.size() - 1):
+					draw_line(pts[si], pts[si + 1],
+						Color(0.55, 0.75, 1.0, hit_a * 0.35), 4.0)
+				# Mid pass — bright cyan
+				for si in range(pts.size() - 1):
+					draw_line(pts[si], pts[si + 1],
+						Color(0.75, 0.9, 1.0, hit_a * 0.75), 2.0)
+				# Hot core — white
+				for si in range(pts.size() - 1):
+					draw_line(pts[si], pts[si + 1],
+						Color(1.0, 1.0, 1.0, hit_a), 1.0)
+				# Ground impact flash + small radial sparks
+				draw_circle(pos, er * 0.9, Color(0.7, 0.85, 1.0, hit_a * 0.35))
+				draw_circle(pos, er * 0.45, Color(1, 1, 1, hit_a * 0.75))
+				for si in range(4):
+					var sa: float = si * TAU / 4.0 + seed_f
+					var sr: float = er + (1.0 - hit_a) * 10.0
+					draw_line(pos,
+						Vector2(e["x"] + cos(sa) * sr, e["y"] + sin(sa) * sr),
+						Color(0.8, 0.9, 1.0, hit_a * 0.45), 1.0)
 			"lucifer_wave":
-				# Expanding pulse ring from Lucifer's position — no screen tint
-				var wave_alpha: float = clampf(e["timer"] / 0.8, 0.0, 1.0)
+				# Expanding pulse ring from Lucifer's position — cyan/electric to
+				# match the lightning-bolt strikes it triggers on crossing enemies.
+				# Map diagonal is ~960 px (768×576), so ring must reach 1000 px.
+				var wave_alpha: float = clampf(e["timer"] / 1.2, 0.0, 1.0)
 				var progress: float = 1.0 - wave_alpha  # 0→1 as wave expands
-				var max_r: float = 500.0
+				var max_r: float = 1000.0
 				var wave_r: float = progress * max_r
-				# Leading edge ring
-				draw_arc(pos, wave_r, 0, TAU, 48, Color(1, 0.5, 0.1, wave_alpha * 0.5), 2.5)
-				# Trailing ring
+				# Leading edge ring — bright cyan
+				draw_arc(pos, wave_r, 0, TAU, 48, Color(0.6, 0.85, 1.0, wave_alpha * 0.38), 1.6)
+				# White-hot inner stroke on the leading edge
+				draw_arc(pos, wave_r, 0, TAU, 48, Color(1, 1, 1, wave_alpha * 0.2), 0.8)
+				# Trailing ring — deeper blue
 				if wave_r > 15:
-					draw_arc(pos, wave_r - 10, 0, TAU, 36, Color(1, 0.3, 0.0, wave_alpha * 0.2), 1.5)
+					draw_arc(pos, wave_r - 10, 0, TAU, 36, Color(0.35, 0.55, 1.0, wave_alpha * 0.15), 1.0)
 			"hades_wave":
-				# Purple shockwave expanding from Hades when dealing damage
+				# Ritual empowerment — 6-point arcane glyph at Hades's feet (not a shockwave)
 				var hw_alpha: float = clampf(e["timer"] / 0.6, 0.0, 1.0)
-				var hw_progress: float = 1.0 - hw_alpha
-				var hw_r: float = hw_progress * e["radius"]
-				# Outer purple ring
-				draw_arc(pos, hw_r, 0, TAU, 36, Color(0.4, 0.25, 1.0, hw_alpha * 0.5), 2.5)
-				# Inner ring
-				if hw_r > 10:
-					draw_arc(pos, hw_r * 0.7, 0, TAU, 28, Color(0.3, 0.2, 0.9, hw_alpha * 0.25), 1.5)
-				# Center flash
-				var center_r: float = 12.0 * hw_alpha
-				draw_circle(pos, center_r, Color(0.5, 0.35, 1.0, hw_alpha * 0.2))
+				var glyph_r: float = 22.0
+				# Outer glyph circle — gently pulses, doesn't expand outward
+				var glyph_col := Color(0.75, 0.55, 1.0, hw_alpha * 0.55)
+				draw_arc(pos, glyph_r, 0, TAU, 32, glyph_col, 1.8)
+				draw_arc(pos, glyph_r * 0.65, 0, TAU, 24, Color(0.85, 0.7, 1.0, hw_alpha * 0.35), 1.2)
+				# 6 runic points on the glyph — form a hex pattern that rotates slowly
+				var spin: float = GM.game_time * 0.8
+				for pi in range(6):
+					var pa: float = spin + pi * TAU / 6.0
+					var px: float = pos.x + cos(pa) * glyph_r
+					var py: float = pos.y + sin(pa) * glyph_r
+					draw_circle(Vector2(px, py), 2.2, Color(1.0, 0.95, 1.0, hw_alpha * 0.85))
+					# connect to next point with a thin line
+					var pa_next: float = spin + (pi + 1) * TAU / 6.0
+					var nx: float = pos.x + cos(pa_next) * glyph_r
+					var ny: float = pos.y + sin(pa_next) * glyph_r
+					draw_line(Vector2(px, py), Vector2(nx, ny), Color(0.8, 0.65, 1.0, hw_alpha * 0.35), 1.0)
+				# Soft center pulse
+				draw_circle(pos, 5 * hw_alpha, Color(0.95, 0.85, 1.0, hw_alpha * 0.5))
+			"hades_beam":
+				# Thin pulsing arcane tendril from Hades to a buffed tower
+				var hb_alpha: float = clampf(e["timer"] / 0.5, 0.0, 1.0)
+				var bx2: float = e.get("x2", e["x"])
+				var by2: float = e.get("y2", e["y"])
+				var beam_pulse: float = 0.7 + 0.3 * sin(GM.game_time * 20.0)
+				# Outer glow
+				draw_line(Vector2(e["x"], e["y"]), Vector2(bx2, by2),
+					Color(0.75, 0.55, 1.0, hb_alpha * 0.2 * beam_pulse), 5)
+				# Main beam
+				draw_line(Vector2(e["x"], e["y"]), Vector2(bx2, by2),
+					Color(0.85, 0.7, 1.0, hb_alpha * 0.75), 2.0)
+				# Bright core
+				draw_line(Vector2(e["x"], e["y"]), Vector2(bx2, by2),
+					Color(1.0, 0.95, 1.0, hb_alpha * 0.9), 1.0)
+				# 3 tiny sparks traveling along the beam
+				for si in range(3):
+					var sp: float = fmod(GM.game_time * 2.5 + float(si) * 0.33, 1.0)
+					var sx: float = e["x"] + (bx2 - e["x"]) * sp
+					var sy: float = e["y"] + (by2 - e["y"]) * sp
+					draw_circle(Vector2(sx, sy), 2.0, Color(1.0, 0.95, 1.0, hb_alpha * 0.9))
+			"hades_curse":
+				# Jagged crimson curse-bolt from Hades to an enemy.
+				var hc_alpha: float = clampf(e["timer"] / 0.5, 0.0, 1.0)
+				var x1: float = e["x"]
+				var y1: float = e["y"]
+				var cx2: float = e.get("x2", x1)
+				var cy2: float = e.get("y2", y1)
+				var dx_c: float = cx2 - x1
+				var dy_c: float = cy2 - y1
+				var dist_c: float = sqrt(dx_c * dx_c + dy_c * dy_c)
+				if dist_c >= 0.5:
+					var perp_x: float = -dy_c / dist_c
+					var perp_y: float = dx_c / dist_c
+					# Build jagged polyline with 4 segments; zigzag shape is stable
+					# per-effect (seeded by endpoint position).
+					var zig_seed: float = x1 * 0.013 + cy2 * 0.017
+					var n_segs: int = 4
+					var pts := PackedVector2Array()
+					pts.append(Vector2(x1, y1))
+					for i in range(1, n_segs):
+						var t: float = float(i) / float(n_segs)
+						var main_x: float = x1 + dx_c * t
+						var main_y: float = y1 + dy_c * t
+						var sign_v: float = 1.0 if ((i + int(zig_seed * 7.0)) % 2) == 0 else -1.0
+						var amp: float = 4.5 * sin(t * PI)
+						pts.append(Vector2(main_x + perp_x * amp * sign_v,
+							main_y + perp_y * amp * sign_v))
+					pts.append(Vector2(cx2, cy2))
+					var curse_pulse: float = 0.7 + 0.3 * sin(GM.game_time * 26.0)
+					for i in range(pts.size() - 1):
+						var a: Vector2 = pts[i]
+						var b: Vector2 = pts[i + 1]
+						# Outer hellfire glow
+						draw_line(a, b, Color(1.0, 0.15, 0.2, hc_alpha * 0.25 * curse_pulse), 5.0)
+						# Main crimson bolt
+						draw_line(a, b, Color(1.0, 0.3, 0.45, hc_alpha * 0.85), 2.0)
+						# Bright hot core
+						draw_line(a, b, Color(1.0, 0.9, 0.7, hc_alpha * 0.9), 1.0)
+					# Impact burst at the enemy end
+					draw_circle(Vector2(cx2, cy2), 5.5 * hc_alpha, Color(1.0, 0.25, 0.3, hc_alpha * 0.45))
+					draw_circle(Vector2(cx2, cy2), 2.5 * hc_alpha, Color(1.0, 0.9, 0.7, hc_alpha * 0.9))
 			"zeus_bolt":
 				# Lightning bolt from Zeus to a tower — jagged line
 				var bolt_alpha: float = clampf(e["timer"] / 0.4, 0.0, 1.0)
@@ -1010,8 +1362,28 @@ func _draw_placement_preview() -> void:
 	if can_place:
 		var data: Dictionary = Config.TOWER_DATA[GM.selected_tower_type]
 		var center := Vector2(px + T / 2.0, py + T / 2.0)
-		draw_circle(center, data["range"], Config.COLOR_RANGE)
-		draw_arc(center, data["range"], 0, TAU, 48, Config.COLOR_RANGE_BORDER, 1.0)
+
+		# REDESIGN: Cocytus shows a rotatable cone preview (not a circle)
+		if data.get("is_beam_cone", false):
+			# Auto-pick best facing when hover tile changes (unless player rotated)
+			var curr_grid := Vector2i(col, row)
+			if not GM.preview_cone_manual and curr_grid != GM.preview_cone_last_grid:
+				GM.preview_cone_facing = GM._best_cone_facing(
+					center.x, center.y, data["range"], data["cone_half_angle"])
+				GM.preview_cone_last_grid = curr_grid
+			var preview_tower_coc := {
+				"type": GM.selected_tower_type,
+				"range": data["range"],
+				"facing_angle": GM.preview_cone_facing,
+			}
+			_draw_cone_overlay(preview_tower_coc, center.x, center.y, 0.7)
+			# Rotation hint text below tile
+			draw_string(font, Vector2(px - 20, py + T + 14),
+				"Q / E to rotate",
+				HORIZONTAL_ALIGNMENT_LEFT, -1, 10, Color(1, 1, 1, 0.7))
+		else:
+			draw_circle(center, data["range"], Config.COLOR_RANGE)
+			draw_arc(center, data["range"], 0, TAU, 48, Config.COLOR_RANGE_BORDER, 1.0)
 
 		# Tower model preview (semi-transparent)
 		var preview_tower := {"type": GM.selected_tower_type, "color": Config.TOWER_DATA[GM.selected_tower_type]["color"]}
@@ -1119,9 +1491,6 @@ func _draw_die_face(cx: float, cy: float, value: int, size: float, alpha: float,
 	var half: float = size / 2.0
 	var r: float = size * 0.15  # corner radius
 
-	# Slight tumble based on game time for a landed-dice feel
-	var tumble: float = sin(GM.dice_result_timer * 8.0) * 1.5 * clampf(GM.dice_result_timer - 4.0, 0.0, 1.0)
-
 	# Die body shadow
 	draw_rect(Rect2(cx - half + 2, cy - half + 2, size, size), Color(0.0, 0.0, 0.0, alpha * 0.4), true, -1.0, r)
 
@@ -1197,12 +1566,39 @@ func _smooth_angle(current: float, target: float, max_delta: float) -> float:
 
 # Called each frame to smoothly rotate tower/enemy facing angles toward their
 # current target/movement direction. Runs in _process (not _draw) so we have dt.
+func _nearest_enemy_to(tx: float, ty: float):
+	var best = null
+	var best_d2: float = INF
+	for e in GM.enemies:
+		if not e["alive"]:
+			continue
+		var dx: float = e["x"] - tx
+		var dy: float = e["y"] - ty
+		var d2: float = dx * dx + dy * dy
+		if d2 < best_d2:
+			best_d2 = d2
+			best = e
+	return best
+
 func _update_facing_angles(dt: float) -> void:
 	var max_turn: float = FACING_TURN_SPEED * dt
 
-	# Towers face their current target
+	# Towers face their current target. Support (Hades) and global (Lucifer)
+	# towers don't track a single target, so for them we face the nearest live
+	# enemy — otherwise they'd stare in one fixed direction forever.
+	# Lucifer spins 360° while fire_flash is burning down (cast window) —
+	# Rig_Large has no cast animation, so this reads the "channeling" beat
+	# using the pre-rendered idle angles.
+	const LUCIFER_SPIN_DUR := 0.3
 	for t in GM.towers:
+		if t.get("type", "") == "lucifer" and t.get("fire_flash", 0.0) > 0.0:
+			var spin_speed: float = TAU / LUCIFER_SPIN_DUR
+			t["facing_angle"] = t.get("facing_angle", 0.0) + spin_speed * dt
+			continue
 		var target = t.get("target")
+		var needs_autoaim: bool = t.get("is_support", false) or t.get("is_global", false)
+		if needs_autoaim:
+			target = _nearest_enemy_to(t["x"], t["y"])
 		if target == null or not (target is Dictionary) or not target.get("alive", false):
 			continue
 		var dx: float = target["x"] - t["x"]
@@ -1254,20 +1650,27 @@ func _screen_to_model_angle(dx: float, dy: float) -> float:
 
 func _draw_tower_model(tower: Dictionary, cx: float, cy: float, a: float) -> void:
 	var type_key: String = tower["type"]
+	var level: int = tower.get("level", 1)
 	# Facing angle is smooth-interpolated each frame in _update_facing_angles.
 	var angle: float = tower.get("facing_angle", 0.0)
-	var tex: Texture2D = CharRenderer.get_texture(type_key, angle)
+	# fire_flash decays from 0.15 → 0 after each shot/pulse; show attack pose
+	# while it's burning down so the tower reads as actively firing.
+	var attacking: bool = tower.get("fire_flash", 0.0) > 0.0
+	var tex: Texture2D = CharRenderer.get_texture(type_key, angle, level, attacking)
 	if tex == null:
 		draw_circle(Vector2(cx, cy), 18, tower["color"])
 		return
 
-	var tint: Color = CharRenderer.get_tint(type_key)
-	var mod_scale: float = CharRenderer.get_draw_scale(type_key)
+	var tint: Color = CharRenderer.get_tint(type_key, level)
+	var mod_scale: float = CharRenderer.get_draw_scale(type_key, level)
 	var t: float = GM.game_time
 
-	# Base size for sprite in game pixels
+	# Base size for sprite in game pixels. With cam_size=4.0 the character
+	# occupies ~75% of the source texture, so drawn at 48 it appears a bit
+	# smaller than the old cam_size=3.0 version — which was the point of the
+	# camera change (no more cropped arms / weapons).
 	var draw_size: float = 48.0 * mod_scale
-	var half: float = draw_size / 2.0
+	var _half: float = draw_size / 2.0
 
 	# Firing recoil — the model kicks backward opposite the firing direction
 	# during fire_flash, decaying with a quadratic falloff for a snappy feel.
@@ -1310,20 +1713,24 @@ func _draw_tower_model(tower: Dictionary, cx: float, cy: float, a: float) -> voi
 				var wy: float = cy + sin(wa) * wr * 0.4
 				draw_circle(Vector2(wx, wy), 2.0, Color(0.3, 1.0, 0.5, 0.35 * a))
 		"lucifer":
-			# Hellfire aura — large, intense
-			var pulse: float = 0.7 + 0.3 * sin(t * 4.0)
-			draw_circle(Vector2(cx, cy), 22, Color(1.0, 0.3, 0.0, 0.12 * a * pulse))
-			draw_circle(Vector2(cx, cy), 18, Color(1.0, 0.5, 0.1, 0.08 * a * pulse))
-			# Orbiting fire ring
-			for fi in range(6):
-				var fa: float = t * 2.0 + fi * TAU / 6.0
-				var fr: float = 20.0
+			# Hellfire aura — single pulsing halo, scaled like other towers.
+			# Cast moment is signaled by a brief bloom: halo widens + brightens
+			# for the fire_flash duration (~0.15s), no particle burst needed.
+			var pulse: float = 0.65 + 0.35 * sin(t * 3.5)
+			var cast_bloom: float = clampf(fflash * 5.0, 0.0, 1.0)
+			var halo_r: float = 20.0 + cast_bloom * 10.0
+			var halo_alpha: float = (0.12 + cast_bloom * 0.22) * a * pulse
+			draw_circle(Vector2(cx, cy + 4), halo_r, Color(1.0, 0.3, 0.05, halo_alpha))
+			# Orbiting embers — 4 particles, same count as Cocytus
+			for fi in range(4):
+				var fa: float = t * 1.8 + fi * TAU / 4.0
+				var fr: float = 16.0
 				var fx: float = cx + cos(fa) * fr
-				var fy: float = cy + sin(fa) * fr * 0.45
-				draw_circle(Vector2(fx, fy), 2.5, Color(1.0, 0.5 + sin(t * 5 + fi) * 0.3, 0.1, 0.4 * a))
+				var fy: float = cy + sin(fa) * fr * 0.4 - 2
+				draw_circle(Vector2(fx, fy), 2.0, Color(1.0, 0.5, 0.1, 0.45 * a))
 		"hades":
-			# Blue-purple support aura
-			var is_buffing: bool = tower.get("buff_timer", 0.0) > 0
+			# Blue-purple support aura — pulses brighter during cast cycle
+			var is_buffing: bool = tower.get("buff_active_timer", 0.0) > 0
 			var aura_a: float = 0.15 if is_buffing else 0.06
 			draw_circle(Vector2(cx, cy + 2), 20, Color(0.3, 0.2, 0.8, aura_a * a))
 			# Runic symbols
@@ -1346,11 +1753,23 @@ func _draw_tower_model(tower: Dictionary, cx: float, cy: float, a: float) -> voi
 				var iy: float = cy + sin(ia) * ir * 0.4 - 4
 				draw_rect(Rect2(ix - 1.5, iy - 1.5, 3, 3), Color(0.7, 0.92, 1.0, 0.4 * a))
 
+	# Breathing — subtle vertical bob + scale pulse, desynced per tile so towers
+	# don't pulse in lockstep. Suspended during fire_flash so recoil reads cleanly.
+	var breath_bob: float = 0.0
+	var breath_scale: float = 1.0
+	if fflash <= 0.0:
+		var tile_seed: float = float(int(tower.get("col", 0)) * 73 + int(tower.get("row", 0)) * 131) * 0.19
+		var breath_phase: float = t * 1.6 + tile_seed
+		breath_bob = sin(breath_phase) * 0.8
+		breath_scale = 1.0 + sin(breath_phase) * 0.012
+
 	# Draw the 3D model texture — apply recoil offset to sprite only.
-	# Character is vertically centered in the texture; feet sit at ~97% from top.
-	# Offset proportional to draw_size so tall (lucifer) & normal towers land on
-	# the tile ground the same way.
-	var rect := Rect2(cx - half + recoil.x, cy - 0.94 * draw_size + recoil.y, draw_size, draw_size)
+	# Feet sit around fraction ~0.65 from texture top (cam_size=4.0 isometric
+	# projection puts feet well above bottom of padded texture). Offset = 0.62
+	# buries feet a few px into the tile so the model reads as grounded.
+	var b_size: float = draw_size * breath_scale
+	var b_half: float = b_size / 2.0
+	var rect := Rect2(cx - b_half + recoil.x, cy - 0.62 * b_size + recoil.y + breath_bob, b_size, b_size)
 	var mod_color := Color(tint.r, tint.g, tint.b, a)
 	draw_texture_rect(tex, rect, false, mod_color)
 
@@ -1383,12 +1802,14 @@ func _draw_tower_model(tower: Dictionary, cx: float, cy: float, a: float) -> voi
 				var by: float = cy - 12 + sin(t * 2.0 + bi * 1.3) * 4.0
 				draw_line(Vector2(bx - 2, by), Vector2(bx + 2, by), Color(0.85, 0.8, 0.65, 0.4 * a), 1.5)
 		"lucifer":
-			# Crown of flame tips
-			for ci in range(3):
-				var flame_h: float = 6.0 + sin(t * 5.0 + ci * 1.5) * 3.0
-				var fx: float = cx - 4 + ci * 4
-				draw_line(Vector2(fx, cy - 22), Vector2(fx, cy - 22 - flame_h), Color(1.0, 0.6, 0.1, 0.6 * a), 1.5)
-				draw_circle(Vector2(fx, cy - 22 - flame_h), 1.5, Color(1.0, 0.9, 0.3, 0.5 * a))
+			# Rising embers — 3 particles, same count as Bone Marksman
+			for ei in range(3):
+				var seed_f: float = float(ei) * 2.7
+				var life: float = fmod(t * 0.6 + seed_f, 2.0) / 2.0
+				var ex: float = cx + sin(seed_f * 3.1 + t * 0.9) * 10.0
+				var ey: float = cy - life * 28.0
+				var ea: float = (1.0 - life) * 0.55
+				draw_circle(Vector2(ex, ey), 1.4, Color(1, 0.55, 0.1, a * ea))
 		"cocytus":
 			# Cold mist rising
 			for mi in range(4):
@@ -1433,7 +1854,7 @@ func _draw_enemy_model(enemy: Dictionary, ex: float, ey: float, er: float, flash
 	var mod_scale: float = CharRenderer.get_draw_scale(type_key)
 	var t: float = GM.game_time
 
-	# Draw size scales with both config scale and enemy radius
+	# Draw size scales with both config scale and enemy radius.
 	var draw_size: float = (er * 2 + 20) * mod_scale
 	var half: float = draw_size / 2.0
 
@@ -1470,8 +1891,9 @@ func _draw_enemy_model(enemy: Dictionary, ex: float, ey: float, er: float, flash
 			var pulse: float = 0.5 + 0.5 * sin(t * 2.0)
 			draw_circle(Vector2(ex, ey), er + 3, Color(0.4, 0.9, 0.5, 0.08 * pulse))
 
-	# Draw the 3D model texture
-	var rect := Rect2(ex - half, ey - 0.94 * draw_size, draw_size, draw_size)
+	# Draw the 3D model texture — feet land near (ex, ey) with cam_size=4.0
+	# padding in the source texture.
+	var rect := Rect2(ex - half, ey - 0.62 * draw_size, draw_size, draw_size)
 	var flash_color := Color(1.3, 0.8, 0.8, 1.0) if flash else Color(tint.r, tint.g, tint.b, 1.0)
 	draw_texture_rect(tex, rect, false, flash_color)
 
@@ -1592,10 +2014,24 @@ func _unhandled_input(event: InputEvent) -> void:
 			return
 
 		if event.pressed:
+			# REDESIGN: rotate Cocytus cone preview with Q / E during placement
+			if GM.selected_tower_type != "" and Config.TOWER_DATA[GM.selected_tower_type].get("is_beam_cone", false):
+				if event.keycode == KEY_Q:
+					GM.preview_cone_facing -= PI / 4.0
+					GM.preview_cone_manual = true
+					get_viewport().set_input_as_handled()
+					return
+				if event.keycode == KEY_E:
+					GM.preview_cone_facing += PI / 4.0
+					GM.preview_cone_manual = true
+					get_viewport().set_input_as_handled()
+					return
 			match event.keycode:
 				KEY_ESCAPE:
 					GM.selected_tower_type = ""
 					GM.selected_tower = null
+					GM.preview_cone_manual = false
+					GM.preview_cone_last_grid = Vector2i(-99, -99)
 				KEY_D:
 					if GM.wave_active:
 						GM.roll_dice()
@@ -1615,12 +2051,12 @@ func _handle_left_click(pos: Vector2) -> void:
 	if GM.selected_tower_type != "":
 		# Placement mode
 		if GM.is_buildable(grid.x, grid.y):
-			# Lucifer: only 1 allowed on the field
-			if GM.selected_tower_type == "lucifer" and GM.has_tower_type("lucifer"):
+			var data: Dictionary = Config.TOWER_DATA[GM.selected_tower_type]
+			# Unique towers: only 1 allowed on the field (e.g., Lucifer)
+			if data.get("unique", false) and GM.has_tower_type(GM.selected_tower_type):
 				GM.notify(Locale.t("Only one Lucifer allowed!"), Color(1, 0.4, 0.0))
 				return
 
-			var data: Dictionary = Config.TOWER_DATA[GM.selected_tower_type]
 			var cost: int = data["cost"]
 
 			var is_free := GM.free_towers > 0
@@ -1634,6 +2070,11 @@ func _handle_left_click(pos: Vector2) -> void:
 				GM.notify(Locale.tf("free_tower_notify", {"count": GM.free_towers}), Color(0.267, 1.0, 0.267))
 
 			var tower := GM.create_tower(GM.selected_tower_type, grid.x, grid.y)
+			# REDESIGN: override auto-picked facing with player's rotated preview
+			if tower.get("is_beam_cone", false):
+				tower["facing_angle"] = GM.preview_cone_facing
+				GM.preview_cone_manual = false
+				GM.preview_cone_last_grid = Vector2i(-99, -99)
 			GM.towers.append(tower)
 			GM.occupied_tiles[str(grid.x) + "," + str(grid.y)] = tower
 			GM.stats["towers_placed"] += 1
@@ -1648,3 +2089,5 @@ func _handle_left_click(pos: Vector2) -> void:
 func _handle_right_click() -> void:
 	GM.selected_tower_type = ""
 	GM.selected_tower = null
+	GM.preview_cone_manual = false
+	GM.preview_cone_last_grid = Vector2i(-99, -99)
