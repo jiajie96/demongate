@@ -21,14 +21,15 @@ from typing import List, Optional, Tuple
 #   Adjust these to iterate on balance, then sync to .gd files.
 # ════════════════════════════════════════════════════════════
 STARTING_SINS       = 120
-WAVE_BONUS_BASE     = 25      # wave bonus = BASE + wave * MULT  (synced with game_manager.gd)
-WAVE_BONUS_MULT     = 3
+WAVE_BONUS_BASE     = 30      # wave bonus = round(BASE * reward_scale) + wave * MULT
+WAVE_BONUS_MULT     = 2
+REWARD_POW_HPG      = 0.85    # powHPG — see game_config.gd
 
-WAVE_HP_SCALE       = 0.06    # +6% enemy HP per wave past wave 3
-WAVE_SPD_SCALE      = 0.015   # +1.5% speed per wave past wave 3
-SCALE_START_WAVE    = 3       # scaling kicks in after this wave
+WAVE_HP_COMPOUND    = 1.08    # x1.08 enemy HP per wave (compound growth)
+WAVE_SPD_COMPOUND   = 1.015   # x1.015 speed per wave (compound growth)
+SCALE_START_WAVE    = 2       # scaling kicks in after this wave
 
-UPGRADE_MULT        = 1.35
+UPGRADE_MULT        = 1.30
 MAX_TOWER_LEVEL     = 3
 SELL_REFUND         = 0.4
 PROJECTILE_SPEED    = 280.0
@@ -135,26 +136,29 @@ ENEMY_DATA = {
 # WAVE DATA
 # ════════════════════════════════════════════════════════════
 WAVE_DATA = [
+    # Early game: gentle ramp (base HP: 42->328)
     dict(enemies=[("angel_scout",3)], interval=3.0),
-    dict(enemies=[("angel_scout",8),("holy_knight",3)], interval=1.0),
-    dict(enemies=[("angel_scout",6),("holy_knight",5)], interval=0.9),
-    dict(enemies=[("angel_scout",10),("holy_knight",4),("divine_hunter",2)], interval=0.8),
-    dict(enemies=[("holy_knight",6),("divine_hunter",5),("monk",2)], interval=0.8),
-    dict(enemies=[("angel_scout",12),("holy_knight",6),("divine_hunter",4),("archangel",1)], interval=0.7),
-    dict(enemies=[("holy_knight",8),("god_of_war",3),("monk",2),("archangel",1)], interval=0.8),
-    dict(enemies=[("divine_hunter",10),("god_of_war",4),("monk",3),("archangel",1)], interval=0.6),
-    dict(enemies=[("angel_scout",15),("holy_knight",8),("god_of_war",4),("archangel",2)], interval=0.5),
-    dict(enemies=[("holy_knight",6),("god_of_war",4),("monk",3),("paladin",1),("archangel",2),("raphael",1)], interval=0.7),
-    dict(enemies=[("divine_hunter",12),("god_of_war",6),("monk",3),("archangel",1),("divine_guardian",1)], interval=0.5),
-    dict(enemies=[("angel_scout",20),("holy_knight",10),("divine_hunter",4),("archangel",2),("divine_guardian",1),("zeus",1)], interval=0.4),
-    dict(enemies=[("god_of_war",8),("divine_hunter",10),("monk",4),("archangel",2),("divine_guardian",1),("zeus",1)], interval=0.5),
-    dict(enemies=[("holy_knight",12),("god_of_war",6),("divine_hunter",6),("archangel",2),("divine_guardian",2),("zeus",1)], interval=0.4),
-    dict(enemies=[("divine_hunter",15),("god_of_war",6),("monk",4),("paladin",1),("archangel",2),("divine_guardian",2),("michael",1),("raphael",1)], interval=0.4),
-    dict(enemies=[("angel_scout",25),("holy_knight",12),("divine_hunter",6),("archangel",3),("divine_guardian",2),("zeus",2)], interval=0.3),
-    dict(enemies=[("god_of_war",10),("divine_hunter",12),("monk",5),("archangel",2),("divine_guardian",2),("zeus",2)], interval=0.4),
-    dict(enemies=[("holy_knight",15),("god_of_war",8),("divine_hunter",10),("monk",4),("archangel",3),("divine_guardian",2),("zeus",2)], interval=0.3),
-    dict(enemies=[("angel_scout",30),("god_of_war",10),("monk",6),("archangel",3),("divine_guardian",3),("michael",1),("zeus",2),("raphael",2)], interval=0.25),
-    dict(enemies=[("holy_knight",18),("god_of_war",10),("monk",6),("paladin",2),("archangel",3),("divine_guardian",3),("michael",1),("zeus",2),("raphael",2)], interval=0.3),
+    dict(enemies=[("angel_scout",4),("holy_knight",1)], interval=2.0),
+    dict(enemies=[("angel_scout",5),("holy_knight",2)], interval=1.3),
+    dict(enemies=[("angel_scout",6),("holy_knight",2),("divine_hunter",2)], interval=1.0),
+    dict(enemies=[("holy_knight",4),("divine_hunter",3),("monk",2)], interval=0.9),
+    # Mid game: new abilities, steady pressure (base HP: 431->1460)
+    dict(enemies=[("angel_scout",8),("holy_knight",4),("divine_hunter",3),("archangel",1)], interval=0.8),
+    dict(enemies=[("holy_knight",5),("god_of_war",2),("monk",2),("archangel",1)], interval=0.8),
+    dict(enemies=[("divine_hunter",7),("god_of_war",3),("monk",2),("archangel",1)], interval=0.7),
+    dict(enemies=[("angel_scout",10),("holy_knight",5),("god_of_war",3),("archangel",2)], interval=0.6),
+    dict(enemies=[("holy_knight",4),("god_of_war",3),("monk",2),("paladin",1),("archangel",1),("raphael",1)], interval=0.7),
+    dict(enemies=[("divine_hunter",10),("god_of_war",5),("monk",3),("archangel",2),("divine_guardian",1)], interval=0.6),
+    dict(enemies=[("angel_scout",14),("holy_knight",6),("divine_hunter",4),("god_of_war",4),("archangel",1),("divine_guardian",1),("zeus",1)], interval=0.5),
+    dict(enemies=[("god_of_war",7),("divine_hunter",8),("monk",4),("archangel",2),("divine_guardian",1),("zeus",1)], interval=0.5),
+    dict(enemies=[("holy_knight",10),("god_of_war",5),("divine_hunter",5),("archangel",2),("divine_guardian",2),("zeus",1)], interval=0.45),
+    # Late game: bosses & full synergy, compound scaling does heavy lifting (base HP: 1772->2588)
+    dict(enemies=[("divine_hunter",12),("god_of_war",5),("monk",3),("paladin",1),("archangel",2),("divine_guardian",2),("michael",1),("raphael",1)], interval=0.45),
+    dict(enemies=[("angel_scout",18),("holy_knight",10),("divine_hunter",4),("god_of_war",5),("monk",3),("archangel",2),("divine_guardian",2),("zeus",2)], interval=0.5),
+    dict(enemies=[("holy_knight",12),("god_of_war",7),("divine_hunter",8),("monk",3),("archangel",2),("divine_guardian",2),("zeus",2)], interval=0.45),
+    dict(enemies=[("holy_knight",14),("god_of_war",7),("divine_hunter",8),("monk",4),("archangel",3),("divine_guardian",2),("zeus",2)], interval=0.4),
+    dict(enemies=[("angel_scout",22),("holy_knight",10),("god_of_war",8),("monk",4),("archangel",2),("divine_guardian",2),("michael",1),("zeus",2),("raphael",1)], interval=0.45),
+    dict(enemies=[("holy_knight",12),("god_of_war",7),("monk",4),("paladin",2),("archangel",2),("divine_guardian",2),("michael",1),("zeus",1),("raphael",1)], interval=0.35),
 ]
 
 
@@ -162,10 +166,13 @@ WAVE_DATA = [
 # HELPER: wave-based HP / speed scale factor
 # ════════════════════════════════════════════════════════════
 def hp_scale(wave: int) -> float:
-    return 1.0 + max(0, wave - SCALE_START_WAVE) * WAVE_HP_SCALE
+    return WAVE_HP_COMPOUND ** max(0, wave - SCALE_START_WAVE)
 
 def spd_scale(wave: int) -> float:
-    return 1.0 + max(0, wave - SCALE_START_WAVE) * WAVE_SPD_SCALE
+    return WAVE_SPD_COMPOUND ** max(0, wave - SCALE_START_WAVE)
+
+def reward_scale(wave: int) -> float:
+    return WAVE_HP_COMPOUND ** (max(0, wave - SCALE_START_WAVE) * REWARD_POW_HPG)
 
 
 # ════════════════════════════════════════════════════════════
@@ -209,11 +216,12 @@ def wave_avg_speed(wave: int) -> float:
     return total_spd / total_count if total_count else 1.0
 
 def wave_kill_income(wave: int) -> int:
-    """Total sin income if all enemies are killed."""
-    total = 0
+    """Total sin income if all enemies are killed (powHPG-scaled)."""
+    total = 0.0
+    rs = reward_scale(wave)
     for etype, count in WAVE_DATA[wave - 1]["enemies"]:
-        total += ENEMY_DATA[etype]["sin_reward"] * count
-    return total
+        total += max(1.0, round(ENEMY_DATA[etype]["sin_reward"] * rs)) * count
+    return int(total)
 
 def tower_dps(ttype: str, level: int = 1) -> float:
     d = TOWER_DATA[ttype]
@@ -293,7 +301,7 @@ def print_dps_plan():
         dps_tile = req_dps / PATH_LEN_TILES            # DPS each path-tile must provide
         cdmg = wave_total_core_dmg(w)
         ki = wave_kill_income(w)
-        wb = WAVE_BONUS_BASE + w * WAVE_BONUS_MULT
+        wb = round(WAVE_BONUS_BASE * reward_scale(w)) + w * WAVE_BONUS_MULT
         cum_sins += ki + wb
 
         print(f"  {w:4d} {ne:4d} {thp:8.0f} {hs:5.2f}"
@@ -396,7 +404,7 @@ class Enemy:
         self.speed = spd
         self.core_dmg = d["core_dmg"]
         self.is_boss = d["is_boss"]
-        self.sin_reward = d["sin_reward"]
+        self.sin_reward = max(1, round(d["sin_reward"] * reward_scale(wave_num)))
         self.x = float(SPAWN_PX[0]); self.y = float(SPAWN_PX[1])
         self.path_index = 0
         self.alive = True
@@ -802,7 +810,7 @@ def simulate_wave(state: GameState, wave_num: int, strategy_fn=None) -> dict:
     leaked = total_enemies - killed
     core_dmg = hp_before - state.core_hp
 
-    state.sins += WAVE_BONUS_BASE + wave_num * WAVE_BONUS_MULT
+    state.sins += round(WAVE_BONUS_BASE * reward_scale(wave_num)) + wave_num * WAVE_BONUS_MULT
 
     if state.double_damage > 0: state.double_damage -= 1
     if state.fast_enemy_waves > 0: state.fast_enemy_waves -= 1
