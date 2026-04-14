@@ -31,7 +31,7 @@ SCALE_START_WAVE    = 2       # scaling kicks in after this wave
 
 UPGRADE_MULT        = 1.30
 MAX_TOWER_LEVEL     = 3
-SELL_REFUND         = 0.4
+SELL_REFUND         = 0.65
 PROJECTILE_SPEED    = 280.0
 
 # ════════════════════════════════════════════════════════════
@@ -90,28 +90,34 @@ TOWER_DATA = {
     ),
     "necromancer": dict(
         name="NEC", damage=2.0, range=110.0, attack_speed=1.2,
-        is_aoe=False, aoe_radius=0.0, slow_power=0.4,
+        is_aoe=False, aoe_radius=0.0, slow_power=0.0,
         cost=120, upgrade_cost=85,
         is_global=False, is_support=False,
+        # REDESIGN v2: passive aura slow — any enemy in range gets -40% speed
+        aura_slow=0.40,
     ),
     "lucifer": dict(
-        name="LUC", damage=1.5, range=9999.0, attack_speed=0.3,
+        name="LUC", damage=5.0, range=9999.0, attack_speed=0.3,
         is_aoe=False, aoe_radius=0.0, slow_power=0.0,
         cost=200, upgrade_cost=150,
         is_global=True, is_support=False,
+        execute_threshold=0.15,  # REDESIGN: kills enemies <15% HP on pulse
     ),
     "hades": dict(
-        name="HAD", damage=0.0, range=130.0, attack_speed=0.0,
+        name="HAD", damage=2.0, range=130.0, attack_speed=0.0,
         is_aoe=False, aoe_radius=0.0, slow_power=0.0,
         cost=160, upgrade_cost=120,
         is_global=False, is_support=True,
         buff_multiplier=1.5, buff_cooldown=5.0, buff_duration=2.0,
     ),
     "cocytus": dict(
-        name="COC", damage=8.0, range=140.0, attack_speed=0.4,
+        name="COC", damage=12.0, range=240.0, attack_speed=1.0,
         is_aoe=False, aoe_radius=0.0, slow_power=0.0,
         cost=180, upgrade_cost=130,
-        is_global=False, is_support=False, is_beam=True,
+        is_global=False, is_support=False,
+        # REDESIGN v2: bigger cone, longer reach, higher DPS — always casting
+        is_beam_cone=True,
+        cone_half_angle=math.radians(35.0),  # 70° total cone
     ),
 }
 
@@ -245,6 +251,20 @@ def tower_coverage(ttype: str, level: int = 1) -> int:
         return PATH_LEN_TILES  # Lucifer hits everything
     if d.get("is_support"):
         return 0  # Hades doesn't attack
+    if d.get("is_beam_cone"):
+        # REDESIGN: best-position × best-facing cone coverage
+        cl = d["range"] * (1.1 ** (level - 1))
+        ha = d["cone_half_angle"]
+        best = 0
+        for col in range(GRID_COLS):
+            for row in range(GRID_ROWS):
+                if (col, row) in PATH_SET: continue
+                cx = col * TILE_SIZE + TILE_SIZE // 2
+                cy = row * TILE_SIZE + TILE_SIZE // 2
+                fa = _best_cone_facing(cx, cy, cl, ha)
+                n = cone_path_coverage(cx, cy, cl, ha, fa)
+                if n > best: best = n
+        return best
     r = d["range"] * (1.1 ** (level - 1))
     best = 0
     for col in range(GRID_COLS):
@@ -335,11 +355,11 @@ class Tower:
         "damage","range","attack_speed","cooldown",
         "is_disabled","disable_timer","damage_mult",
         "slow_power","is_aoe","aoe_radius",
-        "is_global","is_support","is_beam",
-        "buff_timer","buff_active_timer","buff_multiplier",
-        "buff_cooldown","buff_duration",
+        "is_global","is_support",
+        "is_beam_cone","facing_angle",
+        "buff_multiplier","buff_cooldown","buff_duration",
+        "buff_timer","buff_active_timer",
         "hades_buffed","hades_buff_timer",
-        "beam_target_id","beam_stacks",
     )
     def __init__(self, ttype: str, col: int, row: int):
         d = TOWER_DATA[ttype]
@@ -361,6 +381,8 @@ class Tower:
         self.aoe_radius = d["aoe_radius"]
         self.is_global = d.get("is_global", False)
         self.is_support = d.get("is_support", False)
+        self.is_beam_cone = d.get("is_beam_cone", False)
+        self.facing_angle = 0.0
         self.buff_multiplier = d.get("buff_multiplier", 1.0)
         self.buff_cooldown = d.get("buff_cooldown", 0.0)
         self.buff_duration = d.get("buff_duration", 0.0)
@@ -368,9 +390,6 @@ class Tower:
         self.buff_active_timer = 0.0
         self.hades_buffed = False
         self.hades_buff_timer = 0.0
-        self.is_beam = d.get("is_beam", False)
-        self.beam_target_id = -1
-        self.beam_stacks = 0
 
     def get_upgrade_cost(self) -> int:
         return round(TOWER_DATA[self.type]["upgrade_cost"] * (1.5 ** (self.level - 1)))
@@ -391,6 +410,7 @@ class Enemy:
         "is_boss","sin_reward","x","y","path_index",
         "alive","reached_core","slow_amount","slow_timer",
         "shield_buff","shield_buff_timer","ability_timer",
+        "burn_stacks","burn_timer",  # REDESIGN: MAG burn DoT
     )
     def __init__(self, etype: str, wave_num: int):
         d = ENEMY_DATA[etype]
@@ -414,6 +434,8 @@ class Enemy:
         self.shield_buff = False
         self.shield_buff_timer = 0.0
         self.ability_timer = 0.0
+        self.burn_stacks = 0
+        self.burn_timer = 0.0
 
 
 class Projectile:
@@ -452,6 +474,7 @@ class GameState:
         self.total_leaked: int = 0
         self._cmd = False   # archangel alive cache
         self._grd = False   # guardian alive cache
+        self._nec_towers: List[Tower] = []  # REDESIGN v2: NEC aura slow sources
 
     def is_buildable(self, col: int, row: int) -> bool:
         if col < 0 or col >= GRID_COLS or row < 0 or row >= GRID_ROWS:
@@ -464,6 +487,9 @@ class GameState:
             return None
         self.sins -= cost
         t = Tower(ttype, col, row)
+        if t.is_beam_cone:
+            t.facing_angle = _best_cone_facing(t.x, t.y, t.range,
+                                               TOWER_DATA[ttype]["cone_half_angle"])
         self.towers.append(t)
         self.occupied.add((col, row))
         return t
@@ -505,6 +531,10 @@ class GameState:
         if tower is not None and tower.slow_power > 0:
             enemy.slow_amount = tower.slow_power
             enemy.slow_timer = 2.0
+        # REDESIGN: MAG burn — each AoE hit adds 2 stacks (cap 4), 3s refresh
+        if tower is not None and tower.type == "hellfire_mage":
+            enemy.burn_stacks = min(enemy.burn_stacks + 2, 4)
+            enemy.burn_timer = 3.0
         if enemy.hp <= 0:
             enemy.alive = False
             self.kills += 1
@@ -520,9 +550,16 @@ class GameState:
     def lucifer_pulse(self, tower: Tower) -> None:
         mult = 2.0 if self.double_damage > 0 else 1.0
         base_dmg = tower.damage * tower.damage_mult * mult
+        threshold = TOWER_DATA["lucifer"].get("execute_threshold", 0.0)
         for e in self.enemies:
-            if e.alive:
-                self.combat_hit(e, base_dmg, tower)
+            if not e.alive:
+                continue
+            self.combat_hit(e, base_dmg, tower)
+            # REDESIGN: execute — any enemy left below threshold HP dies
+            if e.alive and threshold > 0 and e.hp <= e.max_hp * threshold:
+                e.alive = False
+                self.kills += 1
+                self.sins += e.sin_reward
 
     def hades_buff(self, hades: Tower) -> None:
         r2 = hades.range * hades.range
@@ -532,6 +569,16 @@ class GameState:
             if (t.x - hades.x)**2 + (t.y - hades.y)**2 <= r2:
                 t.hades_buffed = True
                 t.hades_buff_timer = hades.buff_duration
+
+    def hades_damage(self, hades: Tower) -> None:
+        if hades.damage <= 0:
+            return
+        r2 = hades.range * hades.range
+        for e in self.enemies:
+            if not e.alive:
+                continue
+            if (e.x - hades.x)**2 + (e.y - hades.y)**2 <= r2:
+                self.combat_hit(e, hades.damage, hades)
 
     def michael_shield(self, michael: Enemy) -> None:
         michael.ability_timer = 8.0
@@ -613,6 +660,50 @@ def score_position(col: int, row: int, tower_range: float) -> int:
     _pos_cache[key] = n
     return n
 
+def _best_cone_facing(tx: float, ty: float, cone_len: float, half_angle: float) -> float:
+    """Pick 8-way angle (0, π/4, ...) covering most path pixels in cone."""
+    cl2 = cone_len * cone_len
+    cos_half = math.cos(half_angle)
+    best_ang = 0.0
+    best_hits = -1
+    for i in range(8):
+        ang = i * math.pi / 4.0
+        fx = math.cos(ang); fy = math.sin(ang)
+        hits = 0
+        for px, py in PATH_PIXELS:
+            dx = px - tx; dy = py - ty
+            d2 = dx * dx + dy * dy
+            if d2 <= 1.0 or d2 > cl2:
+                continue
+            # cos(angle_to_enemy - facing) >= cos(half_angle)
+            dot = dx * fx + dy * fy
+            if dot <= 0: continue
+            if dot * dot >= cos_half * cos_half * d2:
+                hits += 1
+        if hits > best_hits:
+            best_hits = hits
+            best_ang = ang
+    return best_ang
+
+
+def cone_path_coverage(tx: float, ty: float, cone_len: float,
+                       half_angle: float, facing: float) -> int:
+    cl2 = cone_len * cone_len
+    cos_half = math.cos(half_angle)
+    fx = math.cos(facing); fy = math.sin(facing)
+    hits = 0
+    for px, py in PATH_PIXELS:
+        dx = px - tx; dy = py - ty
+        d2 = dx * dx + dy * dy
+        if d2 <= 1.0 or d2 > cl2:
+            continue
+        dot = dx * fx + dy * fy
+        if dot <= 0: continue
+        if dot * dot >= cos_half * cos_half * d2:
+            hits += 1
+    return hits
+
+
 def ranked_positions(ttype: str, limit: int = 40) -> List[Tuple[int, int, int]]:
     r = TOWER_DATA[ttype]["range"]
     out = []
@@ -663,6 +754,8 @@ def simulate_wave(state: GameState, wave_num: int, strategy_fn=None) -> dict:
             if e.type == "archangel": state._cmd = True
             elif e.type == "divine_guardian": state._grd = True
             if state._cmd and state._grd: break
+        # REDESIGN v2: NEC aura slow source cache
+        state._nec_towers = [t for t in state.towers if t.type == "necromancer" and not t.is_disabled]
 
         # Michael / Zeus / Raphael abilities
         for e in state.enemies:
@@ -686,9 +779,28 @@ def simulate_wave(state: GameState, wave_num: int, strategy_fn=None) -> dict:
             if e.shield_buff_timer > 0:
                 e.shield_buff_timer -= DT
                 if e.shield_buff_timer <= 0: e.shield_buff = False
+            # REDESIGN: MAG burn tick — each stack 1 dmg/s
+            if e.burn_stacks > 0:
+                e.burn_timer -= DT
+                if e.burn_timer <= 0:
+                    e.burn_stacks = 0
+                else:
+                    e.hp -= e.burn_stacks * DT
+                    if e.hp <= 0:
+                        e.alive = False
+                        state.kills += 1
+                        state.sins += e.sin_reward
+                        continue
 
             spd = e.speed
             if e.slow_amount > 0: spd *= (1.0 - e.slow_amount)
+            # REDESIGN v2: NEC passive aura slow — any enemy in NEC range
+            if state._nec_towers:
+                aura = TOWER_DATA["necromancer"]["aura_slow"]
+                for nt in state._nec_towers:
+                    if (e.x - nt.x) ** 2 + (e.y - nt.y) ** 2 <= nt.range * nt.range:
+                        spd *= (1.0 - aura)
+                        break
             if state.fast_enemy_waves > 0: spd *= 1.3
             if state._cmd and e.type != "archangel": spd *= 1.25
 
@@ -712,7 +824,7 @@ def simulate_wave(state: GameState, wave_num: int, strategy_fn=None) -> dict:
 
         if state.core_hp <= 0: break
 
-        # Decay Hades buff timers
+        # Decay Hades buff timers on all towers
         for t in state.towers:
             if t.hades_buffed:
                 t.hades_buff_timer -= DT
@@ -726,7 +838,7 @@ def simulate_wave(state: GameState, wave_num: int, strategy_fn=None) -> dict:
                 if t.disable_timer <= 0: t.is_disabled = False
                 continue
 
-            # Hades: support tower buff cycle
+            # Hades support: buff nearby towers + damage enemies every cycle
             if t.is_support:
                 t.buff_timer -= DT
                 if t.buff_active_timer > 0:
@@ -735,13 +847,14 @@ def simulate_wave(state: GameState, wave_num: int, strategy_fn=None) -> dict:
                     t.buff_timer = t.buff_cooldown
                     t.buff_active_timer = t.buff_duration
                     state.hades_buff(t)
+                    state.hades_damage(t)
                 continue
 
             # Lucifer: global pulse
             if t.is_global:
                 eff_spd = t.attack_speed * state.perm_speed_buff
                 if t.hades_buffed:
-                    eff_spd *= 1.5
+                    eff_spd *= t.buff_multiplier
                 t.cooldown -= DT
                 if t.cooldown > 0: continue
                 if not state.enemies: continue
@@ -749,16 +862,27 @@ def simulate_wave(state: GameState, wave_num: int, strategy_fn=None) -> dict:
                 state.lucifer_pulse(t)
                 continue
 
-            # Beelzebub: instant beam targeting highest HP
-            if t.is_beam:
-                eff_spd = t.attack_speed * state.perm_speed_buff
-                if t.hades_buffed:
-                    eff_spd *= 1.5
-                t.cooldown -= DT
-                if t.cooldown > 0: continue
+            # REDESIGN: Cocytus continuous cone — no cooldown, always burning
+            if t.is_beam_cone:
                 if not state.enemies: continue
-                t.cooldown = 1.0 / eff_spd
-                state.cocytus_beam(t)
+                cone_dps = t.damage * t.attack_speed * state.perm_speed_buff
+                if t.hades_buffed:
+                    cone_dps *= t.buff_multiplier
+                if state.double_damage > 0: cone_dps *= 2.0
+                tick_dmg = cone_dps * DT  # damage this tick per enemy in cone
+                cl2 = t.range * t.range
+                half_angle = TOWER_DATA[t.type]["cone_half_angle"]
+                cos_half = math.cos(half_angle)
+                fx = math.cos(t.facing_angle); fy = math.sin(t.facing_angle)
+                for e in state.enemies:
+                    if not e.alive: continue
+                    dx = e.x - t.x; dy = e.y - t.y
+                    d2 = dx * dx + dy * dy
+                    if d2 <= 1.0 or d2 > cl2: continue
+                    dot = dx * fx + dy * fy
+                    if dot <= 0: continue
+                    if dot * dot < cos_half * cos_half * d2: continue
+                    state.combat_hit(e, tick_dmg, t)
                 continue
 
             t.cooldown -= DT
@@ -775,7 +899,7 @@ def simulate_wave(state: GameState, wave_num: int, strategy_fn=None) -> dict:
 
             eff_spd = t.attack_speed * state.perm_speed_buff
             if t.hades_buffed:
-                eff_spd *= 1.5
+                eff_spd *= t.buff_multiplier
             t.cooldown = 1.0 / eff_spd
             state.projectiles.append(Projectile(t, best, state.double_damage > 0))
 
@@ -927,11 +1051,57 @@ def _greedy_zone_positions(tower_range: float, n: int = 8) -> List[Tuple[int, in
 _ARC_ZONES  = _greedy_zone_positions(TOWER_DATA["demon_archer"]["range"], 8)
 _MAG_ZONES  = _greedy_zone_positions(TOWER_DATA["hellfire_mage"]["range"], 6)
 _NEC_ZONES  = _greedy_zone_positions(TOWER_DATA["necromancer"]["range"], 6)
-_HAD_ZONES  = _greedy_zone_positions(TOWER_DATA["hades"]["range"], 4)
+_HAD_ZONES  = _greedy_zone_positions(TOWER_DATA["hades"]["range"], 10)
 # Lucifer is global — any buildable tile works; pick center of map for aesthetics
 _LUC_ZONES  = [(col, row) for col in range(GRID_COLS) for row in range(GRID_ROWS)
                if (col, row) not in PATH_SET][:10]
-_COC_ZONES  = _greedy_zone_positions(TOWER_DATA["cocytus"]["range"], 6)
+def _cone_covered_tiles(col: int, row: int) -> frozenset:
+    """Tiles that best-facing cone from (col,row) can reach."""
+    cx = col * TILE_SIZE + TILE_SIZE // 2
+    cy = row * TILE_SIZE + TILE_SIZE // 2
+    cl = TOWER_DATA["cocytus"]["range"]
+    ha = TOWER_DATA["cocytus"]["cone_half_angle"]
+    fa = _best_cone_facing(cx, cy, cl, ha)
+    fx = math.cos(fa); fy = math.sin(fa)
+    cl2 = cl * cl
+    cos_half = math.cos(ha)
+    tiles = set()
+    for i, (px, py) in enumerate(PATH_PIXELS):
+        dx = px - cx; dy = py - cy
+        d2 = dx * dx + dy * dy
+        if d2 <= 1.0 or d2 > cl2: continue
+        dot = dx * fx + dy * fy
+        if dot <= 0: continue
+        if dot * dot >= cos_half * cos_half * d2:
+            tiles.add(i)
+    return frozenset(tiles)
+
+
+def _greedy_cone_zones(n: int = 6) -> List[Tuple[int, int]]:
+    covered: set = set()
+    result: List[Tuple[int, int]] = []
+    cands = []
+    for col in range(GRID_COLS):
+        for row in range(GRID_ROWS):
+            if (col, row) in PATH_SET: continue
+            tiles = _cone_covered_tiles(col, row)
+            if tiles: cands.append((col, row, tiles))
+    for _ in range(n):
+        best = None; best_new = -1; best_total = -1
+        for col, row, tiles in cands:
+            new = len(tiles - covered); tot = len(tiles)
+            if new > best_new or (new == best_new and tot > best_total):
+                best_new = new; best_total = tot
+                best = (col, row, tiles)
+        if best is None or best_new == 0: break
+        col, row, tiles = best
+        result.append((col, row))
+        covered |= tiles
+        cands = [(c, r, t) for c, r, t in cands if (c, r) != (col, row)]
+    return result
+
+
+_COC_ZONES  = _greedy_cone_zones(6)
 
 
 # ── Placement / upgrade helpers ───────────────────────────
@@ -1062,13 +1232,13 @@ def strat_optimal(s, ph):
         _place_at_zones(s, "demon_archer", _ARC_ZONES, 1)
         return
 
-    # Phase 3: MAG for AoE, Hades to boost cluster, Beelzebub for bosses
+    # Phase 3: MAG for AoE burn, Hades corruption aura, Cocytus cone
     if mag_n < 1 and s.sins >= 90:
         _place_at_zones(s, "hellfire_mage", _MAG_ZONES, 1)
     _upgrade_cheapest(s, reserve=50)
     if had_n < 1 and s.sins >= 160 and w >= 6:
         _place_at_zones(s, "hades", _HAD_ZONES, 1)
-    if coc_n < 1 and s.sins >= 180 and w >= 7:
+    if coc_n < 1 and s.sins >= 180 and w >= 6:
         _place_at_zones(s, "cocytus", _COC_ZONES, 1)
 
     # Phase 4: Lucifer for global damage, max upgrades, expand
@@ -1134,6 +1304,43 @@ def strat_lucifer_hades(s, ph):
 # ════════════════════════════════════════════════════════════
 # MAIN
 # ════════════════════════════════════════════════════════════
+# 8. Synergy — force HAD + COC + NEC to verify redesigned abilities pull weight
+def strat_synergy(s, ph):
+    if ph != "between_waves":
+        return
+    w = s.wave
+    arc_n = sum(1 for t in s.towers if t.type == "demon_archer")
+    nec_n = sum(1 for t in s.towers if t.type == "necromancer")
+    had_n = sum(1 for t in s.towers if t.type == "hades")
+    coc_n = sum(1 for t in s.towers if t.type == "cocytus")
+    mag_n = sum(1 for t in s.towers if t.type == "hellfire_mage")
+    luc_n = sum(1 for t in s.towers if t.type == "lucifer")
+    # Phase 1: 3 ARC anchor
+    if arc_n < 3:
+        _place_at_zones(s, "demon_archer", _ARC_ZONES, 3 - arc_n)
+        return
+    # Phase 2: buy NEC / HAD when affordable; fall back to ARC otherwise
+    if nec_n < 1 and s.sins >= 120:
+        _place_at_zones(s, "necromancer", _NEC_ZONES, 1)
+    if had_n < 1 and s.sins >= 160 and w >= 5:
+        _place_at_zones(s, "hades", _HAD_ZONES, 1)
+    if coc_n < 1 and s.sins >= 180 and w >= 5:
+        _place_at_zones(s, "cocytus", _COC_ZONES, 1)
+    if mag_n < 1 and s.sins >= 90 and w >= 6:
+        _place_at_zones(s, "hellfire_mage", _MAG_ZONES, 1)
+    if luc_n < 1 and s.sins >= 200 and w >= 8:
+        _place_at_zones(s, "lucifer", _LUC_ZONES, 1)
+    _upgrade_cheapest(s, reserve=80 if w < 5 else (50 if w < 8 else 0))
+    # Fill with more ARC up to 5, upgrade rest
+    if arc_n < 5:
+        _place_at_zones(s, "demon_archer", _ARC_ZONES, 1)
+    if w >= 9:
+        if coc_n < 2 and s.sins >= 180:
+            _place_at_zones(s, "cocytus", _COC_ZONES, 1)
+        _place_at_zones(s, "demon_archer", _ARC_ZONES, 99)
+        _upgrade_cheapest(s, reserve=0)
+
+
 ALL_STRATEGIES = {
     "single_arc":    (strat_single_arc,    "Single ARC (wave 1 solo)"),
     "greedy_arc":    (strat_greedy_arc,    "Greedy ARC Spam"),
@@ -1142,6 +1349,7 @@ ALL_STRATEGIES = {
     "optimal":       (strat_optimal,       "Optimal Strategy"),
     "upgrade_heavy": (strat_upgrade_heavy, "Upgrade-Heavy (few towers)"),
     "lucifer_hades": (strat_lucifer_hades, "Lucifer+Hades Focus"),
+    "synergy":       (strat_synergy,       "Synergy (NEC+HAD+COC focus)"),
 }
 
 
