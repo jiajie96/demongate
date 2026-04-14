@@ -17,6 +17,10 @@ func _ready() -> void:
 	_run_combat_tests()
 	_run_wave_tests()
 	_run_slow_tests()
+	_run_hades_corruption_tests()
+	_run_cocytus_cone_tests()
+	_run_mag_burn_tests()
+	_run_lucifer_execute_tests()
 	_run_gambling_data_tests()
 	_run_targeting_tests()
 
@@ -342,22 +346,25 @@ func _run_slow_tests() -> void:
 	print("[Slow Mechanic]")
 	GM.reset_state()
 
-	# Soul Reaper should have slow_power
+	# REDESIGN: Soul Reaper has passive aura_slow (no on-hit slow)
 	var nec_data: Dictionary = Config.TOWER_DATA["soul_reaper"]
-	_assert(nec_data["slow_power"] > 0, "Soul Reaper has slow_power > 0")
-	_assert_eq(nec_data["slow_power"], 0.4, "Soul Reaper slows by 40%")
+	_assert(nec_data.get("aura_slow", 0.0) > 0, "Soul Reaper has aura_slow > 0")
+	_assert_eq(nec_data["aura_slow"], 0.4, "Soul Reaper aura slows by 40%")
+	_assert_eq(nec_data["slow_power"], 0.0, "Soul Reaper slow_power is 0 (aura-based)")
 
 	# Other towers should not slow
 	_assert_eq(Config.TOWER_DATA["bone_marksman"]["slow_power"], 0.0, "Bone Marksman has no slow")
 	_assert_eq(Config.TOWER_DATA["inferno_warlock"]["slow_power"], 0.0, "Inferno Warlock has no slow")
 
-	# NEC tower applies slow on hit
+	# NEC aura applies passively — enemy inside range gets slowed during update_enemies
 	var nec := GM.create_tower("soul_reaper", 5, 5)
+	GM.towers.append(nec)
 	var enemy := GM.create_enemy("seraph_scout")
+	enemy["x"] = nec["x"]; enemy["y"] = nec["y"]  # inside NEC range
 	GM.enemies.append(enemy)
-	GM.combat_hit(enemy, 2.0, nec)
-	_assert(enemy["slow_timer"] > 0, "NEC hit applies slow timer")
-	_assert_eq(enemy["slow_amount"], 0.4, "NEC hit applies 40% slow")
+	GM.update_enemies(0.05)
+	# Aura slow reduces speed during movement but doesn't set slow_timer (no on-hit)
+	_assert_eq(enemy["slow_timer"], 0.0, "NEC aura does not set slow_timer (passive)")
 
 	# Non-slow tower should NOT apply slow
 	var arc := GM.create_tower("bone_marksman", 6, 6)
@@ -365,6 +372,121 @@ func _run_slow_tests() -> void:
 	GM.enemies.append(enemy2)
 	GM.combat_hit(enemy2, 2.0, arc)
 	_assert_eq(enemy2["slow_timer"], 0.0, "ARC hit does not apply slow")
+
+	GM.reset_state()
+
+# ═══════════════════════════════════════════════════════
+# Hades support tower (original cycle: buff allies + damage enemies)
+# ═══════════════════════════════════════════════════════
+func _run_hades_corruption_tests() -> void:
+	print("[Hades Support]")
+	GM.reset_state()
+
+	var had_data: Dictionary = Config.TOWER_DATA["hades"]
+	_assert(had_data["is_support"], "Hades is_support=true")
+	_assert_eq(had_data["cost"], 160, "Hades costs 160")
+	_assert_eq(had_data["buff_multiplier"], 1.5, "Hades buff_multiplier 1.5")
+	_assert_eq(had_data["buff_cooldown"], 5.0, "Hades buff_cooldown 5s")
+	_assert_eq(had_data["buff_duration"], 2.0, "Hades buff_duration 2s")
+
+	# HAD applies hades_buffed flag to nearby ally towers
+	var had := GM.create_tower("hades", 5, 5)
+	GM.towers.append(had)
+	var arc := GM.create_tower("bone_marksman", 6, 5)
+	GM.towers.append(arc)
+	GM._apply_hades_buff(had)
+	_assert(arc["hades_buffed"], "ARC inside HAD range gets buffed")
+	_assert(arc["hades_buff_timer"] > 0, "ARC buff timer set")
+
+	# HAD damages enemies in range
+	var e := GM.create_enemy("seraph_scout")
+	e["x"] = had["x"]; e["y"] = had["y"]
+	var hp_before: float = e["hp"]
+	GM.enemies.append(e)
+	GM._hades_damage(had)
+	_assert(e["hp"] < hp_before, "HAD damages enemy in range")
+
+	GM.reset_state()
+
+# ═══════════════════════════════════════════════════════
+# REDESIGN: Cocytus continuous cone
+# ═══════════════════════════════════════════════════════
+func _run_cocytus_cone_tests() -> void:
+	print("[Cocytus Cone]")
+	GM.reset_state()
+
+	var coc_data: Dictionary = Config.TOWER_DATA["cocytus"]
+	_assert(coc_data.get("is_beam_cone", false), "Cocytus is_beam_cone=true")
+	_assert_eq(coc_data["damage"], 12.0, "Cocytus damage 12 (redesigned)")
+	_assert_eq(coc_data["range"], 240.0, "Cocytus range 240 (redesigned)")
+
+	# Place COC + enemy in its cone
+	var coc := GM.create_tower("cocytus", 5, 5)
+	GM.towers.append(coc)
+	_assert(coc.has("facing_angle"), "COC has facing_angle")
+
+	var e := GM.create_enemy("war_titan")  # high HP so it survives a tick
+	# Put enemy 100px in the facing direction (inside cone)
+	e["x"] = coc["x"] + cos(coc["facing_angle"]) * 100.0
+	e["y"] = coc["y"] + sin(coc["facing_angle"]) * 100.0
+	var hp_before: float = e["hp"]
+	GM.enemies.append(e)
+	GM._cocytus_cone(coc, 0.1)  # 0.1s tick
+	_assert(e["hp"] < hp_before, "COC cone damages enemy in cone")
+	# Expected: 12 DPS × 0.1s = 1.2 dmg
+	var dmg_done: float = hp_before - e["hp"]
+	_assert(dmg_done > 0.5 and dmg_done < 2.0, "COC tick dmg ≈ 1.2 (got " + str(dmg_done) + ")")
+
+	# Enemy opposite direction (outside cone) takes 0 damage
+	var e_back := GM.create_enemy("war_titan")
+	e_back["x"] = coc["x"] - cos(coc["facing_angle"]) * 100.0
+	e_back["y"] = coc["y"] - sin(coc["facing_angle"]) * 100.0
+	var hp_back_before: float = e_back["hp"]
+	GM.enemies.append(e_back)
+	GM._cocytus_cone(coc, 0.1)
+	_assert_eq(e_back["hp"], hp_back_before, "COC cone does NOT damage enemy behind tower")
+
+	GM.reset_state()
+
+# ═══════════════════════════════════════════════════════
+# REDESIGN: Inferno Warlock burn
+# ═══════════════════════════════════════════════════════
+func _run_mag_burn_tests() -> void:
+	print("[MAG Burn DoT]")
+	GM.reset_state()
+
+	var mag := GM.create_tower("inferno_warlock", 5, 5)
+	var e := GM.create_enemy("war_titan")
+	GM.enemies.append(e)
+	_assert_eq(e["burn_stacks"], 0, "Enemy starts with 0 burn stacks")
+	GM.combat_hit(e, 3.0, mag)
+	_assert_eq(e["burn_stacks"], 2, "MAG hit adds 2 burn stacks")
+	_assert(e["burn_timer"] > 0, "MAG hit sets burn timer")
+	GM.combat_hit(e, 3.0, mag)
+	GM.combat_hit(e, 3.0, mag)
+	_assert_eq(e["burn_stacks"], 4, "Burn stacks cap at 4")
+
+	GM.reset_state()
+
+# ═══════════════════════════════════════════════════════
+# REDESIGN: Lucifer execute
+# ═══════════════════════════════════════════════════════
+func _run_lucifer_execute_tests() -> void:
+	print("[Lucifer Execute]")
+	GM.reset_state()
+
+	var luc_data: Dictionary = Config.TOWER_DATA["lucifer"]
+	_assert_eq(luc_data["damage"], 5.0, "Lucifer damage 5 (redesigned)")
+	_assert_eq(luc_data["execute_threshold"], 0.15, "Lucifer execute threshold 15%")
+
+	# Low-HP enemy should be executed
+	var luc := GM.create_tower("lucifer", 5, 5)
+	GM.towers.append(luc)
+	var weak := GM.create_enemy("seraph_scout")
+	weak["hp"] = weak["max_hp"] * 0.10  # 10% HP — below threshold
+	GM.enemies.append(weak)
+	GM._lucifer_pulse(luc)
+	_assert(not weak["alive"], "Lucifer executes enemy below 15% HP")
 
 	GM.reset_state()
 
@@ -399,17 +521,13 @@ func _run_targeting_tests() -> void:
 
 	# Default targeting mode
 	var tower := GM.create_tower("bone_marksman", 5, 1)
-	_assert_eq(tower["targeting_mode"], "first", "Default targeting mode is 'first'")
+	_assert_eq(tower["targeting_mode"], "closest", "Default targeting mode is 'closest'")
 
 	# Cycle through modes
 	GM.cycle_targeting(tower)
-	_assert_eq(tower["targeting_mode"], "last", "Cycle to 'last'")
-	GM.cycle_targeting(tower)
-	_assert_eq(tower["targeting_mode"], "closest", "Cycle to 'closest'")
-	GM.cycle_targeting(tower)
 	_assert_eq(tower["targeting_mode"], "strongest", "Cycle to 'strongest'")
 	GM.cycle_targeting(tower)
-	_assert_eq(tower["targeting_mode"], "first", "Cycle wraps to 'first'")
+	_assert_eq(tower["targeting_mode"], "closest", "Cycle wraps to 'closest'")
 
 	# TARGETING_MODES constant
-	_assert_eq(GM.TARGETING_MODES.size(), 4, "4 targeting modes exist")
+	_assert_eq(GM.TARGETING_MODES.size(), 2, "2 targeting modes exist")

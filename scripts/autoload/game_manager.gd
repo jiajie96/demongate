@@ -24,6 +24,10 @@ var effects: Array = []
 
 var selected_tower_type: String = ""
 var selected_tower = null
+# REDESIGN: live-rotatable cone preview for Cocytus placement
+var preview_cone_facing: float = 0.0
+var preview_cone_manual: bool = false
+var preview_cone_last_grid: Vector2i = Vector2i(-99, -99)
 
 var hovered_grid: Vector2i = Vector2i(-1, -1)
 
@@ -73,6 +77,7 @@ var _next_id: int = 0
 func reset_state() -> void:
 	phase = "playing"
 	paused = false
+	Audio.start_music()
 	core_hp = Config.CORE_MAX_HP
 	core_max_hp = Config.CORE_MAX_HP
 	wave = 0
@@ -83,6 +88,9 @@ func reset_state() -> void:
 	effects.clear()
 	selected_tower_type = ""
 	selected_tower = null
+	preview_cone_facing = 0.0
+	preview_cone_manual = false
+	preview_cone_last_grid = Vector2i(-99, -99)
 	hovered_grid = Vector2i(-1, -1)
 	wave_active = false
 	spawn_queue.clear()
@@ -203,7 +211,9 @@ func create_tower(type: String, col: int, row: int) -> Dictionary:
 		"name": data["name"],
 		"is_global": data.get("is_global", false),
 		"is_support": data.get("is_support", false),
-		"is_beam": data.get("is_beam", false),
+		"is_beam_cone": data.get("is_beam_cone", false),
+		"facing_angle": 0.0,
+		"cone_emit_timer": 0.0,
 		"buff_cooldown": data.get("buff_cooldown", 0.0),
 		"buff_duration": data.get("buff_duration", 0.0),
 		"buff_multiplier": data.get("buff_multiplier", 1.0),
@@ -214,15 +224,38 @@ func create_tower(type: String, col: int, row: int) -> Dictionary:
 		"fire_flash": 0.0,
 		"total_damage": 0.0,
 		"kill_count": 0,
-		"targeting_mode": "first",
-		"beam_target_id": -1,
-		"beam_stacks": 0,
-		"beam_flash": 0.0,
+		"targeting_mode": "closest",
 		"build_timer": 0.3,
 	}
 	if tower["is_support"]:
 		tower["buff_timer"] = tower["buff_cooldown"]
+	if tower["is_beam_cone"]:
+		tower["facing_angle"] = _best_cone_facing(tower["x"], tower["y"],
+			data["range"], data["cone_half_angle"])
 	return tower
+
+func _best_cone_facing(tx: float, ty: float, cone_len: float, half_angle: float) -> float:
+	var cl2 := cone_len * cone_len
+	var cos_half := cos(half_angle)
+	var best_ang := 0.0
+	var best_hits := -1
+	for i in range(8):
+		var ang: float = i * PI / 4.0
+		var fx := cos(ang); var fy := sin(ang)
+		var hits := 0
+		for p in Config.path_pixels:
+			var dx: float = p.x - tx; var dy: float = p.y - ty
+			var d2: float = dx * dx + dy * dy
+			if d2 <= 1.0 or d2 > cl2:
+				continue
+			var dot: float = dx * fx + dy * fy
+			if dot <= 0: continue
+			if dot * dot >= cos_half * cos_half * d2:
+				hits += 1
+		if hits > best_hits:
+			best_hits = hits
+			best_ang = ang
+	return best_ang
 
 func upgrade_tower(tower: Dictionary) -> bool:
 	if tower["level"] >= Config.MAX_TOWER_LEVEL:
@@ -299,6 +332,9 @@ func create_enemy(type: String) -> Dictionary:
 		"flash_timer": 0.0,
 		"spawn_timer": 0.4,
 		"ability_timer": 0.0,
+		"burn_stacks": 0,
+		"burn_timer": 0.0,
+		"frost_timer": 0.0,
 	}
 
 func _has_alive_type(etype: String) -> bool:
@@ -312,7 +348,9 @@ func _is_guardian_protected(enemy: Dictionary) -> bool:
 		return false
 	if not _has_alive_type("holy_sentinel"):
 		return false
-	return enemy.get("path_index", 0) < Config.path_pixels.size() / 2
+	@warning_ignore("integer_division")
+	var half: int = Config.path_pixels.size() / 2
+	return enemy.get("path_index", 0) < half
 
 func _michael_shield(michael: Dictionary) -> void:
 	# Every 8 seconds, grant all enemies 50% damage reduction for 2 seconds
@@ -369,6 +407,14 @@ func _raphael_heal(raphael: Dictionary) -> void:
 func update_enemies(dt: float) -> void:
 	var path_px: Array[Vector2] = Config.path_pixels
 	var has_commander := _has_alive_type("archangel_marshal")
+	# REDESIGN: cache NEC aura slow sources for movement step
+	var nec_towers: Array = []
+	var nec_aura_slow: float = 0.0
+	for t in towers:
+		if t["type"] == "soul_reaper" and not t["is_disabled"]:
+			nec_towers.append(t)
+	if nec_towers.size() > 0:
+		nec_aura_slow = Config.TOWER_DATA["soul_reaper"].get("aura_slow", 0.0)
 
 	# Process Michael, Zeus, and Raphael abilities
 	for e in enemies:
@@ -423,10 +469,43 @@ func update_enemies(dt: float) -> void:
 			if e["shield_buff_timer"] <= 0:
 				e["shield_buff"] = false
 
+		# REDESIGN: COC frost state decay (snowflake marker + slow)
+		if e["frost_timer"] > 0:
+			e["frost_timer"] -= dt
+
+		# REDESIGN: MAG burn DoT tick
+		if e["burn_stacks"] > 0:
+			e["burn_timer"] -= dt
+			if e["burn_timer"] <= 0:
+				e["burn_stacks"] = 0
+			else:
+				var burn_dps: float = e["burn_stacks"] * Config.TOWER_DATA["inferno_warlock"]["burn_dps_per_stack"]
+				e["hp"] -= burn_dps * dt
+				if e["hp"] <= 0:
+					e["alive"] = false
+					stats["enemies_killed"] += 1
+					earn_from_kill(e["type"], true)
+					add_effect("death", e["x"], e["y"], e["radius"], e["color"])
+					Audio.play_sfx("enemy_death")
+					enemies.remove_at(i)
+					i -= 1
+					continue
+
 		# Movement
 		var spd: float = e["speed"]
 		if e["slow_amount"] > 0:
 			spd *= (1.0 - e["slow_amount"])
+		# REDESIGN: NEC passive aura slow — any enemy in NEC range
+		if nec_aura_slow > 0:
+			for nt in nec_towers:
+				var ndx: float = e["x"] - nt["x"]
+				var ndy: float = e["y"] - nt["y"]
+				if ndx * ndx + ndy * ndy <= nt["range"] * nt["range"]:
+					spd *= (1.0 - nec_aura_slow)
+					break
+		# REDESIGN: COC frost slow — while enemy has active frost_timer
+		if e["frost_timer"] > 0:
+			spd *= 0.65  # 35% slow while being frozen by cone
 		if fast_enemy_waves > 0:
 			spd *= 1.3
 		# Archangel Commander aura: +25% speed to allies
@@ -447,6 +526,7 @@ func update_enemies(dt: float) -> void:
 			if core_hp <= 0:
 				shake(8.0, 0.4)
 				phase = "gameover"
+				Audio.play_music_stinger("defeat")
 			i -= 1
 			continue
 
@@ -523,14 +603,14 @@ func update_projectiles(dt: float) -> void:
 # ═══════════════════════════════════════════════════════
 # TARGETING
 # ═══════════════════════════════════════════════════════
-const TARGETING_MODES := ["first", "last", "closest", "strongest"]
+const TARGETING_MODES := ["closest", "strongest"]
 
 func cycle_targeting(tower: Dictionary) -> void:
-	var idx := TARGETING_MODES.find(tower.get("targeting_mode", "first"))
+	var idx := TARGETING_MODES.find(tower.get("targeting_mode", "closest"))
 	tower["targeting_mode"] = TARGETING_MODES[(idx + 1) % TARGETING_MODES.size()]
 
 func find_target(tower: Dictionary):
-	var mode: String = tower.get("targeting_mode", "first")
+	var mode: String = tower.get("targeting_mode", "closest")
 	var best = null
 	var best_val: float = -1.0 if mode != "closest" else INF
 	var r2: float = tower["range"] * tower["range"]
@@ -543,14 +623,6 @@ func find_target(tower: Dictionary):
 		if dist_sq > r2:
 			continue
 		match mode:
-			"first":
-				if e["path_index"] > best_val:
-					best_val = e["path_index"]
-					best = e
-			"last":
-				if best == null or e["path_index"] < best_val:
-					best_val = e["path_index"]
-					best = e
 			"closest":
 				if dist_sq < best_val:
 					best_val = dist_sq
@@ -589,7 +661,6 @@ func calc_damage(base_dmg: float, tower, enemy: Dictionary) -> float:
 	# Archangel Commander aura: 25% damage reduction for allies
 	if _has_alive_type("archangel_marshal") and enemy.get("type", "") != "archangel_marshal":
 		dmg *= 0.75
-	# Michael aura: while shield_buff active, 30% damage reduction (already applied via shield_buff flag)
 	return maxf(1.0, dmg)
 
 func combat_hit(enemy: Dictionary, base_dmg: float, tower) -> void:
@@ -616,10 +687,16 @@ func combat_hit(enemy: Dictionary, base_dmg: float, tower) -> void:
 	var nx: float = enemy["x"] + (fmod(dmg * 7.3, 16.0) - 8.0)
 	add_dmg_number(nx, enemy["y"] - enemy.get("radius", 8.0) - 4, dmg, spark_col)
 
-	# Apply slow from Necromancer
+	# Apply slow from towers with slow_power (legacy path; NEC uses aura now)
 	if tower != null and tower is Dictionary and tower.get("slow_power", 0.0) > 0:
 		enemy["slow_amount"] = tower["slow_power"]
 		enemy["slow_timer"] = 2.0
+
+	# REDESIGN: MAG burn stacks on hit
+	if tower != null and tower is Dictionary and tower.get("type", "") == "inferno_warlock":
+		var mdata: Dictionary = Config.TOWER_DATA["inferno_warlock"]
+		enemy["burn_stacks"] = mini(enemy["burn_stacks"] + int(mdata["burn_stacks_per_hit"]), int(mdata["burn_stack_cap"]))
+		enemy["burn_timer"] = float(mdata["burn_duration"])
 
 	if enemy["hp"] <= 0:
 		combat_kill(enemy, tower)
@@ -665,7 +742,7 @@ func update_towers(dt: float) -> void:
 				t["is_disabled"] = false
 			continue
 
-		# Hades support tower: buff nearby towers and damage enemies periodically
+		# Hades support tower: buff nearby towers + damage enemies every cycle
 		if t["is_support"]:
 			t["buff_timer"] -= dt
 			if t["buff_active_timer"] > 0:
@@ -673,64 +750,30 @@ func update_towers(dt: float) -> void:
 			if t["buff_timer"] <= 0:
 				t["buff_timer"] = t["buff_cooldown"]
 				t["buff_active_timer"] = t["buff_duration"]
+				t["fire_flash"] = 0.3
 				_apply_hades_buff(t)
 				_hades_damage(t)
 				Audio.play_sfx("hades_buff", -18.0)
 			continue
 
-		# Lucifer global pulse: damage ALL enemies
+		# Lucifer global pulse: damage ALL enemies + execute threshold
 		if t["is_global"]:
-			var effective_speed: float = t["attack_speed"] * perm_speed_buff * temp_speed_buff
+			var pulse_speed: float = t["attack_speed"] * perm_speed_buff * temp_speed_buff
 			if t["hades_buffed"]:
-				effective_speed *= t.get("buff_multiplier", 1.5)
+				pulse_speed *= t.get("buff_multiplier", 1.5)
 			t["cooldown"] -= dt
 			if t["cooldown"] > 0:
 				continue
 			if enemies.size() == 0:
 				continue
-			t["cooldown"] = 1.0 / effective_speed
+			t["cooldown"] = 1.0 / pulse_speed
+			t["fire_flash"] = 0.3
 			_lucifer_pulse(t)
 			continue
 
-		# Beam tower: lock onto target, keep attacking even out of range, re-target only on death
-		if t["is_beam"]:
-			var effective_speed: float = t["attack_speed"] * perm_speed_buff * temp_speed_buff
-			if t["hades_buffed"]:
-				effective_speed *= 1.5
-			t["cooldown"] -= dt
-			if t["cooldown"] > 0:
-				continue
-
-			# Try to keep current locked target
-			var locked_target = null
-			if t["beam_target_id"] >= 0:
-				for e in enemies:
-					if e["id"] == t["beam_target_id"] and e["alive"]:
-						locked_target = e
-						break
-
-			# If locked target is dead or none, find new target in range
-			if locked_target == null:
-				t["beam_target_id"] = -1
-				t["beam_stacks"] = 0
-				var best_hp := -1.0
-				var r2: float = t["range"] * t["range"]
-				for e in enemies:
-					if not e["alive"]:
-						continue
-					var dx: float = e["x"] - t["x"]
-					var dy: float = e["y"] - t["y"]
-					if dx * dx + dy * dy > r2:
-						continue
-					if e["hp"] > best_hp:
-						best_hp = e["hp"]
-						locked_target = e
-
-			t["target"] = locked_target
-			if locked_target == null:
-				continue
-			t["cooldown"] = 1.0 / effective_speed
-			_cocytus_spike(t, locked_target)
+		# REDESIGN: Cocytus continuous cone — always casting in facing direction
+		if t["is_beam_cone"]:
+			_cocytus_cone(t, dt)
 			continue
 
 		var effective_speed: float = t["attack_speed"] * perm_speed_buff * temp_speed_buff
@@ -746,49 +789,121 @@ func update_towers(dt: float) -> void:
 			continue
 
 		t["cooldown"] = 1.0 / effective_speed
-		t["fire_flash"] = 0.15
+		t["fire_flash"] = 0.3  # how long the attack pose holds after firing
 		projectiles.append(create_projectile(t, target))
 		Audio.play_shoot(t["type"])
 
 func _lucifer_pulse(tower: Dictionary) -> void:
 	var base_dmg: float = tower["damage"]
+	var tx: float = tower["x"]
+	var ty: float = tower["y"]
+	var threshold: float = Config.TOWER_DATA["lucifer"].get("execute_threshold", 0.0)
+	# Wave ring: 1000 px radius over 1.2s → ~833 px/s. Must match game_world
+	# lucifer_wave draw (max_r + duration) so burst pops exactly when the ring
+	# crosses each enemy. Damage is applied instantly; the burst is visual.
+	var wave_speed: float = 1000.0 / 1.2
 	for e in enemies:
 		if e["alive"]:
 			combat_hit(e, base_dmg, tower)
-			add_effect("lucifer_hit", e["x"], e["y"], e.get("radius", 8.0), tower["color"])
+			# REDESIGN: execute — kill any enemy surviving pulse below threshold HP
+			if e["alive"] and threshold > 0 and e["hp"] <= e["max_hp"] * threshold:
+				combat_kill(e, tower)
+			var dx: float = e["x"] - tx
+			var dy: float = e["y"] - ty
+			var delay: float = sqrt(dx * dx + dy * dy) / wave_speed
+			effects.append({
+				"type": "lucifer_hit",
+				"x": e["x"], "y": e["y"],
+				"radius": e.get("radius", 8.0),
+				"color": tower["color"],
+				"timer": 0.22,
+				"delay": delay,
+			})
 	add_effect("lucifer_wave", tower["x"], tower["y"], 0, tower["color"])
 	Audio.play_sfx("lucifer_pulse", -6.0)
 
-func _cocytus_spike(tower: Dictionary, target: Dictionary) -> void:
-	# Track stacks: same target = ramp, new target = reset
-	if target["id"] != tower["beam_target_id"]:
-		tower["beam_target_id"] = target["id"]
-		tower["beam_stacks"] = 0
-	tower["beam_stacks"] = mini(tower["beam_stacks"] + 1, 3)
-	# Damage ramps: 1x / 1.5x / 2x / 3x
-	var stack_mult: Array = [1.0, 1.5, 2.0, 3.0]
-	var mult: float = stack_mult[tower["beam_stacks"]]
-	var base_dmg: float = tower["damage"] * mult
-	combat_hit(target, base_dmg, tower)
-	tower["beam_flash"] = 0.15
-	# Visual: ice spike flying from tower to target
-	effects.append({
-		"type": "frost_spike",
-		"x": tower["x"], "y": tower["y"],
-		"x2": target["x"], "y2": target["y"],
-		"radius": float(tower["beam_stacks"]),
-		"color": Color(0.6, 0.85, 1.0),
-		"timer": 0.18,
-	})
-	# Ice burst at impact (grows with stacks)
-	effects.append({
-		"type": "ice_burst",
-		"x": target["x"], "y": target["y"],
-		"radius": target.get("radius", 8.0) + tower["beam_stacks"] * 3.0,
-		"color": Color(0.7, 0.9, 1.0),
-		"timer": 0.35,
-	})
-	Audio.play_sfx("core_hit")
+func _cocytus_cone(tower: Dictionary, dt: float) -> void:
+	# Continuous damage every tick — bypasses calc_damage's 1.0 floor because
+	# per-tick damage is fractional (e.g. 0.2 at 60 FPS). Applies multipliers manually.
+	# Force casting pose always (fire_flash held high while cone is active).
+	tower["fire_flash"] = 0.3
+	if enemies.size() == 0:
+		return
+	var cone_dps: float = tower["damage"] * tower["attack_speed"] * perm_speed_buff * temp_speed_buff
+	if tower["hades_buffed"]:
+		cone_dps *= tower.get("buff_multiplier", 1.5)
+	if double_damage > 0:
+		cone_dps *= 2.0
+	cone_dps *= tower.get("damage_mult", 1.0)
+	var cl2: float = tower["range"] * tower["range"]
+	var half_angle: float = Config.TOWER_DATA[tower["type"]]["cone_half_angle"]
+	var cos_half: float = cos(half_angle)
+	# REDESIGN: oscillating sweep — ±15° around set facing, synced to draw
+	var sweep: float = sin(game_time * 1.5) * (PI / 12.0)
+	var eff_facing: float = tower["facing_angle"] + sweep
+	var fx: float = cos(eff_facing)
+	var fy: float = sin(eff_facing)
+	var has_cmd := _has_alive_type("archangel_marshal")
+	var corruption: float = Config.TOWER_DATA["hades"].get("corruption_mult", 1.0)
+	var hit_any := false
+	for e in enemies:
+		if not e["alive"]:
+			continue
+		var dx: float = e["x"] - tower["x"]
+		var dy: float = e["y"] - tower["y"]
+		var d2: float = dx * dx + dy * dy
+		if d2 <= 1.0 or d2 > cl2:
+			continue
+		var dot: float = dx * fx + dy * fy
+		if dot <= 0:
+			continue
+		if dot * dot < cos_half * cos_half * d2:
+			continue
+		if _is_guardian_protected(e):
+			e["flash_timer"] = 0.05
+			continue
+		# Apply raw damage — NO 1.0 floor (cone is fractional per tick)
+		var tick_dmg: float = cone_dps * dt
+		if e.get("shield", 0.0) > 0:
+			tick_dmg *= (1.0 - e["shield"])
+		if e.get("shield_buff", false):
+			tick_dmg *= 0.7
+		if has_cmd and e.get("type", "") != "archangel_marshal":
+			tick_dmg *= 0.75
+		if corruption > 1.0:
+			for h in towers:
+				if h["type"] != "hades" or h["is_disabled"]:
+					continue
+				var dxh: float = e["x"] - h["x"]
+				var dyh: float = e["y"] - h["y"]
+				if dxh * dxh + dyh * dyh <= h["range"] * h["range"]:
+					tick_dmg *= corruption
+					break
+		e["hp"] -= tick_dmg
+		# REDESIGN: frost state instead of white flash — snowflake icon + slow
+		e["frost_timer"] = 0.3
+		tower["total_damage"] = tower.get("total_damage", 0.0) + tick_dmg
+		hit_any = true
+		if e["hp"] <= 0:
+			combat_kill(e, tower)
+	# Periodic frost spike emit inside cone for visual continuity
+	tower["cone_emit_timer"] -= dt
+	if tower["cone_emit_timer"] <= 0:
+		tower["cone_emit_timer"] = 0.12
+		var max_r: float = tower["range"]
+		var r_pt: float = max_r * (0.4 + randf() * 0.6)
+		var a_off: float = (randf() - 0.5) * 2.0 * half_angle
+		var ang: float = eff_facing + a_off
+		var ex: float = tower["x"] + cos(ang) * r_pt
+		var ey: float = tower["y"] + sin(ang) * r_pt
+		effects.append({
+			"type": "frost_spike",
+			"x": tower["x"], "y": tower["y"],
+			"x2": ex, "y2": ey,
+			"radius": 1.0,
+			"color": Color(0.6, 0.85, 1.0),
+			"timer": 0.14,
+		})
 
 func _apply_hades_buff(hades_tower: Dictionary) -> void:
 	var r2: float = hades_tower["range"] * hades_tower["range"]
@@ -803,13 +918,19 @@ func _apply_hades_buff(hades_tower: Dictionary) -> void:
 		if dx * dx + dy * dy <= r2:
 			t["hades_buffed"] = true
 			t["hades_buff_timer"] = buff_dur
+			effects.append({
+				"type": "hades_beam",
+				"x": hades_tower["x"], "y": hades_tower["y"],
+				"x2": t["x"], "y2": t["y"],
+				"radius": 0, "color": Color(0.7, 0.5, 1.0),
+				"timer": 0.5,
+			})
 
 func _hades_damage(hades_tower: Dictionary) -> void:
 	var base_dmg: float = hades_tower["damage"]
 	if base_dmg <= 0:
 		return
 	var r2: float = hades_tower["range"] * hades_tower["range"]
-	var hit_any := false
 	for e in enemies:
 		if not e["alive"]:
 			continue
@@ -817,9 +938,13 @@ func _hades_damage(hades_tower: Dictionary) -> void:
 		var dy: float = e["y"] - hades_tower["y"]
 		if dx * dx + dy * dy <= r2:
 			combat_hit(e, base_dmg, hades_tower)
-			hit_any = true
-	if hit_any:
-		add_effect("hades_wave", hades_tower["x"], hades_tower["y"], hades_tower["range"], hades_tower["color"])
+			effects.append({
+				"type": "hades_curse",
+				"x": hades_tower["x"], "y": hades_tower["y"],
+				"x2": e["x"], "y2": e["y"],
+				"radius": 0, "color": Color(1.0, 0.3, 0.45),
+				"timer": 0.5,
+			})
 
 # ═══════════════════════════════════════════════════════
 # WAVE MANAGER
@@ -828,8 +953,10 @@ func start_wave() -> void:
 	wave += 1
 	if wave > Config.MAX_WAVES:
 		phase = "victory"
+		Audio.play_music_stinger("victory")
 		return
 	wave_active = true
+	Audio.update_music_for_wave(wave)
 	var wave_def: Dictionary = Config.WAVE_DATA[wave - 1]
 	wave_desc = wave_def["desc"]
 
@@ -862,6 +989,7 @@ func start_wave() -> void:
 				remaining -= 1
 	spawn_queue = mixed
 	# Sprinkle specials in the back half of the wave
+	@warning_ignore("integer_division")
 	var insert_start: int = maxi(spawn_queue.size() / 2, spawn_queue.size() - specials.size() * 3)
 	for i in range(specials.size()):
 		var idx: int = mini(insert_start + i * 2, spawn_queue.size())
@@ -930,6 +1058,7 @@ func complete_wave() -> void:
 
 	if wave >= Config.MAX_WAVES:
 		phase = "victory"
+		Audio.play_music_stinger("victory")
 		return
 
 	if wave % Config.PACT_EVERY == 0:
@@ -1089,6 +1218,7 @@ func accept_pact(pact: Dictionary) -> void:
 			core_hp = maxf(0, core_hp - 20)
 			if core_hp <= 0:
 				phase = "gameover"
+				Audio.play_music_stinger("defeat")
 		"fast_enemy_2":
 			fast_enemy_waves = 2
 		"disable_10s":
@@ -1099,6 +1229,7 @@ func accept_pact(pact: Dictionary) -> void:
 			core_max_hp -= 30
 			core_hp = minf(core_hp, core_max_hp)
 		"halve_sins":
+			@warning_ignore("integer_division")
 			sins = sins / 2
 
 	notify(Locale.tf("pact_accepted_notify", {"name": Locale.t(pact["name"])}), Color(0.8, 0.267, 1.0))
@@ -1119,7 +1250,7 @@ func add_effect(type: String, ex: float, ey: float, radius: float = 10.0, color:
 	if type == "hit_spark":
 		duration = 0.2
 	elif type == "lucifer_wave":
-		duration = 0.8
+		duration = 1.2
 	elif type == "lucifer_hit":
 		duration = 0.4
 	elif type == "hades_wave":
@@ -1138,9 +1269,16 @@ func notify(text: String, color: Color = Color.WHITE) -> void:
 func update_effects(dt: float) -> void:
 	var i := effects.size() - 1
 	while i >= 0:
-		effects[i]["timer"] -= dt
-		if effects[i]["timer"] <= 0:
-			effects.remove_at(i)
+		var e: Dictionary = effects[i]
+		# Effects with a delay wait in a "pending" state — timer/draw/particle
+		# spawn all stay frozen until the delay elapses (e.g. Lucifer's wave
+		# ring reaching a far enemy).
+		if e.get("delay", 0.0) > 0.0:
+			e["delay"] -= dt
+		else:
+			e["timer"] -= dt
+			if e["timer"] <= 0:
+				effects.remove_at(i)
 		i -= 1
 
 	i = notifications.size() - 1

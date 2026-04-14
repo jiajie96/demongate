@@ -94,12 +94,12 @@ var TOWER_DATA := {
 		"slow_power": 0.0,
 		"cost": 50,
 		"upgrade_cost": 40,
-		"color": Color(0.8, 0.2, 0.2),
+		"color": Color(0.95, 0.72, 0.32),
 		"symbol": "ARC",
 	},
 	"inferno_warlock": {
 		"name": "Inferno Warlock",
-		"desc": "AoE blasts, essential vs swarms",
+		"desc": "AoE blast ignites burn stacks (1 dps/stack, caps 4, 3s)",
 		"damage": 3.0,
 		"range": 100.0,
 		"attack_speed": 0.8,
@@ -110,20 +110,25 @@ var TOWER_DATA := {
 		"upgrade_cost": 70,
 		"color": Color(0.6, 0.2, 0.8),
 		"symbol": "MAG",
+		"burn_stacks_per_hit": 2,
+		"burn_stack_cap": 4,
+		"burn_duration": 3.0,
+		"burn_dps_per_stack": 1.0,
 	},
 	"soul_reaper": {
 		"name": "Soul Reaper",
-		"desc": "Slows enemies on hit, force multiplier",
+		"desc": "Slow aura: enemies in range move 40% slower",
 		"damage": 2.0,
 		"range": 110.0,
 		"attack_speed": 1.2,
 		"is_aoe": false,
 		"aoe_radius": 0.0,
-		"slow_power": 0.4,
+		"slow_power": 0.0,
 		"cost": 120,
 		"upgrade_cost": 85,
 		"color": Color(0.2, 0.8, 0.4),
 		"symbol": "NEC",
+		"aura_slow": 0.40,
 	},
 	"hades": {
 		"name": "Hades",
@@ -136,7 +141,7 @@ var TOWER_DATA := {
 		"slow_power": 0.0,
 		"cost": 160,
 		"upgrade_cost": 120,
-		"color": Color(0.3, 0.2, 0.9),
+		"color": Color(0.72, 0.52, 1.0),
 		"symbol": "HAD",
 		"is_support": true,
 		"buff_multiplier": 1.5,
@@ -145,10 +150,10 @@ var TOWER_DATA := {
 	},
 	"cocytus": {
 		"name": "Cocytus",
-		"desc": "Ice spike ramps damage on same target",
-		"damage": 8.0,
-		"range": 140.0,
-		"attack_speed": 0.4,
+		"desc": "Continuous frost cone — always casting in one direction",
+		"damage": 12.0,
+		"range": 240.0,
+		"attack_speed": 1.0,
 		"is_aoe": false,
 		"aoe_radius": 0.0,
 		"slow_power": 0.0,
@@ -156,12 +161,13 @@ var TOWER_DATA := {
 		"upgrade_cost": 130,
 		"color": Color(0.6, 0.85, 1.0),
 		"symbol": "COC",
-		"is_beam": true,
+		"is_beam_cone": true,
+		"cone_half_angle": 0.6108652,  # 35° (70° total cone)
 	},
 	"lucifer": {
 		"name": "Lucifer",
-		"desc": "Global pulse damages ALL enemies, slow attack",
-		"damage": 3.0,
+		"desc": "Global pulse, executes enemies below 15% HP",
+		"damage": 5.0,
 		"range": 9999.0,
 		"attack_speed": 0.3,
 		"is_aoe": false,
@@ -172,6 +178,8 @@ var TOWER_DATA := {
 		"color": Color(1.0, 0.4, 0.0),
 		"symbol": "LUC",
 		"is_global": true,
+		"unique": true,
+		"execute_threshold": 0.15,
 	},
 }
 
@@ -318,4 +326,5 @@ func grid_to_pixel(col: int, row: int) -> Vector2:
 	return Vector2(col * TILE_SIZE + TILE_SIZE / 2.0, row * TILE_SIZE + TILE_SIZE / 2.0)
 
 func pixel_to_grid(px: float, py: float) -> Vector2i:
+	@warning_ignore("integer_division")
 	return Vector2i(int(px) / TILE_SIZE, int(py) / TILE_SIZE)
