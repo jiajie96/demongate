@@ -18,6 +18,7 @@ A critical analysis of every design decision in **Hellgate Defenders** mapped to
 10. [Game Feel & Juice — Feedback Systems](#10-game-feel--juice--feedback-systems)
 11. [Information Theory — Visibility & Fog](#11-information-theory--visibility--fog)
 12. [Aesthetic Theory — Visual Design Language](#12-aesthetic-theory--visual-design-language)
+12b. [Gestalt Principles — Perceptual Grouping in the Battlefield](#12b-gestalt-principles--perceptual-grouping-in-the-battlefield)
 13. [Bartle's Player Types — Audience Motivation](#13-bartles-player-types--audience-motivation)
 14. [The Hook Model — Engagement Loops](#14-the-hook-model--engagement-loops)
 15. [Player Onboarding — Tutorial & Scaffolding](#15-player-onboarding--tutorial--scaffolding)
@@ -485,7 +486,7 @@ The principle: tower defense games are especially juice-dependent because the pl
 
 **Visual effects (implemented):**
 
-- Hit sparks at impact location (0.2s colored explosions)
+- Hit sparks at impact location (0.2s colored explosions, with arcing debris specks that hop and fall under pseudo-gravity)
 - AoE flash rings (expanding circles, 0.5s)
 - Death explosions (enemy-colored burst, 0.5s)
 - Lucifer global pulse (expanding ring from tower, 0.8s)
@@ -494,8 +495,11 @@ The principle: tower defense games are especially juice-dependent because the pl
 - Zeus lightning bolts (visual lines to disabled towers)
 - Michael shield dome (golden flash)
 - Raphael heal beams (green lines to healed enemies)
-- Muzzle flash per tower type (unique per tower)
-- Floating damage numbers (0.6s rising text)
+- Muzzle flash per tower type (unique per tower) — bone_marksman now fires a directional flame tongue along the target line
+- Firing recoil — towers visually kick backward opposite the firing direction for the duration of the muzzle flash, decaying on a quadratic falloff (≤ ~3 px)
+- Floating damage numbers (0.6s rising text) with a scale "pop" in the first 150 ms and a gold-tinted enlarged treatment for hits ≥ 15 damage (crit-feel without a true crit mechanic)
+- Ice burst at Cocytus impact — frost ring, 8 radial shatter cracks, 6 triangular ice shards flying outward
+- Screen shake (`screen_shake` + `screen_shake_intensity` on GameManager) — position offset on the GameWorld node during boss deaths, core hits, and Lucifer pulses
 - Attack lines (subtle tower-to-target connection)
 
 **Audio effects (procedurally synthesized):**
@@ -517,11 +521,11 @@ The principle: tower defense games are especially juice-dependent because the pl
 
 ### What Could Be Improved
 
-- **No screen shake.** This is the single most impactful missing juice element. Nijman's research shows that even 2-3 pixels of screen shake on heavy impacts (boss death, Lucifer pulse, core hit) dramatically improves game feel. This should be the #1 juice priority.
 - **No currency/reward "pop."** When the player earns Sins, the number updates silently. Adding floating "+8 Sins" text at the kill location (flying toward the HUD counter) would create satisfying reward feedback. Plants vs. Zombies' flying sun toward the sun counter is the gold standard here.
-- **Tower idle animations are minimal.** Towers are static when not firing. Subtle breathing animations (Mage's aura pulsing, Archer's bowstring tension, Necro's spectral wisps) would make the battlefield feel alive during calm moments.
-- **Enemy death needs more weight.** Boss deaths should be visually spectacular — multi-frame explosion, particle shower, brief slow-motion. Currently, a Paladin (280 HP boss) dies with the same feedback as a Scout (14 HP). Proportional feedback to enemy importance would make boss kills feel like achievements.
-- **No hit-stop / freeze-frame.** A 1-2 frame pause on critical hits or kills (Vlambeer technique) creates a moment of impact that makes damage feel physical. This is especially important for Beelzebub's ramping damage — the player should *feel* the damage escalating.
+- **Enemy death needs more weight.** Boss deaths should be visually spectacular — multi-frame explosion, particle shower, brief slow-motion. Currently, a Paladin (280 HP boss) dies with similar feedback to a Scout (14 HP). The 20 waves-of-60+ enemies framework *begs* for proportional-to-importance death feedback, and the architecture already supports it (just branch on `e["is_boss"]` inside the `"death"` case of `_draw_effects`).
+- **No hit-stop / freeze-frame.** A 1–2 frame pause on critical hits or kills (Vlambeer technique) creates a moment of impact that makes damage feel physical. This is especially important for Cocytus' ramping ice damage — the player should *feel* the damage escalating.
+- **Recoil only kicks during `fire_flash`.** The current implementation snaps back to rest the moment the flash timer expires. A softer spring-return (lerp back over ~80 ms past the flash) would feel more organic. Minor polish — the current version is already a big upgrade from static towers.
+- **Tower idle animations are minimal.** Towers are static when not firing. Each tower now has aura and over-effect motion (flame tongues, orbiting runes, caduceus ribbons), but the core model itself does not bob or breathe. A 1 px vertical sine-bob on idle models would close the remaining "dead-standing" look.
 
 ---
 
@@ -621,6 +625,46 @@ The map renders with a vertical gradient — celestial blue at top (spawn) trans
 - **Tower state visualization is weak.** Disabled towers only dim to 50% alpha — during chaotic moments, this is easy to miss. A clear "X" overlay or red pulsing border would make disabled state immediately obvious.
 - **No color-blind considerations.** The red/green tower distinction (Archer vs Necromancer) is problematic for ~8% of male players with red-green color blindness. Adding shape-based differentiation or a color-blind mode would improve accessibility.
 - **UI visual hierarchy could be stronger.** Core HP (the most critical information) is displayed as a small progress bar in the top-left. It should be the largest, most prominent UI element — perhaps a large bar spanning the full top of the screen, changing color as HP drops.
+
+---
+
+## 12b. Gestalt Principles — Perceptual Grouping in the Battlefield
+
+### The Theory
+
+The Gestalt school of psychology (Wertheimer, Koffka, Köhler — Berlin, 1910s–1920s) identified a set of perceptual *laws* describing how the human visual system groups discrete marks into wholes. The ones most applicable to an active battlefield view are:
+
+| Principle | What it says | TD implication |
+|---|---|---|
+| **Proximity** | Elements close together read as a group. | Clumped enemies read as a "wave threat," driving AoE placement decisions. |
+| **Similarity** | Elements sharing color/shape/size read as a group. | Enemy cohorts (all Scouts, all Crusaders) must be visually interchangeable within the cohort and differentiable across cohorts. |
+| **Common fate** | Elements moving together read as a group. | A Marshal + buffed Scouts moving in lockstep read as a unit — desired for telegraphing "command auras." |
+| **Closure** | The brain completes broken outlines into whole shapes. | Tower range *circles* at 12% alpha still read as closed regions even though they're dashed. |
+| **Figure/Ground** | The brain segregates foreground from background. | Enemies must pop against the Hell/Heaven gradient, or they vanish during dense waves. |
+| **Prägnanz (simplicity)** | The brain prefers the simplest stable interpretation. | Iconic silhouettes (Archer bow, Mage hood) read faster than realistic detail. |
+
+For an authoritative summary see Wertheimer (1923) *Untersuchungen zur Lehre von der Gestalt II* or Palmer (1999) *Vision Science: Photons to Phenomenology*, ch. 6. A game-design-specific treatment appears in Schell's *Art of Game Design*, Lens #44 (The Lens of the Silhouette).
+
+### How Hellgate Defenders Applies Gestalt
+
+- **Proximity is used intentionally** — the path is drawn as a single continuous sunken strip (not per-tile), so the eye reads it as one object and enemy clumps along it read against a smooth background.
+- **Similarity governs the enemy cohort design** — Seraph Scouts share a gold palette + small radius; Crusaders share gray-white + medium radius; bosses share yellow + large radius. A glance at the screen tells the player "many fast things" vs "a few armored things" without counting.
+- **Common fate is now strongly telegraphed** — Archangel Marshal's golden speed streaks trail *both* the marshal and every buffed enemy, making the unit read as a cohesive squad moving in formation.
+- **Closure is exploited by the range preview** — the range circle is drawn as a low-alpha fill + dashed border, and readers still perceive it as a solid zone of influence.
+- **Figure/ground is defended by the rim-light pass** — every enemy gets an upper-left rim-light highlight (0.22 alpha of a lightened color) so they pop off the dark Hell zone. Without it, dark-purple Zeus vanishes into the dark-purple background.
+- **Prägnanz drives the 3D avatar integration** — KayKit's low-poly style produces blocky, iconic silhouettes that read at 48-pixel scale; a high-poly PBR model would disintegrate into pixel noise.
+
+### What Works Well
+
+- The **Heaven-to-Hell gradient doubles as figure/ground reinforcement** — light enemies on the dark bottom half are maximally contrasted as they approach the core (the moment of maximum threat).
+- **Each tower's aura is colored to match its kill list** (Cocytus cyan frost, Inferno purple arcane, Soul Reaper green wisps) — when a tower's aura glows, it *says* what it does, exploiting the similarity principle as shorthand for function.
+- **Damage numbers now use font-size + color to encode damage magnitude** — a large gold `42` reads as "big hit" at a glance without the player having to parse the digits. This is similarity + prägnanz working together.
+
+### What Could Be Improved
+
+- **Figure/ground fails during ember-heavy frames.** When 16+ rising embers overlap enemies in the Hell zone, the eye briefly struggles to separate "floating ash" from "fast-moving Scout." A 1-frame occlusion test (draw embers behind enemies, not over them) would fix this at negligible cost.
+- **Proximity is ambiguous on stacked towers.** Two adjacent towers of the same type read as one cluster, and a reader cannot tell at a glance whether a cluster is "two L1 archers" or "one L3 archer." A small cluster-count badge would disambiguate.
+- **The range preview violates closure for overlapping towers.** Drawing 5 range circles at 12% alpha additively stacks to >60% alpha in the overlap region, which reads as a *different* zone entirely. Using `blend_mode = BLEND_MODE_MIX` with a max-alpha clip would honor closure-per-tower without accidentally inventing a "super-overlap zone" the player can't act on.
 
 ---
 
@@ -884,6 +928,8 @@ Purchases feel appropriately impactful — a new tower visibly changes defensive
 8. Kahneman, D. (2011). *Thinking, Fast and Slow*. Farrar, Straus and Giroux.
 9. Vygotsky, L.S. (1978). *Mind in Society*. Harvard University Press.
 10. Solarski, C. (2012). *Drawing Basics and Video Game Art*. Watson-Guptill.
+10a. Palmer, S. (1999). *Vision Science: Photons to Phenomenology*. MIT Press. — canonical reference for Gestalt grouping laws as applied to perception.
+10b. Wertheimer, M. (1923). *Untersuchungen zur Lehre von der Gestalt II*. *Psychologische Forschung*, 4, 301–350. — the foundational Gestalt paper.
 
 ### Academic Papers
 
@@ -911,3 +957,322 @@ Purchases feel appropriately impactful — a new tower visibly changes defensive
 26. "Game Economy Design in Free-to-Play Games." [machinations.io](https://machinations.io/articles/game-economy-design-free-to-play-games)
 27. "Prospect Theory and Loss Aversion." [nngroup.com](https://www.nngroup.com/articles/prospect-theory/)
 28. "Progressive Disclosure." [nngroup.com](https://www.nngroup.com/articles/progressive-disclosure/)
+
+---
+
+## Appendix A: 3D Avatar Integration — Lessons from the KayKit Migration
+
+This appendix documents the pragmatic experience of migrating the game's 17 procedural character avatars to 3D models from the KayKit asset pack. It exists to save future work — on this or other 2D games — from repeating the same investigation.
+
+### A.1 Choosing Open-Source Assets
+
+**Requirements for character packs in a 2D TD game:**
+
+1. **Liberal license** — CC0 / MIT / CC-BY at minimum. Paid-per-seat or "no commercial use" licenses disqualify the pack.
+2. **Cohesive art family** — mixing two creators' styles looks jarring. Pick one creator whose ecosystem covers your needs (characters + weapons + possibly environment).
+3. **Rigged & posed** — even if you don't use skeletal animation at runtime, rigging lets you change poses or attach weapons to bones. Most commercial packs are rigged; free packs sometimes aren't.
+4. **Format availability** — glTF/GLB is Godot-native. FBX requires the FBX2glTF pipeline. OBJ has no animation support.
+
+**Sources evaluated:**
+
+| Source | License | Formats | Free characters | Notes |
+|---|---|---|---|---|
+| **KayKit** (Kay Lousberg) | CC0 | FBX, glTF, GLB | 9 (4 skeletons + 5 adventurers) | **Chosen.** GitHub-mirrored. Animations are paywalled. |
+| **Standout 7 LOWPO series** | Free for commercial | FBX, GLB, Blend | ~7 per pack | itch.io only — no GitHub mirror, blocks automated download. |
+| **Kenney.nl** | CC0 | glTF, OBJ | 25+ generic | Too stylized-cartoonish for a dark fantasy theme. |
+| **Heaven And Hell Voxel (RancidMilk)** | Free | UE5 native | 2 (angel + demon) | Theme-perfect, but voxel style mismatched our aesthetic. |
+
+**Why KayKit won for this project:**
+- Dark fantasy skeletons for the demon side matched the "Hell" theme
+- Adventurer pack covered knight/mage/rogue archetypes for the holy side
+- GitHub availability enabled `git clone` directly — critical since `itch.io` blocks `WebFetch` / `curl` with HTTP 403.
+- Cohesive low-poly style with gradient-atlas texturing — pairs well with procedural particle/effect overlays.
+
+### A.2 itch.io Download Reality
+
+**Key blocker discovered:** itch.io returns HTTP 403 to programmatic requests (Cloudflare bot protection). `WebFetch`, `curl`, and `wget` all fail on `*.itch.io` URLs.
+
+**Workflow:**
+
+1. **Check GitHub first** — `github.com/KayKit-Game-Assets` mirrors the free tier of every KayKit pack. Use `gh api users/KayKit-Game-Assets/repos` to list all available. `git clone --depth 1` works.
+2. **If no GitHub mirror exists** — ask the user to download manually from itch.io (they sign in interactively). Have them drop the zip in `/tmp/` or `~/Downloads/` and continue from there.
+3. **Before coding anything** — explore the downloaded pack's directory structure. KayKit layout: `<repo>/addons/kaykit_character_pack_<name>/Characters/gltf/*.glb` for characters, `.../Assets/gltf/*.gltf` for weapons. Preview images and samples are at the pack root.
+
+### A.3 Rendering 3D Models in a 2D Pipeline
+
+The game is 100% 2D `_draw()` based. Integrating 3D models required choosing between three architectures:
+
+| Approach | Pros | Cons | Verdict |
+|---|---|---|---|
+| **Full 3D rewrite** (Camera3D orthographic, Node3D characters) | Native 3D quality, full animation | Massive rewrite of rendering, input, and positioning | Too invasive |
+| **Per-instance SubViewports** (one Camera3D + model per tower/enemy) | Correct per-instance facing | 50+ viewports at UPDATE_ALWAYS = GPU cost | Too expensive |
+| **Pre-rendered angle atlas** — render each model at N angles once at startup, cache as `ImageTexture`, draw as 2D sprites | Zero runtime GPU cost, correct per-instance facing, minimal architecture change | Static poses only (no animation from a single source) | **Chosen.** |
+
+**Pre-render recipe (17 types × 16 angles = 272 textures, ~17MB):**
+
+```gdscript
+# At startup, for each (type, angle) combination:
+var vp := SubViewport.new()
+vp.size = Vector2i(128, 128)
+vp.transparent_bg = true
+vp.render_target_update_mode = SubViewport.UPDATE_ALWAYS
+vp.msaa_3d = SubViewport.MSAA_2X
+vp.own_world_3d = true
+
+# WorldEnvironment (transparent BG + ambient), Camera3D (orthographic,
+# isometric angle via look_at_from_position), DirectionalLight3D x2,
+# and the model rotated to the desired angle.
+
+add_child(vp)
+
+# Wait a few frames — SubViewports don't render on the same frame they're added.
+await RenderingServer.frame_post_draw
+await RenderingServer.frame_post_draw
+await RenderingServer.frame_post_draw
+
+# Capture as ImageTexture, then destroy viewport
+var img := vp.get_texture().get_image()
+var tex := ImageTexture.create_from_image(img)
+vp.queue_free()
+```
+
+**Critical gotchas:**
+
+- `--headless` mode does NOT render SubViewports (null driver). The pre-render step must run with a real rendering backend — in production, that's when the user launches the game.
+- `Camera3D.PROJECTION_ORTHOGONAL` — NOT `PROJECTION_ORTHOGRAPHIC`. Silent parse error.
+- `Environment.TONE_MAPPER_FILMIC` — property is `tonemap_mode`, enum is `TONE_MAPPER_*`.
+- `camera.look_at(target)` requires the camera to be **inside the scene tree**. Before `add_child()`, use `camera.look_at_from_position(pos, target, Vector3.UP)` instead.
+- `var scale` shadows Node2D's built-in `scale` property → parse error in GDScript 4 static analysis.
+
+### A.4 Directional Facing for Isometric Cameras
+
+**Non-trivial math:** a naive `atan2(dx, dy)` from screen direction to model Y-rotation produces visibly wrong rotations because an isometric camera compresses vertical screen motion.
+
+For our camera at `(1.2, 1.6, 1.2)` looking at `(0, 0.45, 0)`:
+
+```
+world_right projected to screen: (0.707, 0, -0.707)
+world_up    projected to screen: (-0.397, 0.828, -0.397)
+
+Ground-plane direction (dX_world, 0, dZ_world) projects to:
+  screen_dx = 0.707 * (dX - dZ)
+  screen_dy = 0.397 * (dX + dZ)       (screen +Y is down)
+```
+
+The ratio `0.707 / 0.397 ≈ 1.785` is the **tilt compression factor**. It must appear in the inverse mapping.
+
+For **+Z-facing models** (KayKit convention — see A.5):
+```gdscript
+func _screen_to_model_angle(dx: float, dy: float) -> float:
+    return atan2(dx + 1.785 * dy, 1.785 * dy - dx)
+```
+
+For **-Z-facing models** (standard Godot convention), flip both atan2 argument signs.
+
+### A.5 Verify Model Default Facing Empirically
+
+The single biggest time-sink in this migration was assuming KayKit models face -Z (Godot's camera-forward convention) when in fact **they face +Z**. Every tower rotated exactly 180° off the correct direction. Debugging this from symptoms alone is slow.
+
+**Fast verification:** save one pre-rendered frame to disk, look at it.
+
+```gdscript
+# During pre-render loop, for one known type at angle 0:
+image.save_png("/tmp/debug_angle_0.png")
+```
+
+If angle-0 shows the **front** of the character facing the camera → model default is +Z.
+If angle-0 shows the **back** → model default is -Z.
+
+### A.6 Smooth Rotation
+
+Pre-rendered angle buckets alone look snappy (characters "jump" between 16 discrete angles as they turn). Combine with **per-frame angle lerp**:
+
+```gdscript
+# Store per-instance facing_angle. Each frame, lerp toward target:
+var max_turn := FACING_TURN_SPEED * dt   # e.g., 10 rad/sec
+var delta := wrapf(target_angle - current, -PI, PI)  # shortest path
+current = current + clampf(delta, -max_turn, max_turn)
+```
+
+`wrapf(x, -PI, PI)` handles the wrap-around — otherwise a turn from 179° to -179° rotates the long way round.
+
+### A.7 Path-Based Facing — Avoid the "Look-Ahead" Trap
+
+Initial implementation computed enemy facing as "direction to `path_px[path_index + 1]`" (the waypoint after the one they're heading to). This caused enemies to start turning toward the next corner while still mid-segment — visibly wrong.
+
+**Correct:** in this codebase, `enemy["path_index"]` is the index of the waypoint the enemy is currently **walking toward** (game_manager.gd:update_enemies increments it on arrival). So:
+
+```gdscript
+# RIGHT: face the waypoint you're walking toward
+var target_pt := path_px[e["path_index"]]
+var dx := target_pt.x - e["x"]
+var dy := target_pt.y - e["y"]
+
+# WRONG: faces the corner AFTER the one you're heading to
+var target_pt := path_px[e["path_index"] + 1]
+```
+
+The rule: the target angle should always be derived from the entity's *current* movement vector, not a predicted future one.
+
+### A.8 Checklist for Future 3D Asset Integrations
+
+- [ ] License confirmed CC0 / MIT / CC-BY or compatible
+- [ ] Assets live on GitHub (or user pre-downloaded) — don't assume itch.io is automatable
+- [ ] `git clone --depth 1` the repo to `/tmp/`, inspect directory structure before coding
+- [ ] Copy GLB + texture PNGs + weapon files into project `assets/models/<vendor>/<pack>/`
+- [ ] Confirm model default facing direction via a single pre-rendered debug sprite
+- [ ] Decide angle count (8 = blocky, 16 = smooth, 32 = diminishing returns)
+- [ ] Pre-render during startup using SubViewport pattern above
+- [ ] Add per-instance `facing_angle` field + smooth lerp in main update loop
+- [ ] Confirm derivation of isometric compression factor matches your camera setup
+- [ ] Verify via visible-window test run (`--headless` won't render viewports)
+
+---
+
+## Appendix B: Balance Iteration — Lessons from the 2026-04 Rebalance
+
+This appendix documents how a balance pass actually works in practice — the complaints, the diagnosis, the research, and the formulas that landed. It exists so the next rebalance (this game or another TD) can skip the investigation and go straight to the fixes.
+
+### B.1 Start by Verifying the Complaint with Math
+
+The player reported: *"Waves 2–5 feel too strong, waves 5–19 too weak, wave 20 too hard."*
+
+Before touching any code, compute total-HP-per-wave (with scaling applied) and stack it wave-over-wave:
+
+```
+W1:   42
+W2:  160  (+281%)   ← huge jump for what is basically still tutorial territory
+W3:  219  (+37%)
+...
+W10: 1798 (+18%)
+W11: 1794  (+0%)    ← no increase! "too weak" confirmed
+W12: 1689  (-6%)    ← actually easier than W11
+...
+W16: 2693 (-22%)   ← another dip
+...
+W20: 7114 (+41%)   ← spike from 5041 at W19
+```
+
+The dips at W11/W12/W16 were invisible when reading compositions individually — they only showed up when the math was stacked. **Verify complaints with a HP table before designing.** If the player's intuition matches the table, you have a real balance problem. If it doesn't, the perception is a different issue (UI, psychology, particular enemy combinations).
+
+### B.2 Linear vs Compound Enemy Scaling
+
+**What was wrong:** `scaled_hp = base × (1 + 0.06 × wave)`. Linear growth.
+
+Player power grows **exponentially** — each upgrade multiplies DPS (×1.35 dmg × ×1.15 speed ≈ ×1.55 per level) and players also *add* towers. A linear enemy HP curve can't keep up, so mid-game becomes trivial.
+
+**What replaced it:** `scaled_hp = base × pow(1.08, wave - 2)`. Compound growth.
+
+The calibration: one tower upgrade (1.30 × 1.15 ≈ 1.50× DPS) should roughly equal 5 waves of enemy scaling (`1.08^5 ≈ 1.47`). That's the sweet spot — every upgrade buys you ~5 waves of breathing room, after which you need to upgrade again. Keeps the "must invest every 1–2 waves" loop alive.
+
+The exponent `1.08` was tuned down from an initial `1.10` because `pow(1.10, 18) ≈ 5.56` made W20 too brutal even with reduced compositions. Research recommended 1.08–1.12 range (YYZ: +20%/wave for large maps, scaled down for smaller ones). **Err on the gentler side and add more composition pressure if needed.**
+
+### B.3 powHPG — The Economy Death Spiral
+
+**The trap:** enemies get 4× HP at W20 (under compound scaling) but still drop the same flat 6–30 sins. Late-game income doesn't keep up with late-game tower costs → the economy dies exactly when the player needs to invest more.
+
+**The fix (from gamedeveloper.com TD balance):** the `powHPG` (power of HP to Gold) constant. Scale kill rewards by `pow(hp_scale, 0.85)`:
+
+```gdscript
+func reward_scale() -> float:
+    var w := maxf(0, wave - SCALE_START_WAVE)
+    return pow(WAVE_HP_COMPOUND, w * REWARD_POW_HPG)
+```
+
+Apply to both `earn_from_kill` and the wave completion bonus. `0.85` is the recommended value (YYZ says 0.8–0.9 works; 0.85 is the middle).
+
+**Why the exponent < 1:** gold should grow slower than HP, otherwise late-game players accumulate cash faster than they can spend it. `pow(4, 0.85) ≈ 3.27` at W20 — rewards triple, HP quadruples, difficulty preserved but economy stays alive.
+
+### B.4 Monotonic Wave HP Is a Hard Constraint
+
+In the new compositions, **base HP must not decrease between consecutive waves.** Scaled HP has compound growth to help, but composition HP itself must also be non-decreasing, or the compound factor can't fully compensate (the dips at W11/W12/W16 in the old system were composition-level problems, not scaling problems).
+
+**Workflow for designing wave compositions:**
+
+1. Pick a target base-HP-per-wave curve (e.g., 20% growth/wave, tapering to 10% by end).
+2. Convert enemy counts to achieve that base HP.
+3. Verify: `base_hp[n+1] > base_hp[n]` for every `n`. No exceptions.
+4. Layer in scaling: the final scaled HP grows even faster (composition growth + compound scaling).
+
+**Reduce late-wave counts more aggressively than you expect** — compound scaling does heavy lifting at W15+. What looks like a small composition at W20 becomes massive after ×4 scaling.
+
+### B.5 Gambling Systems — Dice and Pact Design Rules
+
+The session rebalanced both. Principles extracted:
+
+**1. No single RNG outcome should trivialize a wave.**
+The original "dice 6 = kill all enemies" was an instant-win button. A player rolling 6 on a boss wave bypassed the design. Replaced with 75% damage, then 25% AoE, then finally shifted to the roll-4 slot as "+50 sins" with the combat buff moved to 6. *The best roll should feel great, not feel like auto-pilot.*
+
+**2. Dice outcomes should be ordered — higher roll = better.**
+Players develop intuition ("oh I rolled a 5, nice"). Break the ordering only deliberately (e.g., late-game rolls 2–4 being negative, rolls 1/5/6 positive — the "1 safety net" was a misread and was later reverted to strict monotonic bad-to-good ordering).
+
+**3. Pacts must have *real* costs, not token ones.**
+`Demonic Fervor`: +50% permanent attack speed for -25 Core HP was pure upside — the buff is massive, the HP cost trivial (you rarely die from Core HP in late game with towers running). Nerfed to +30% / -30 HP. **If a pact can stack, be very careful** — two picks of this effect was +100% permanent speed, game-breaking.
+
+**4. Economy pacts compound with powHPG scaling.**
+`Sin Amplifier` (2× sins for 5 waves) was designed when kill rewards were flat. After powHPG was added, it multiplied already-scaled rewards — massive income inflation. Shortened to 3 waves. *Always re-examine economy multipliers when the reward curve changes.*
+
+**5. Between-wave pact effects must work when a wave is inactive.**
+`Hellfire Rain` fired a single AoE 2 seconds after wave start — but the wave spawns enemies every 0.3–3.0s, so at t+2 only 1–4 enemies existed. The 10-second tower-disable cost was paying for almost nothing. Fixed by spreading three AoE strikes over 13 seconds of the next wave, ensuring coverage across spawns.
+
+**6. Watch for "lock-and-key" enemies (Defender's Quest principle).**
+An enemy with exactly one counter is bad design. `Holy Sentinel`'s shield zone making first-half enemies invulnerable was borderline — player's only option is waiting for them to exit the zone. Acceptable because the Sentinel itself is killable, but worth flagging.
+
+### B.6 Second-Order Effects to Watch
+
+Balance changes compound in unexpected ways:
+
+| Change | Second-order effect | Mitigation |
+|---|---|---|
+| Compound HP scaling | Flat kill rewards become stingy → economy dies late | Add powHPG reward scaling |
+| powHPG reward scaling | Sin-multiplier pacts become 2× stronger | Shorten pact durations |
+| Reduced UPGRADE_MULT | Towers feel weaker | Adjust enemy compositions (fewer units) |
+| Smoother difficulty curve | RNG wins matter more (no buffer from variance) | Nerf the hardest-swinging RNG outcomes |
+| Gentler early waves | Starting sins buy less relative to needs | Check wave-1 income math |
+
+Every balance change requires checking every other system that interacts with the changed quantity.
+
+### B.7 Research Sources That Actually Helped
+
+These three carried most of the intellectual weight:
+
+1. **[Balance in TD games — gamedeveloper.com](https://www.gamedeveloper.com/design/balance-in-td-games)** — Core formulas for wave composition math, the "must spend every 1–2 waves" principle, and the `powHPG` concept.
+2. **[Making a Tower Defense Game Part 3 — YYZ-Productions](https://yyz-productions.com/2015/12/01/making-a-tower-defense-game-part-3/)** — The specific formula `gold = pow(finalHealth, 0.9) + 1`, and the recommendation that powHPG 0.8–0.9 works best. Smaller maps → lower end of that range.
+3. **[Optimizing Tower Defense for Focus and Thinking — Defender's Quest](https://www.fortressofdoors.com/optimizing-tower-defense-for-focus-and-thinking-defenders-quest/)** — Lock-and-key enemy avoidance, "each tower must have a best scenario" principle.
+
+Less useful for practical balance (but still worth knowing):
+- [Dynamic Difficulty Adjustment in Tower Defense — ResearchGate](https://www.researchgate.net/publication/283161874_Dynamic_Difficulty_Adjustment_in_Tower_Defence) — DDA is powerful but complex; skip unless the game warrants it.
+
+### B.8 A Simulator Is a Sanity Check, Not a Playtest
+
+`simulate.py` models wave HP, tower DPS, and simple tower-buying strategies ("Greedy ARC Spam", "Balanced Build", etc.). It **can** verify:
+
+- Total HP curve is smooth (no dips)
+- ReqDPS grows reasonably
+- Cumulative sin income scales with difficulty
+- No strategy can trivially win (otherwise balance is broken)
+
+It **cannot** model:
+- Player tower placement quality
+- Dice timing (rolling a speed boost during a boss wave)
+- Pact choice synergy
+- Slow-tower DPS multiplication via path time-in-range
+- Hades attack-speed buffs stacking with upgrades
+
+The "Optimal Strategy" label in the sim is aspirational — none of the sim's hardcoded strategies actually play optimally. When sim assertions fail, check the sim before concluding the game is unbeatable. Real playtest data always trumps sim assertions.
+
+### B.9 Checklist for Future Balance Passes
+
+- [ ] Write down the player's specific complaints verbatim
+- [ ] Build a HP-per-wave table (scaled, not base) and verify dips / spikes match complaint
+- [ ] Research TD balance literature — don't invent formulas
+- [ ] Identify the scaling growth mode (linear vs compound vs piecewise)
+- [ ] Verify player-power curve (tower upgrades + tower count) matches enemy-power curve
+- [ ] Apply `powHPG` or equivalent if kill rewards are flat per enemy type
+- [ ] Enforce monotonic base-HP-per-wave in compositions
+- [ ] Audit every RNG / gambling outcome for game-winners and game-losers
+- [ ] Audit every permanent / long-duration buff for stacking pathology
+- [ ] Re-check economy multipliers after changing reward formulas (second-order effects)
+- [ ] Update simulator constants if they exist — stale sim values mislead future investigations
+- [ ] Update locale strings — balance changes often rename effects or alter numeric descriptions
+- [ ] Commit the design rationale alongside the code (future-you will thank past-you)
