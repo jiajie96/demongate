@@ -23,8 +23,9 @@ func _draw() -> void:
 		draw_circle(Vector2(cx, cy), 14 * s, Color(tower_color.r * 0.3, tower_color.g * 0.3, tower_color.b * 0.3))
 		draw_arc(Vector2(cx, cy), 14 * s, 0, TAU, 16, Color(tower_color.r, tower_color.g, tower_color.b, 0.5), 1.2)
 
-		# The 3D model
-		draw_texture_rect(tex, Rect2(cx - half, cy - half - 2, icon_size, icon_size), false, tint)
+		# The 3D model — character is vertically centered in the capture texture
+		# (see character_renderer.gd camera), so no y-offset needed.
+		draw_texture_rect(tex, Rect2(cx - half, cy - half, icon_size, icon_size), false, tint)
 	else:
 		# Fallback circle
 		draw_circle(Vector2(cx, cy), 12 * s, tower_color)

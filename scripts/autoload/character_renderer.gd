@@ -129,11 +129,16 @@ func _create_viewport(cfg: Dictionary, model_angle: float) -> SubViewport:
 	world_env.environment = env
 	vp.add_child(world_env)
 
-	# Camera — orthographic isometric view
+	# Camera — orthographic isometric view.
+	# Sized to include tall hats/horns: the KayKit Skeleton Mage's pointed hat
+	# reaches ~2 units, so vertical world-range must exceed that after projection.
+	# At camera tilt ≈ 45°, vertical screen extent ≈ size × 0.827, so size 2.5
+	# gives ~2.07 units of headroom. Look-at at character mid-height keeps the
+	# character vertically centered in the 128×128 texture.
 	var camera := Camera3D.new()
 	camera.projection = Camera3D.PROJECTION_ORTHOGONAL
-	camera.size = 2.0
-	camera.look_at_from_position(Vector3(1.2, 1.6, 1.2), Vector3(0.0, 0.45, 0.0), Vector3.UP)
+	camera.size = 2.5
+	camera.look_at_from_position(Vector3(1.2, 2.15, 1.2), Vector3(0.0, 1.0, 0.0), Vector3.UP)
 	camera.near = 0.05
 	camera.far = 10.0
 	vp.add_child(camera)

@@ -495,11 +495,25 @@ func _draw_towers() -> void:
 			var flash_a: float = t["fire_flash"] / 0.15
 			var tp := Vector2(t["x"], t["y"])
 			var fc: Color = t["color"]
+			# Direction toward current target (for directional flash streaks)
+			var fire_dir := Vector2.ZERO
+			var fire_tgt = t.get("target")
+			if fire_tgt != null and fire_tgt is Dictionary and fire_tgt.get("alive", false):
+				var fdx: float = fire_tgt["x"] - tp.x
+				var fdy: float = fire_tgt["y"] - tp.y
+				var fdist: float = sqrt(fdx * fdx + fdy * fdy)
+				if fdist > 0.1:
+					fire_dir = Vector2(fdx / fdist, fdy / fdist)
 			match t["type"]:
 				"bone_marksman":
 					# Quick bright spark
 					draw_circle(tp, 8 * flash_a, Color(1, 0.6, 0.2, 0.35 * flash_a))
 					draw_circle(tp, 3 * flash_a, Color(1, 0.9, 0.5, 0.7 * flash_a))
+					# Directional streak — a short flame tongue along the firing line
+					if fire_dir != Vector2.ZERO:
+						var streak_end: Vector2 = tp + fire_dir * (10.0 * flash_a)
+						draw_line(tp, streak_end, Color(1, 0.85, 0.4, 0.6 * flash_a), 2.0)
+						draw_line(tp, streak_end, Color(1, 1, 0.8, 0.8 * flash_a), 1.0)
 				"inferno_warlock":
 					# Purple flare burst
 					draw_circle(tp, 14 * flash_a, Color(0.6, 0.15, 0.8, 0.2 * flash_a))
@@ -750,28 +764,53 @@ func _draw_effects() -> void:
 				draw_circle(pos, 5 * alpha, Color(1, 1, 0.8, alpha * 0.4))
 			"hit_spark":
 				var spark_alpha: float = clampf(e["timer"] / 0.2, 0.0, 1.0)
+				var progress: float = 1.0 - spark_alpha  # 0 at spawn → 1 at end
 				# Spark lines radiating from hit — 6 short streaks
 				for i in range(6):
 					var sa: float = i * TAU / 6.0 + e["x"] * 0.13
-					var sr: float = (1.0 - spark_alpha) * 12.0
+					var sr: float = progress * 12.0
 					var p1 := Vector2(e["x"] + cos(sa) * sr * 0.3, e["y"] + sin(sa) * sr * 0.3)
 					var p2 := Vector2(e["x"] + cos(sa) * sr, e["y"] + sin(sa) * sr)
 					draw_line(p1, p2, Color(1, 0.9, 0.5, spark_alpha * 0.7), 1.5)
-				# Brief white flash at hit point
-				draw_circle(pos, 4.0 * spark_alpha, Color(1, 1, 1, spark_alpha * 0.5))
+				# Debris particles — small specks arcing outward-and-up with gravity
+				for i in range(4):
+					var da: float = float(i) * TAU / 4.0 + e["y"] * 0.11 + 0.4
+					var dr: float = progress * 16.0
+					# Slight upward hop that falls back (gravity)
+					var hop: float = sin(progress * PI) * 3.0
+					var dpos := Vector2(
+						e["x"] + cos(da) * dr,
+						e["y"] + sin(da) * dr - hop
+					)
+					var dsize: float = 0.9 * spark_alpha + 0.3
+					draw_circle(dpos, dsize, Color(1, 0.7, 0.3, spark_alpha * 0.6))
+				# Brief white flash at hit point — bloom + bright core
+				draw_circle(pos, 6.0 * spark_alpha, Color(1, 0.95, 0.7, spark_alpha * 0.25))
+				draw_circle(pos, 3.0 * spark_alpha, Color(1, 1, 1, spark_alpha * 0.6))
 			"dmg_number":
-				# Floating damage number rising upward
+				# Floating damage number — rises, fades, briefly pops in scale at spawn.
+				# Big hits (≥ 15) get a larger gold "crit" treatment for stronger
+				# reinforcement feedback (per Swink's Game Feel, feedback magnitude
+				# should scale with action magnitude).
 				var dmg_alpha: float = clampf(e["timer"] / 0.6, 0.0, 1.0)
 				var rise: float = (1.0 - dmg_alpha) * 18.0
 				var dmg_val: float = e.get("value", 0.0)
 				var dmg_str: String = str(roundi(dmg_val)) if dmg_val < 10 else str(snappedf(dmg_val, 0.1))
+				var life: float = 1.0 - dmg_alpha  # 0 at spawn → 1 at end
+				# Brief scale pop in the first ~0.15s — up to ~1.5× at spawn
+				var pop: float = 1.0 + maxf(0.0, 0.25 - life) * 2.0
+				var is_big: bool = dmg_val >= 15.0
+				var base_fs: int = 10 if dmg_val < 5 else (12 if dmg_val < 15 else 14)
+				var font_size: int = int(float(base_fs) * pop)
 				var ny: float = e["y"] - rise
-				var font_size: int = 10 if dmg_val < 5 else 12
-				# Shadow
-				draw_string(font, Vector2(e["x"] - 10 + 1, ny + 1), dmg_str, HORIZONTAL_ALIGNMENT_LEFT, 20, font_size, Color(0, 0, 0, dmg_alpha * 0.5))
-				# Colored text
+				# Shadow (slightly deeper for big hits)
+				var shadow_a: float = dmg_alpha * (0.7 if is_big else 0.5)
+				draw_string(font, Vector2(e["x"] - 10 + 1, ny + 1), dmg_str, HORIZONTAL_ALIGNMENT_LEFT, 24, font_size, Color(0, 0, 0, shadow_a))
+				# Colored text — big hits override to warm gold tint
 				var nc: Color = e["color"]
-				draw_string(font, Vector2(e["x"] - 10, ny), dmg_str, HORIZONTAL_ALIGNMENT_LEFT, 20, font_size, Color(nc.r, nc.g, nc.b, dmg_alpha * 0.9))
+				if is_big:
+					nc = Color(1.0, 0.85, 0.25)
+				draw_string(font, Vector2(e["x"] - 10, ny), dmg_str, HORIZONTAL_ALIGNMENT_LEFT, 24, font_size, Color(nc.r, nc.g, nc.b, dmg_alpha * 0.95))
 			"relic":
 				draw_string(font, Vector2(e["x"] - 8, e["y"] - (1.0 - alpha) * 20), "[!]", HORIZONTAL_ALIGNMENT_LEFT, -1, 14, Color(1, 0.8, 0, alpha))
 			"corrupt":
@@ -908,17 +947,32 @@ func _draw_effects() -> void:
 					var trail_a: float = alpha * (0.3 - float(ti) * 0.08)
 					draw_circle(Vector2(trail_x, trail_y), 1.5 - float(ti) * 0.3, Color(0.6, 0.85, 1.0, trail_a))
 			"ice_burst":
-				# Ice crystal burst at impact (expanding frost ring + shards)
+				# Ice crystal burst at impact (expanding frost ring + shards + shatter lines)
 				var burst_r: float = e["radius"] * (1.0 + (1.0 - alpha) * 0.5)
 				# Frost ring
 				draw_arc(pos, burst_r, 0, TAU, 20, Color(0.6, 0.85, 1.0, alpha * 0.6), 2.0)
 				draw_arc(pos, burst_r * 0.6, 0, TAU, 16, Color(0.75, 0.92, 1.0, alpha * 0.3), 1.0)
-				# Ice shard particles radiating outward
+				# Shatter lines radiating outward — sharp cracks through the ring
+				for li in range(8):
+					var la: float = float(li) * TAU / 8.0 + e["y"] * 0.09
+					var l_inner: float = burst_r * 0.35
+					var l_outer: float = burst_r * (1.0 + (1.0 - alpha) * 0.3)
+					var lp1 := Vector2(pos.x + cos(la) * l_inner, pos.y + sin(la) * l_inner)
+					var lp2 := Vector2(pos.x + cos(la) * l_outer, pos.y + sin(la) * l_outer)
+					draw_line(lp1, lp2, Color(0.85, 0.95, 1.0, alpha * 0.5), 1.0)
+				# Ice shard particles radiating outward (pointed triangles)
 				for si in range(6):
 					var sa: float = float(si) * TAU / 6.0 + 0.3
 					var sr: float = burst_r * 0.5 + (1.0 - alpha) * 6.0
 					var shard_pos := Vector2(pos.x + cos(sa) * sr, pos.y + sin(sa) * sr)
-					draw_circle(shard_pos, 1.2 * alpha, Color(0.8, 0.95, 1.0, alpha * 0.5))
+					var shard_dir := Vector2(cos(sa), sin(sa))
+					var shard_perp := Vector2(-shard_dir.y, shard_dir.x)
+					var shard_pts := PackedVector2Array([
+						shard_pos + shard_dir * 2.5,
+						shard_pos + shard_perp * 0.9,
+						shard_pos - shard_perp * 0.9,
+					])
+					draw_colored_polygon(shard_pts, Color(0.8, 0.95, 1.0, alpha * 0.6))
 				# Center flash
 				draw_circle(pos, 3 * alpha, Color(0.9, 0.97, 1.0, alpha * 0.5))
 			"heal_beam":
@@ -1215,6 +1269,22 @@ func _draw_tower_model(tower: Dictionary, cx: float, cy: float, a: float) -> voi
 	var draw_size: float = 48.0 * mod_scale
 	var half: float = draw_size / 2.0
 
+	# Firing recoil — the model kicks backward opposite the firing direction
+	# during fire_flash, decaying with a quadratic falloff for a snappy feel.
+	# Applied only to the sprite itself; aura/particles stay tile-anchored.
+	var recoil: Vector2 = Vector2.ZERO
+	var fflash: float = tower.get("fire_flash", 0.0)
+	if fflash > 0:
+		var tgt = tower.get("target")
+		if tgt != null and tgt is Dictionary and tgt.get("alive", false):
+			var rdx: float = tgt["x"] - cx
+			var rdy: float = tgt["y"] - cy
+			var rdist: float = sqrt(rdx * rdx + rdy * rdy)
+			if rdist > 0.5:
+				var kick: float = fflash / 0.15  # 1.0 → 0.0
+				var kick_amount: float = kick * kick * 3.0  # max ~3 px
+				recoil = Vector2(-rdx / rdist, -rdy / rdist) * kick_amount
+
 	# Subtle ground shadow
 	_draw_cast_shadow(cx, cy, 16 * mod_scale, a)
 
@@ -1276,8 +1346,11 @@ func _draw_tower_model(tower: Dictionary, cx: float, cy: float, a: float) -> voi
 				var iy: float = cy + sin(ia) * ir * 0.4 - 4
 				draw_rect(Rect2(ix - 1.5, iy - 1.5, 3, 3), Color(0.7, 0.92, 1.0, 0.4 * a))
 
-	# Draw the 3D model texture
-	var rect := Rect2(cx - half, cy - half - 8, draw_size, draw_size)
+	# Draw the 3D model texture — apply recoil offset to sprite only.
+	# Character is vertically centered in the texture; feet sit at ~97% from top.
+	# Offset proportional to draw_size so tall (lucifer) & normal towers land on
+	# the tile ground the same way.
+	var rect := Rect2(cx - half + recoil.x, cy - 0.94 * draw_size + recoil.y, draw_size, draw_size)
 	var mod_color := Color(tint.r, tint.g, tint.b, a)
 	draw_texture_rect(tex, rect, false, mod_color)
 
@@ -1324,6 +1397,27 @@ func _draw_tower_model(tower: Dictionary, cx: float, cy: float, a: float) -> voi
 				var my: float = cy + 6 - mp * 20.0
 				var ma: float = (1.0 - mp) * 0.25
 				draw_circle(Vector2(mx, my), 3.0, Color(0.7, 0.9, 1.0, a * ma))
+		"hades":
+			# Floating contract glyphs bound to the support tower by thin chains.
+			# Each glyph drifts on its own phase so they never land in unison.
+			for gi in range(3):
+				var ga: float = t * 0.9 + gi * TAU / 3.0
+				var gr: float = 10.0
+				var gx: float = cx + cos(ga) * gr
+				var gy: float = cy - 22 + sin(ga) * gr * 0.35
+				var gp: float = 0.45 + 0.55 * sin(t * 3.0 + float(gi) * 1.8)
+				# Chain tether — fades out along its length
+				draw_line(Vector2(cx, cy - 10), Vector2(gx, gy), Color(0.55, 0.4, 1.0, 0.18 * a * gp), 1.0)
+				# Outer runic glow
+				draw_circle(Vector2(gx, gy), 3.0, Color(0.55, 0.35, 1.0, 0.22 * a * gp))
+				# Glyph core — small diamond
+				var dpts := PackedVector2Array([
+					Vector2(gx, gy - 2.0),
+					Vector2(gx + 1.6, gy),
+					Vector2(gx, gy + 2.0),
+					Vector2(gx - 1.6, gy),
+				])
+				draw_colored_polygon(dpts, Color(0.85, 0.75, 1.0, 0.7 * a * gp))
 
 func _draw_enemy_model(enemy: Dictionary, ex: float, ey: float, er: float, flash: bool) -> void:
 	var type_key: String = enemy["type"]
@@ -1361,6 +1455,8 @@ func _draw_enemy_model(enemy: Dictionary, ex: float, ey: float, er: float, flash
 			# Protective dome
 			var pulse: float = 0.6 + 0.4 * sin(t * 2.0)
 			draw_arc(Vector2(ex, ey), er + 6, 0, TAU, 20, Color(0.5, 0.7, 1.0, 0.15 * pulse), 1.5)
+			# Inner dome glow — highlights on the front-facing half of the shield
+			draw_arc(Vector2(ex, ey), er + 4, PI * 0.85, PI * 1.45, 10, Color(0.8, 0.9, 1.0, 0.22 * pulse), 1.0)
 		"zeus":
 			# Storm cloud wisps
 			for ci in range(3):
@@ -1375,7 +1471,7 @@ func _draw_enemy_model(enemy: Dictionary, ex: float, ey: float, er: float, flash
 			draw_circle(Vector2(ex, ey), er + 3, Color(0.4, 0.9, 0.5, 0.08 * pulse))
 
 	# Draw the 3D model texture
-	var rect := Rect2(ex - half, ey - half - 4, draw_size, draw_size)
+	var rect := Rect2(ex - half, ey - 0.94 * draw_size, draw_size, draw_size)
 	var flash_color := Color(1.3, 0.8, 0.8, 1.0) if flash else Color(tint.r, tint.g, tint.b, 1.0)
 	draw_texture_rect(tex, rect, false, flash_color)
 
@@ -1432,9 +1528,29 @@ func _draw_enemy_model(enemy: Dictionary, ex: float, ey: float, er: float, flash
 				var ay2: float = ay1 + cos(t * 6 + ai) * 3
 				draw_line(Vector2(ax1, ay1), Vector2(ax2, ay2), Color(0.8, 0.9, 1.0, 0.5), 1.5)
 		"archangel_raphael":
-			# Healing staff glow
+			# Caduceus — two counter-rotating ribbons of light winding around the staff,
+			# a floating healing cross above, and the core orb glow at the staff head.
 			var glow_p: float = 0.5 + 0.5 * sin(t * 3.0)
+			# Staff-head orb
 			draw_circle(Vector2(ex + 5, ey - er * 0.4), 3.0, Color(0.4, 1.0, 0.5, 0.3 * glow_p))
+			draw_circle(Vector2(ex + 5, ey - er * 0.4), 1.4, Color(0.85, 1.0, 0.9, 0.7 * glow_p))
+			# Two ribbons spiraling upward around the caduceus
+			for ribbon in range(2):
+				var ribbon_sign: float = 1.0 if ribbon == 0 else -1.0
+				for si in range(5):
+					var phase: float = float(si) / 5.0
+					var ra: float = t * 2.4 * ribbon_sign + phase * TAU + float(ribbon) * PI
+					var ry: float = ey - er - 2 - phase * 10.0
+					var rx: float = ex + 5 + sin(ra) * 3.2
+					var ribbon_a: float = (1.0 - phase) * 0.55
+					draw_circle(Vector2(rx, ry), 1.3 - phase * 0.5, Color(0.55, 1.0, 0.65, ribbon_a))
+			# Floating healing cross above the angel
+			var cross_y: float = ey - er - 10 + sin(t * 2.0) * 1.5
+			var cross_a: float = 0.55 + 0.2 * sin(t * 3.0)
+			draw_line(Vector2(ex - 2.5, cross_y), Vector2(ex + 2.5, cross_y), Color(0.7, 1.0, 0.8, cross_a), 1.5)
+			draw_line(Vector2(ex, cross_y - 2.5), Vector2(ex, cross_y + 2.5), Color(0.7, 1.0, 0.8, cross_a), 1.5)
+			# Soft white bloom behind the cross
+			draw_circle(Vector2(ex, cross_y), 3.0, Color(0.9, 1.0, 0.85, cross_a * 0.25))
 
 # ═══════════════════════════════════════════════════════
 # INPUT
