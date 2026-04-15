@@ -675,10 +675,30 @@ func _draw_towers() -> void:
 						draw_line(tp, streak_end, Color(1, 0.85, 0.4, 0.6 * flash_a), 2.0)
 						draw_line(tp, streak_end, Color(1, 1, 0.8, 0.8 * flash_a), 1.0)
 				"inferno_warlock":
-					# Purple flare burst
-					draw_circle(tp, 14 * flash_a, Color(0.6, 0.15, 0.8, 0.2 * flash_a))
-					draw_circle(tp, 8 * flash_a, Color(1, 0.5, 0.8, 0.4 * flash_a))
-					draw_circle(tp, 3 * flash_a, Color(1, 1, 1, 0.5 * flash_a))
+					# Triangular sigil flare — a momentary 3-pointed burst
+					# with radiating violet sparks. Reads more "spell cast"
+					# than a generic round flash.
+					draw_circle(tp, 16 * flash_a, Color(0.6, 0.15, 0.8, 0.18 * flash_a))
+					draw_circle(tp, 9 * flash_a, Color(1, 0.5, 0.9, 0.4 * flash_a))
+					# Sigil triangle expanding outward
+					var muz_r: float = 12.0 * flash_a
+					for ti in range(3):
+						var ma: float = -PI / 2.0 + ti * TAU / 3.0
+						var mp1 := Vector2(tp.x + cos(ma) * muz_r, tp.y + sin(ma) * muz_r)
+						var ma2: float = -PI / 2.0 + ((ti + 1) % 3) * TAU / 3.0
+						var mp2 := Vector2(tp.x + cos(ma2) * muz_r, tp.y + sin(ma2) * muz_r)
+						draw_line(mp1, mp2, Color(1.0, 0.75, 1.0, 0.85 * flash_a), 1.5)
+					# Six radiating sparks
+					for si in range(6):
+						var sa2: float = float(si) * TAU / 6.0 + 0.3
+						var s_inner: float = 4.0 * flash_a
+						var s_outer: float = 14.0 * flash_a
+						draw_line(
+							Vector2(tp.x + cos(sa2) * s_inner, tp.y + sin(sa2) * s_inner),
+							Vector2(tp.x + cos(sa2) * s_outer, tp.y + sin(sa2) * s_outer),
+							Color(1.0, 0.8, 1.0, 0.6 * flash_a), 1.0)
+					# White-hot core
+					draw_circle(tp, 3 * flash_a, Color(1, 1, 1, 0.6 * flash_a))
 				"soul_reaper":
 					# Green pulse ring
 					draw_arc(tp, 10 * flash_a, 0, TAU, 16, Color(0.2, 0.9, 0.4, 0.4 * flash_a), 2.0)
@@ -924,27 +944,62 @@ func _draw_proj_arrow(px: float, py: float, angle: float, color: Color) -> void:
 		draw_circle(pos + dir * 4, 1.5, Color(1, 0.9, 0.5, 0.9))
 
 func _draw_proj_fireball(px: float, py: float, _color: Color) -> void:
-	# Inferno Warlock projectile — arcane orb (no longer a fireball)
+	# Inferno Warlock projectile — arcane orb wrapped in a rotating triangular
+	# sigil. The trail behind it is a chain of fading violet runes that mark
+	# the path of the bolt, giving the cast a sense of inscribed power rather
+	# than a generic fireball.
 	var pos := Vector2(px, py)
 	var t: float = GM.game_time
-	var pulse: float = 0.9 + 0.1 * sin(t * 10.0)
+	var pulse: float = 0.85 + 0.15 * sin(t * 10.0)
 
-	# Outer purple glow
-	draw_circle(pos, 7 * pulse, Color(0.7, 0.3, 1.0, 0.12))
+	# Sigil trail — fading rune diamonds behind the orb.  Each "frame" of the
+	# trail is positioned via the projectile's stable, per-shot phase so the
+	# trail visually flows even though we don't keep history.
+	for ti in range(5):
+		var trail_phase: float = float(ti) * 0.18
+		var trail_off: float = float(ti + 1) * 4.5
+		# Sway perpendicular to (rough) flight using time + index, since we
+		# don't have direction here — produces a pleasant sine-snake.
+		var sway: float = sin(t * 8.0 + float(ti) * 1.2) * 2.5
+		var tp := Vector2(pos.x - trail_off, pos.y + sway)
+		var ta: float = 0.55 - float(ti) * 0.1
+		var ts: float = 1.6 - float(ti) * 0.22
+		# Diamond rune
+		var dpts := PackedVector2Array([
+			Vector2(tp.x, tp.y - ts),
+			Vector2(tp.x + ts * 0.7, tp.y),
+			Vector2(tp.x, tp.y + ts),
+			Vector2(tp.x - ts * 0.7, tp.y),
+		])
+		draw_colored_polygon(dpts, Color(0.85, 0.45, 1.0, ta * 0.55))
+		# Bright center pip
+		draw_circle(tp, ts * 0.35, Color(1.0, 0.85, 1.0, ta * 0.8))
+		# Soft glow halo
+		draw_circle(tp, ts * 1.6, Color(0.7, 0.35, 1.0, (1.0 - trail_phase) * 0.08))
 
-	# Two orbiting runes (small dots tracing around the orb)
-	for i in range(2):
-		var a: float = t * 6.0 + i * PI
-		var orbit_x: float = pos.x + cos(a) * 4.5
-		var orbit_y: float = pos.y + sin(a) * 4.5
-		draw_circle(Vector2(orbit_x, orbit_y), 1.2, Color(1.0, 0.75, 1.0, 0.75))
+	# Outer purple bloom (slightly larger, breathing)
+	draw_circle(pos, 8 * pulse, Color(0.7, 0.3, 1.0, 0.13))
+	draw_circle(pos, 5 * pulse, Color(0.85, 0.45, 1.0, 0.18))
+
+	# Rotating triangular sigil cage — three vertices spinning around the orb
+	var sig_spin: float = t * 5.5
+	var sig_r: float = 5.5
+	var cage_pts := PackedVector2Array()
+	for i in range(3):
+		var a: float = sig_spin + i * TAU / 3.0
+		cage_pts.append(Vector2(pos.x + cos(a) * sig_r, pos.y + sin(a) * sig_r))
+	for i in range(3):
+		draw_line(cage_pts[i], cage_pts[(i + 1) % 3], Color(1.0, 0.75, 1.0, 0.75 * pulse), 1.0)
+	# Bright vertex pips
+	for i in range(3):
+		draw_circle(cage_pts[i], 1.3, Color(1, 1, 1, 0.95))
 
 	# Core — bright magenta
-	draw_circle(pos, 3.5, Color(0.85, 0.4, 1.0, 0.8))
-	draw_circle(pos, 2.2, Color(1.0, 0.7, 1.0, 0.9))
+	draw_circle(pos, 3.2, Color(0.85, 0.4, 1.0, 0.85))
+	draw_circle(pos, 2.0, Color(1.0, 0.7, 1.0, 0.95))
 
 	# White-hot center
-	draw_circle(pos, 1.1, Color(1, 1, 1, 0.85))
+	draw_circle(pos, 1.0, Color(1, 1, 1, 0.95))
 
 func _draw_proj_necro(px: float, py: float, angle: float, color: Color) -> void:
 	var dir := Vector2(cos(angle), sin(angle))
@@ -1013,9 +1068,51 @@ func _draw_effects() -> void:
 				# GPU puff does the heavy lift — keep procedural to a soft fade.
 				draw_circle(pos, 3.5 * alpha, Color(1, 0.95, 0.8, alpha * 0.22))
 			"aoe":
-				# Arcane shockwave — single purple ring
-				var ring_r: float = e["radius"] * (1.0 - alpha * 0.2)
-				draw_arc(pos, ring_r, 0, TAU, 36, Color(0.9, 0.4, 1.0, alpha * 0.6), 2.0)
+				# Arcane detonation — layered shockwave: an outer expanding
+				# ring, an inner trailing ring, a brief inscribed pentagram
+				# at the blast center, and a quick violet-to-white core flash.
+				# Reads as a deliberate ritual blast rather than a circle pop.
+				var aoe_radius: float = e["radius"]
+				var expand: float = (1.0 - alpha)  # 0 at spawn → 1 at end
+				# Outer ring expands slightly past the radius
+				var outer_r: float = aoe_radius * (0.95 + expand * 0.18)
+				draw_arc(pos, outer_r, 0, TAU, 40, Color(0.95, 0.5, 1.0, alpha * 0.65), 2.2)
+				# White-hot inner highlight on the leading edge
+				draw_arc(pos, outer_r, 0, TAU, 40, Color(1, 1, 1, alpha * 0.25), 1.0)
+				# Trailing ring — slower, deeper violet
+				var trail_r: float = aoe_radius * (0.7 + expand * 0.18)
+				draw_arc(pos, trail_r, 0, TAU, 32, Color(0.6, 0.25, 0.9, alpha * 0.45), 1.4)
+				# Inscribed pentagram — appears strongest at spawn and fades
+				var penta_a: float = alpha * 0.55
+				if penta_a > 0.05:
+					var penta_r: float = aoe_radius * 0.55
+					var penta_pts := PackedVector2Array()
+					for pi in range(5):
+						var pa: float = -PI / 2.0 + pi * TAU / 5.0
+						penta_pts.append(Vector2(
+							pos.x + cos(pa) * penta_r,
+							pos.y + sin(pa) * penta_r))
+					var p_order := [0, 2, 4, 1, 3, 0]
+					for li in range(p_order.size() - 1):
+						draw_line(penta_pts[p_order[li]], penta_pts[p_order[li + 1]],
+							Color(1.0, 0.7, 1.0, penta_a), 1.4)
+					# Vertex glyph dots
+					for pi in range(5):
+						draw_circle(penta_pts[pi], 1.8 * alpha, Color(1, 1, 1, penta_a * 1.2))
+				# Six radial scorch streaks shooting outward
+				for ri in range(6):
+					var ra: float = float(ri) * TAU / 6.0 + pos.x * 0.013
+					var s_inner: float = aoe_radius * 0.25
+					var s_outer: float = aoe_radius * (0.65 + expand * 0.45)
+					draw_line(
+						Vector2(pos.x + cos(ra) * s_inner, pos.y + sin(ra) * s_inner),
+						Vector2(pos.x + cos(ra) * s_outer, pos.y + sin(ra) * s_outer),
+						Color(1.0, 0.6, 1.0, alpha * 0.35), 1.0)
+				# Center bloom — bright at spawn, fades fast
+				var core_a: float = clampf(alpha * 1.4, 0.0, 1.0)
+				draw_circle(pos, aoe_radius * 0.3 * (0.4 + expand * 0.4), Color(0.95, 0.55, 1.0, core_a * 0.35))
+				draw_circle(pos, aoe_radius * 0.18, Color(1, 0.85, 1, core_a * 0.55))
+				draw_circle(pos, aoe_radius * 0.08, Color(1, 1, 1, core_a * 0.7))
 			"hit_spark":
 				var spark_alpha: float = clampf(e["timer"] / 0.2, 0.0, 1.0)
 				var progress: float = 1.0 - spark_alpha  # 0 at spawn → 1 at end
@@ -1697,10 +1794,43 @@ func _draw_tower_model(tower: Dictionary, cx: float, cy: float, a: float) -> voi
 			# Warm ember glow at base
 			draw_circle(Vector2(cx, cy + 2), 14, Color(0.8, 0.2, 0.1, 0.12 * a))
 		"inferno_warlock":
-			# Purple arcane circle at base
+			# Summoning circle — pulsing violet glow with an inscribed rotating
+			# pentagram. The star sits flat on the ground (squashed Y) so it reads
+			# as floor-painted sigil rather than an emblem floating in front of
+			# the warlock. Counter-rotating outer ring of runic dots adds depth.
 			var pulse: float = 0.7 + 0.3 * sin(t * 3.0)
-			draw_circle(Vector2(cx, cy + 2), 16, Color(0.5, 0.15, 0.7, 0.1 * a * pulse))
-			draw_arc(Vector2(cx, cy + 2), 16, t * 0.8, t * 0.8 + TAU * 0.7, 12, Color(0.7, 0.3, 1.0, 0.2 * a * pulse), 1.0)
+			var base := Vector2(cx, cy + 2)
+			# Soft violet ground glow
+			draw_circle(base, 18, Color(0.5, 0.15, 0.7, 0.1 * a * pulse))
+			# Outer ritual ring
+			draw_arc(base, 17, 0, TAU, 28, Color(0.65, 0.3, 1.0, 0.28 * a * pulse), 1.2)
+			# Inner ring (broken — gives the "ancient sigil" look)
+			var inner_spin: float = t * 0.8
+			draw_arc(base, 13, inner_spin, inner_spin + TAU * 0.7, 14,
+				Color(0.85, 0.55, 1.0, 0.22 * a * pulse), 1.0)
+			# Inscribed pentagram — five points connect 0→2→4→1→3→0
+			var penta_spin: float = t * 0.5
+			var penta_r: float = 14.0
+			var penta_pts := PackedVector2Array()
+			for pi in range(5):
+				var pa: float = penta_spin - PI / 2.0 + pi * TAU / 5.0
+				penta_pts.append(Vector2(
+					base.x + cos(pa) * penta_r,
+					base.y + sin(pa) * penta_r * 0.45  # squash to floor plane
+				))
+			var penta_col := Color(0.95, 0.65, 1.0, 0.42 * a * pulse)
+			var order := [0, 2, 4, 1, 3, 0]
+			for li in range(order.size() - 1):
+				draw_line(penta_pts[order[li]], penta_pts[order[li + 1]], penta_col, 1.2)
+			# Tiny rune dots at each vertex
+			for pi in range(5):
+				draw_circle(penta_pts[pi], 1.8, Color(1.0, 0.85, 1.0, 0.7 * a * pulse))
+			# Counter-rotating outer rune dots — six glyphs orbiting the ring
+			for ri in range(6):
+				var ra2: float = -t * 0.6 + ri * TAU / 6.0
+				var rx2: float = base.x + cos(ra2) * 17.0
+				var ry2: float = base.y + sin(ra2) * 17.0 * 0.5
+				draw_circle(Vector2(rx2, ry2), 1.2, Color(0.9, 0.6, 1.0, 0.55 * a * pulse))
 		"soul_reaper":
 			# Green pulsing soul aura
 			var pulse: float = 0.6 + 0.4 * sin(t * 2.5)
@@ -1785,14 +1915,40 @@ func _draw_tower_model(tower: Dictionary, cx: float, cy: float, a: float) -> voi
 				var ea: float = (1.0 - life) * 0.5
 				draw_circle(Vector2(ex, ey), 1.2, Color(1, 0.5, 0.1, a * ea))
 		"inferno_warlock":
-			# Floating arcane runes above head
-			for ri in range(3):
-				var ra: float = t * 1.2 + ri * TAU / 3.0
-				var rr: float = 8.0
-				var rx: float = cx + cos(ra) * rr
-				var ry: float = cy - 18 + sin(ra) * rr * 0.3
-				var rp: float = 0.6 + 0.4 * sin(t * 4.0 + ri * 2.0)
-				draw_circle(Vector2(rx, ry), 1.5, Color(1.0, 0.5, 0.9, 0.5 * a * rp))
+			# Floating triangular sigil hovering above the warlock's head — a
+			# small upward-pointing rune triangle rotates slowly with three
+			# corner runes and a central pulsing glyph. Reads as "casting" much
+			# more strongly than the previous 3 floating dots.
+			var head := Vector2(cx, cy - 22)
+			var sig_spin: float = t * 0.9
+			var sig_pulse: float = 0.6 + 0.4 * sin(t * 4.0)
+			var sig_r: float = 4.5 + sin(t * 2.0) * 0.6
+			# Triangle vertices
+			var tri_pts := PackedVector2Array()
+			for ti in range(3):
+				var ta: float = sig_spin - PI / 2.0 + ti * TAU / 3.0
+				tri_pts.append(Vector2(head.x + cos(ta) * sig_r,
+					head.y + sin(ta) * sig_r))
+			# Outer faint glow triangle (slightly larger)
+			var glow_pts := PackedVector2Array()
+			for ti in range(3):
+				var ta: float = sig_spin - PI / 2.0 + ti * TAU / 3.0
+				glow_pts.append(Vector2(head.x + cos(ta) * (sig_r + 1.5),
+					head.y + sin(ta) * (sig_r + 1.5)))
+			for li in range(3):
+				draw_line(glow_pts[li], glow_pts[(li + 1) % 3],
+					Color(0.6, 0.2, 0.9, 0.18 * a * sig_pulse), 2.0)
+			# Main sigil edges
+			for li in range(3):
+				draw_line(tri_pts[li], tri_pts[(li + 1) % 3],
+					Color(1.0, 0.7, 1.0, 0.85 * a * sig_pulse), 1.2)
+			# Corner rune dots
+			for ti in range(3):
+				draw_circle(tri_pts[ti], 1.4, Color(1.0, 0.9, 1.0, 0.95 * a * sig_pulse))
+			# Center glyph — small pulsing core
+			draw_circle(head, 1.1 + sin(t * 5.0) * 0.5, Color(1.0, 0.6, 1.0, 0.9 * a * sig_pulse))
+			# Tether line back to the warlock — soft purple
+			draw_line(Vector2(cx, cy - 12), head, Color(0.7, 0.3, 1.0, 0.18 * a * sig_pulse), 1.0)
 		"soul_reaper":
 			# Floating bone fragments above
 			for bi in range(3):
