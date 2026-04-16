@@ -69,6 +69,17 @@ var game_speed: float = 1.0
 var hellfire_strikes_left: int = 0    # Hellfire Rain pact: strikes remaining for next wave
 var hellfire_strike_timer: float = 0.0
 
+# Wave announcement banner — cinematic title card shown when a wave starts.
+# Counts down from its initial value; game_world reads it each frame to draw
+# the sliding "WAVE N" overlay. Zero = no banner visible.
+var wave_banner_timer: float = 0.0
+const WAVE_BANNER_DURATION: float = 2.6
+# Snapshot of the wave number + desc at banner spawn so a new wave can't
+# race the banner and rewrite the label partway through its fade.
+var wave_banner_num: int = 0
+var wave_banner_desc: String = ""
+var wave_banner_is_boss: bool = false
+
 var _next_id: int = 0
 
 # ═══════════════════════════════════════════════════════
@@ -125,6 +136,10 @@ func reset_state() -> void:
 	Engine.time_scale = 1.0
 	hellfire_strikes_left = 0
 	hellfire_strike_timer = 0.0
+	wave_banner_timer = 0.0
+	wave_banner_num = 0
+	wave_banner_desc = ""
+	wave_banner_is_boss = false
 	_next_id = 0
 
 func set_game_speed(speed: float) -> void:
@@ -678,11 +693,16 @@ func combat_hit(enemy: Dictionary, base_dmg: float, tower) -> void:
 	if tower != null and tower is Dictionary:
 		tower["total_damage"] = tower.get("total_damage", 0.0) + dmg
 
-	# Hit spark + floating damage number
+	# Hit spark + floating damage number — pick the effect flavor that matches
+	# the tower's fiction. Soul Reaper's scythe/spirit-bolt uses a ghostly
+	# green burst; every other tower falls back to the warm orange hit_spark.
 	var spark_col := Color(1, 0.7, 0.3)
+	var hit_fx := "hit_spark"
 	if tower != null and tower is Dictionary:
 		spark_col = tower.get("color", spark_col)
-	add_effect("hit_spark", enemy["x"], enemy["y"], 6.0, spark_col)
+		if tower.get("type", "") == "soul_reaper":
+			hit_fx = "soul_hit"
+	add_effect(hit_fx, enemy["x"], enemy["y"], 6.0, spark_col)
 	# Offset damage numbers slightly randomly so they don't stack
 	var nx: float = enemy["x"] + (fmod(dmg * 7.3, 16.0) - 8.0)
 	add_dmg_number(nx, enemy["y"] - enemy.get("radius", 8.0) - 4, dmg, spark_col)
@@ -997,6 +1017,19 @@ func start_wave() -> void:
 	spawn_timer = 0.5
 
 	notify(Locale.tf("wave_start_notify", {"wave": wave, "desc": Locale.t(wave_desc)}), Color(1.0, 0.8, 0.0))
+	# Cinematic wave announcement — snapshot the wave + desc so the banner
+	# draws a stable label even if mid-fade state mutates. Boss waves flag
+	# themselves for a red-tinted banner; the game_world renders the card.
+	wave_banner_timer = WAVE_BANNER_DURATION
+	wave_banner_num = wave
+	wave_banner_desc = wave_desc
+	wave_banner_is_boss = false
+	for entry in wave_def["enemies"]:
+		var etype: String = entry["type"]
+		var edata: Dictionary = Config.ENEMY_DATA.get(etype, {})
+		if edata.get("is_boss", false):
+			wave_banner_is_boss = true
+			break
 	Audio.play_sfx("wave_start")
 	shake(2.0, 0.15)
 
@@ -1249,6 +1282,8 @@ func add_effect(type: String, ex: float, ey: float, radius: float = 10.0, color:
 	var duration := 0.5
 	if type == "hit_spark":
 		duration = 0.2
+	elif type == "soul_hit":
+		duration = 0.32
 	elif type == "lucifer_wave":
 		duration = 1.2
 	elif type == "lucifer_hit":
@@ -1292,6 +1327,11 @@ func update_effects(dt: float) -> void:
 		dice_result_timer -= dt
 		if dice_result_timer <= 0:
 			show_dice_result = false
+
+	if wave_banner_timer > 0.0:
+		wave_banner_timer -= dt
+		if wave_banner_timer < 0.0:
+			wave_banner_timer = 0.0
 
 	if speed_buff_timer > 0:
 		speed_buff_timer -= dt

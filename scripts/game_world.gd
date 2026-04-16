@@ -63,6 +63,7 @@ func _draw() -> void:
 	_draw_foreground_particles()
 	_draw_placement_preview()
 	_draw_notifications()
+	_draw_wave_banner()
 	_draw_dice_result()
 	if GM.show_overview:
 		_draw_overview()
@@ -1048,6 +1049,8 @@ func _spawn_particle_for_effect(e: Dictionary, pos: Vector2) -> void:
 			ParticleSpawner.spawn_heal_pulse(self, pos)
 		"michael_shield":
 			ParticleSpawner.spawn_michael_shield(self, pos)
+		"soul_hit":
+			ParticleSpawner.spawn_soul_hit(self, pos)
 
 func _draw_effects() -> void:
 	for e in GM.effects:
@@ -1113,6 +1116,53 @@ func _draw_effects() -> void:
 				draw_circle(pos, aoe_radius * 0.3 * (0.4 + expand * 0.4), Color(0.95, 0.55, 1.0, core_a * 0.35))
 				draw_circle(pos, aoe_radius * 0.18, Color(1, 0.85, 1, core_a * 0.55))
 				draw_circle(pos, aoe_radius * 0.08, Color(1, 1, 1, core_a * 0.7))
+			"soul_hit":
+				# Necromantic impact — a short-lived spectral burst that
+				# matches Soul Reaper's ghostly green fiction instead of the
+				# orange fire-spark used by physical/elemental towers. Reads
+				# as: scythe bolt tears a wisp loose, bone specks scatter,
+				# a cold X-shaped soul mark pops and fades.
+				var soul_alpha: float = clampf(e["timer"] / 0.32, 0.0, 1.0)
+				var soul_prog: float = 1.0 - soul_alpha  # 0→1 as fades out
+				# Outer wisp cloud — drifts upward as it fades
+				var cloud_r: float = 4.5 + soul_prog * 8.0
+				var cloud_y: float = e["y"] - soul_prog * 6.0
+				draw_circle(Vector2(e["x"], cloud_y), cloud_r, Color(0.25, 0.85, 0.4, soul_alpha * 0.22))
+				draw_circle(Vector2(e["x"], cloud_y), cloud_r * 0.55, Color(0.5, 1.0, 0.7, soul_alpha * 0.35))
+				# X-shaped soul mark — two crossing strokes that expand & fade
+				var mark_r: float = 5.0 + soul_prog * 7.0
+				var mx_col := Color(0.6, 1.0, 0.75, soul_alpha * 0.8)
+				draw_line(
+					Vector2(e["x"] - mark_r, cloud_y - mark_r),
+					Vector2(e["x"] + mark_r, cloud_y + mark_r),
+					mx_col, 1.4)
+				draw_line(
+					Vector2(e["x"] + mark_r, cloud_y - mark_r),
+					Vector2(e["x"] - mark_r, cloud_y + mark_r),
+					mx_col, 1.4)
+				# Rising wisp tendrils — 4 curling streaks above the impact
+				for wi in range(4):
+					var ang: float = -PI / 2.0 + (float(wi) - 1.5) * 0.35
+					var wr: float = 4.0 + soul_prog * 10.0
+					var curl: float = sin(soul_prog * PI + float(wi)) * 2.5
+					var wx: float = e["x"] + cos(ang) * wr + curl
+					var wy: float = e["y"] + sin(ang) * wr - soul_prog * 6.0
+					draw_circle(Vector2(wx, wy), 1.2 * soul_alpha + 0.4,
+						Color(0.4, 1.0, 0.6, soul_alpha * 0.55))
+				# Bone-chip specks radiating outward — small tan particles
+				# fall with slight gravity, giving the burst weight.
+				for bi in range(5):
+					var ba: float = float(bi) * TAU / 5.0 + e["x"] * 0.11
+					var br: float = soul_prog * 14.0
+					var bhop: float = sin(soul_prog * PI) * 2.0
+					var bx: float = e["x"] + cos(ba) * br
+					var by: float = e["y"] + sin(ba) * br - bhop
+					draw_rect(Rect2(bx - 0.8, by - 0.4, 1.6, 0.8),
+						Color(0.9, 0.85, 0.65, soul_alpha * 0.8))
+				# Bright spectral core flash — brief, fades fastest
+				var core_a: float = clampf(soul_alpha * 1.3, 0.0, 1.0)
+				draw_circle(Vector2(e["x"], e["y"]), 3.0 * core_a, Color(0.8, 1.0, 0.85, core_a * 0.55))
+				draw_circle(Vector2(e["x"], e["y"]), 1.3 * core_a, Color(1, 1, 1, core_a * 0.85))
 			"hit_spark":
 				var spark_alpha: float = clampf(e["timer"] / 0.2, 0.0, 1.0)
 				var progress: float = 1.0 - spark_alpha  # 0 at spawn → 1 at end
@@ -1527,6 +1577,99 @@ func _draw_overview() -> void:
 		elif t.get("is_support", false):
 			draw_string(font, Vector2(px, py + 38), Locale.t("SUPPORT"), HORIZONTAL_ALIGNMENT_LEFT, 48, 8, Color(t["color"].r, t["color"].g, t["color"].b, 0.5))
 
+# ═══════════════════════════════════════════════════════
+# WAVE ANNOUNCEMENT BANNER
+# Cinematic title card — "WAVE N" + description sweeps in from the left,
+# holds briefly, then fades out. Boss waves flip to a crimson palette.
+# Entirely diegetic-free (pure HUD), but uses the same horizontal bar
+# motif as the wave_complete audio cue so the two events feel linked.
+# ═══════════════════════════════════════════════════════
+func _draw_wave_banner() -> void:
+	if GM.wave_banner_timer <= 0.0 or GM.wave_banner_num <= 0:
+		return
+	var total: float = GM.WAVE_BANNER_DURATION
+	var t_left: float = GM.wave_banner_timer
+	var elapsed: float = total - t_left
+	# Three-phase envelope: slide-in (0.35s), hold (~1.55s), fade-out (0.7s).
+	var slide_in: float = 0.35
+	var fade_out: float = 0.7
+	var hold_end: float = total - fade_out
+	var alpha: float = 1.0
+	var slide: float = 0.0  # 0 = fully on-screen, +/- pushes off-screen
+	if elapsed < slide_in:
+		var p: float = elapsed / slide_in
+		# Ease-out cubic for satisfying decel
+		var eased: float = 1.0 - pow(1.0 - p, 3.0)
+		alpha = eased
+		slide = (1.0 - eased) * -140.0   # slide in from the left
+	elif elapsed > hold_end:
+		var p: float = (elapsed - hold_end) / fade_out
+		alpha = clampf(1.0 - p, 0.0, 1.0)
+		slide = p * 140.0                # exit toward the right
+
+	var W: float = Config.GAME_WIDTH
+	var H: float = Config.GAME_HEIGHT
+	var cy: float = H * 0.42
+	var bar_w: float = 560.0
+	var bar_h: float = 62.0
+	var bx: float = (W - bar_w) / 2.0 + slide
+	var by: float = cy - bar_h / 2.0
+	var is_boss: bool = GM.wave_banner_is_boss
+	var accent: Color = Color(1.0, 0.2, 0.18) if is_boss else Color(1.0, 0.75, 0.15)
+	var bg_top: Color = Color(0.06, 0.02, 0.02, 0.78 * alpha) if is_boss else Color(0.04, 0.02, 0.06, 0.78 * alpha)
+
+	# Background band with feathered left/right edges using three rectangles
+	# (outer tinted accent edges, center solid).
+	var feather: float = 44.0
+	# Solid middle
+	draw_rect(Rect2(bx + feather, by, bar_w - feather * 2.0, bar_h), bg_top)
+	# Left feather (linear fade via 4 steps)
+	for fi in range(4):
+		var fx0: float = bx + feather * (float(fi) / 4.0)
+		var fa: float = float(fi + 1) / 5.0
+		var fc := Color(bg_top.r, bg_top.g, bg_top.b, bg_top.a * fa)
+		draw_rect(Rect2(fx0, by, feather / 4.0, bar_h), fc)
+	# Right feather
+	for fi in range(4):
+		var fx0: float = bx + bar_w - feather + feather * (float(fi) / 4.0)
+		var fa: float = 1.0 - float(fi) / 5.0
+		var fc := Color(bg_top.r, bg_top.g, bg_top.b, bg_top.a * fa)
+		draw_rect(Rect2(fx0, by, feather / 4.0, bar_h), fc)
+	# Top + bottom accent bars
+	draw_rect(Rect2(bx + feather * 0.5, by, bar_w - feather, 2.0),
+		Color(accent.r, accent.g, accent.b, alpha * 0.9))
+	draw_rect(Rect2(bx + feather * 0.5, by + bar_h - 2.0, bar_w - feather, 2.0),
+		Color(accent.r, accent.g, accent.b, alpha * 0.9))
+	# Decorative diamonds on either end
+	var dia_pts := PackedVector2Array()
+	var dia_cy: float = by + bar_h / 2.0
+	var dia_r: float = 6.0
+	for side in [-1, 1]:
+		var dcx: float = bx + bar_w / 2.0 + float(side) * (bar_w / 2.0 - feather * 0.35)
+		dia_pts.clear()
+		dia_pts.append(Vector2(dcx, dia_cy - dia_r))
+		dia_pts.append(Vector2(dcx + dia_r, dia_cy))
+		dia_pts.append(Vector2(dcx, dia_cy + dia_r))
+		dia_pts.append(Vector2(dcx - dia_r, dia_cy))
+		draw_colored_polygon(dia_pts, Color(accent.r, accent.g, accent.b, alpha * 0.9))
+
+	# WAVE N — large header
+	var wave_text: String
+	if is_boss:
+		wave_text = "BOSS WAVE " + str(GM.wave_banner_num)
+	else:
+		wave_text = "WAVE " + str(GM.wave_banner_num)
+	var text_col: Color = Color(1.0, 0.92, 0.8, alpha) if not is_boss else Color(1.0, 0.85, 0.85, alpha)
+	# Drop shadow
+	draw_string(font, Vector2(bx + 1, by + 26 + 1), wave_text, HORIZONTAL_ALIGNMENT_CENTER, bar_w, 22, Color(0, 0, 0, alpha * 0.7))
+	draw_string(font, Vector2(bx, by + 26), wave_text, HORIZONTAL_ALIGNMENT_CENTER, bar_w, 22, text_col)
+
+	# Description subtitle — translated wave_desc
+	var desc_text: String = Locale.t(GM.wave_banner_desc)
+	var desc_col: Color = Color(accent.r, accent.g, accent.b, alpha * 0.85)
+	draw_string(font, Vector2(bx + 1, by + 50 + 1), desc_text, HORIZONTAL_ALIGNMENT_CENTER, bar_w, 12, Color(0, 0, 0, alpha * 0.6))
+	draw_string(font, Vector2(bx, by + 50), desc_text, HORIZONTAL_ALIGNMENT_CENTER, bar_w, 12, desc_col)
+
 func _draw_notifications() -> void:
 	var W: float = Config.GAME_WIDTH
 	for i in range(GM.notifications.size()):
@@ -1843,21 +1986,55 @@ func _draw_tower_model(tower: Dictionary, cx: float, cy: float, a: float) -> voi
 				var wy: float = cy + sin(wa) * wr * 0.4
 				draw_circle(Vector2(wx, wy), 2.0, Color(0.3, 1.0, 0.5, 0.35 * a))
 		"lucifer":
-			# Hellfire aura — single pulsing halo, scaled like other towers.
-			# Cast moment is signaled by a brief bloom: halo widens + brightens
-			# for the fire_flash duration (~0.15s), no particle burst needed.
+			# Fallen-angel hellfire brand — an infernal inverted-cross sigil
+			# scorched flat into the ground, a broken/fractured halo and a
+			# breathing lava pool under the model. During fire_flash the whole
+			# brand flares white-hot and the sigil widens, selling the
+			# global-execute pulse as a ritual burn.
 			var pulse: float = 0.65 + 0.35 * sin(t * 3.5)
 			var cast_bloom: float = clampf(fflash * 5.0, 0.0, 1.0)
-			var halo_r: float = 20.0 + cast_bloom * 10.0
-			var halo_alpha: float = (0.12 + cast_bloom * 0.22) * a * pulse
-			draw_circle(Vector2(cx, cy + 4), halo_r, Color(1.0, 0.3, 0.05, halo_alpha))
-			# Orbiting embers — 4 particles, same count as Cocytus
-			for fi in range(4):
-				var fa: float = t * 1.8 + fi * TAU / 4.0
-				var fr: float = 16.0
+			var base := Vector2(cx, cy + 2)
+			# Molten ground pool — breathes subtly
+			draw_circle(base, 18 + cast_bloom * 8, Color(1.0, 0.25, 0.04, (0.1 + cast_bloom * 0.2) * a * pulse))
+			draw_circle(base, 12 + cast_bloom * 6, Color(1.0, 0.55, 0.1, (0.12 + cast_bloom * 0.18) * a * pulse))
+			# Outer hellfire ring scorched around the pool
+			draw_arc(base, 17, 0, TAU, 28, Color(1.0, 0.35, 0.08, 0.3 * a * pulse), 1.2)
+			# Inner broken ring — three arc segments separated by gaps
+			var ring_spin: float = t * 0.4
+			var seg_count: int = 3
+			for si in range(seg_count):
+				var sa: float = ring_spin + si * TAU / seg_count
+				draw_arc(base, 12.5, sa, sa + TAU / float(seg_count) * 0.7, 10,
+					Color(1.0, 0.7, 0.3, 0.45 * a * pulse), 1.1)
+			# Inverted-cross brand painted flat on the pool (long arm points down).
+			# Diegetic mark of the fallen — reads as "this tile is cursed ground".
+			var brand_spin: float = t * 0.25
+			var cs: float = cos(brand_spin)
+			var sn: float = sin(brand_spin)
+			var arm_y_up: float = -5.0
+			var arm_y_dn: float = 10.0
+			var arm_x: float = 4.5
+			# Project onto flat ground plane (Y squash 0.45) and rotate slowly
+			var _flat := func(ox: float, oy: float) -> Vector2:
+				var rx: float = cs * ox - sn * oy
+				var ry: float = (sn * ox + cs * oy) * 0.45
+				return Vector2(base.x + rx, base.y + ry)
+			var brand_col := Color(1.0, 0.75, 0.25, (0.55 + cast_bloom * 0.35) * a * pulse)
+			# Vertical arm (long, downward)
+			draw_line(_flat.call(0, arm_y_up), _flat.call(0, arm_y_dn), brand_col, 1.6)
+			# Horizontal crossbar (short, near top of long arm)
+			draw_line(_flat.call(-arm_x, arm_y_up + 2), _flat.call(arm_x, arm_y_up + 2), brand_col, 1.4)
+			# Tiny molten drip at the brand foot
+			draw_circle(_flat.call(0, arm_y_dn), 1.2, Color(1, 1, 0.7, 0.7 * a * pulse))
+			# Orbiting embers — 5 larger sparks, pulsing bright on cast
+			for fi in range(5):
+				var fa: float = t * 1.6 + fi * TAU / 5.0
+				var fr: float = 15.0 + sin(t * 3.0 + float(fi) * 1.1) * 1.5
 				var fx: float = cx + cos(fa) * fr
 				var fy: float = cy + sin(fa) * fr * 0.4 - 2
-				draw_circle(Vector2(fx, fy), 2.0, Color(1.0, 0.5, 0.1, 0.45 * a))
+				var fsize: float = 2.0 + cast_bloom * 1.0
+				draw_circle(Vector2(fx, fy), fsize + 1.2, Color(1.0, 0.45, 0.08, 0.25 * a))
+				draw_circle(Vector2(fx, fy), fsize, Color(1.0, 0.7, 0.25, (0.55 + cast_bloom * 0.4) * a))
 		"hades":
 			# Blue-purple support aura — pulses brighter during cast cycle
 			var is_buffing: bool = tower.get("buff_active_timer", 0.0) > 0
@@ -1958,14 +2135,58 @@ func _draw_tower_model(tower: Dictionary, cx: float, cy: float, a: float) -> voi
 				var by: float = cy - 12 + sin(t * 2.0 + bi * 1.3) * 4.0
 				draw_line(Vector2(bx - 2, by), Vector2(bx + 2, by), Color(0.85, 0.8, 0.65, 0.4 * a), 1.5)
 		"lucifer":
-			# Rising embers — 3 particles, same count as Bone Marksman
-			for ei in range(3):
+			# Broken halo — a fractured golden-red ring hovering above the
+			# fallen angel's head. Two arcs separated by gaps, gently bobbing
+			# and counter-rotating. When Lucifer pulses the global execute
+			# (fire_flash > 0) the halo flares white-hot and tilts sharply,
+			# reading as a charge surge rather than a static ornament.
+			var halo_cx: float = cx
+			var halo_cy: float = cy - 24 + sin(t * 1.6) * 0.8
+			var halo_rx: float = 8.0
+			var halo_ry: float = 2.8
+			var halo_spin: float = t * 1.1
+			var halo_flare: float = clampf(fflash * 6.0, 0.0, 1.0)
+			var halo_alpha2: float = (0.7 + halo_flare * 0.3) * a
+			var halo_col := Color(1.0, 0.75, 0.2, halo_alpha2)
+			var halo_glow := Color(1.0, 0.45, 0.1, halo_alpha2 * 0.25)
+			# Two broken arc segments — from halo_spin..halo_spin+120° and +180..+300°
+			var arc_seg: float = deg_to_rad(120.0)
+			for ai in range(2):
+				var a0: float = halo_spin + ai * PI
+				# Draw arc as polyline of short segments around the tilted ellipse
+				var steps: int = 12
+				var prev := Vector2.ZERO
+				for si in range(steps + 1):
+					var frac: float = float(si) / float(steps)
+					var ang: float = a0 + frac * arc_seg
+					var hx: float = halo_cx + cos(ang) * halo_rx
+					var hy: float = halo_cy + sin(ang) * halo_ry - halo_flare * 0.8
+					var cur := Vector2(hx, hy)
+					if si > 0:
+						# Outer glow
+						draw_line(prev, cur, halo_glow, 3.0)
+						# Main stroke
+						draw_line(prev, cur, halo_col, 1.4)
+					prev = cur
+			# Tiny molten spark droplets at the fracture points
+			for ai in range(2):
+				var tip_a: float = halo_spin + ai * PI + arc_seg
+				var tpx: float = halo_cx + cos(tip_a) * halo_rx
+				var tpy: float = halo_cy + sin(tip_a) * halo_ry
+				draw_circle(Vector2(tpx, tpy), 1.2, Color(1, 0.9, 0.6, halo_alpha2))
+			# Rising embers — increased to 4 particles with occasional "feather"
+			# embers that drift sideways (fallen feathers igniting as they fall).
+			for ei in range(4):
 				var seed_f: float = float(ei) * 2.7
 				var life: float = fmod(t * 0.6 + seed_f, 2.0) / 2.0
-				var ex: float = cx + sin(seed_f * 3.1 + t * 0.9) * 10.0
-				var ey: float = cy - life * 28.0
+				var sway: float = sin(seed_f * 3.1 + t * 0.9) * 10.0
+				var ex: float = cx + sway
+				var ey: float = cy - life * 30.0
 				var ea: float = (1.0 - life) * 0.55
 				draw_circle(Vector2(ex, ey), 1.4, Color(1, 0.55, 0.1, a * ea))
+				# Every other ember gets a brief crimson glow trail
+				if ei % 2 == 0:
+					draw_circle(Vector2(ex, ey), 2.8, Color(1, 0.25, 0.05, a * ea * 0.3))
 		"cocytus":
 			# Cold mist rising
 			for mi in range(4):
