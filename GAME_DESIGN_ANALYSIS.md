@@ -19,6 +19,7 @@ A critical analysis of every design decision in **Hellgate Defenders** mapped to
 11. [Information Theory — Visibility & Fog](#11-information-theory--visibility--fog)
 12. [Aesthetic Theory — Visual Design Language](#12-aesthetic-theory--visual-design-language)
 12b. [Gestalt Principles — Perceptual Grouping in the Battlefield](#12b-gestalt-principles--perceptual-grouping-in-the-battlefield)
+12c. [Diegetic vs Non-Diegetic Feedback — Layering the Combat Conversation](#12c-diegetic-vs-non-diegetic-feedback--layering-the-combat-conversation)
 13. [Bartle's Player Types — Audience Motivation](#13-bartles-player-types--audience-motivation)
 14. [The Hook Model — Engagement Loops](#14-the-hook-model--engagement-loops)
 15. [Player Onboarding — Tutorial & Scaffolding](#15-player-onboarding--tutorial--scaffolding)
@@ -495,7 +496,9 @@ The principle: tower defense games are especially juice-dependent because the pl
 - Zeus lightning bolts (visual lines to disabled towers)
 - Michael shield dome (golden flash)
 - Raphael heal beams (green lines to healed enemies)
-- Muzzle flash per tower type (unique per tower) — bone_marksman now fires a directional flame tongue along the target line
+- Muzzle flash per tower type (unique per tower) — bone_marksman fires a directional flame tongue along the target line; inferno_warlock now ejects an expanding triangular sigil with 6 radiating sparks (replacing the older 3-circle bloom)
+- Inferno Warlock projectile — arcane orb wrapped in a counter-rotating triangular sigil cage with a trailing chain of 5 fading rune diamonds
+- Arcane AoE detonation — layered shockwave (outer ring + inner trailing ring), inscribed pentagram, 6 outward scorch streaks, and a violet-to-white core flash; the older single-ring effect was a feedback bottleneck
 - Firing recoil — towers visually kick backward opposite the firing direction for the duration of the muzzle flash, decaying on a quadratic falloff (≤ ~3 px)
 - Floating damage numbers (0.6s rising text) with a scale "pop" in the first 150 ms and a gold-tinted enlarged treatment for hits ≥ 15 damage (crit-feel without a true crit mechanic)
 - Ice burst at Cocytus impact — frost ring, 8 radial shatter cracks, 6 triangular ice shards flying outward
@@ -665,6 +668,60 @@ For an authoritative summary see Wertheimer (1923) *Untersuchungen zur Lehre von
 - **Figure/ground fails during ember-heavy frames.** When 16+ rising embers overlap enemies in the Hell zone, the eye briefly struggles to separate "floating ash" from "fast-moving Scout." A 1-frame occlusion test (draw embers behind enemies, not over them) would fix this at negligible cost.
 - **Proximity is ambiguous on stacked towers.** Two adjacent towers of the same type read as one cluster, and a reader cannot tell at a glance whether a cluster is "two L1 archers" or "one L3 archer." A small cluster-count badge would disambiguate.
 - **The range preview violates closure for overlapping towers.** Drawing 5 range circles at 12% alpha additively stacks to >60% alpha in the overlap region, which reads as a *different* zone entirely. Using `blend_mode = BLEND_MODE_MIX` with a max-alpha clip would honor closure-per-tower without accidentally inventing a "super-overlap zone" the player can't act on.
+
+---
+
+## 12c. Diegetic vs Non-Diegetic Feedback — Layering the Combat Conversation
+
+### The Theory
+
+Marcus Andrews introduced the **diegetic interface taxonomy** for games in his 2010 Gamasutra article *"Game UI Discoveries: What Players Want"*, building on Galen Davis and Erik Fagerholt's MA thesis (Chalmers, 2009) *"Beyond the HUD — User Interfaces for Increased Player Immersion in FPS Games"*. They classify every piece of feedback along two axes:
+
+| Axis | Diegetic | Non-Diegetic |
+|---|---|---|
+| **Spatial** | Exists *in the game world* (the character can in principle see it) | Drawn over the world, only the player sees it |
+| **Narrative** | Belongs to the fiction (a wound, a glow, a sigil) | Belongs to the system (an HP number, a cooldown bar) |
+
+Crossing the two axes yields four feedback quadrants — **diegetic**, **meta** (in-fiction but not in-world, e.g. a screen-edge red flash representing pain), **spatial** (in-world but extra-fiction, e.g. a floating waypoint marker), and **non-diegetic** (pure HUD). Steve Swink's *Game Feel* (2008) and Vlambeer's "Art of Screenshake" GDC talk (Jan Willem Nijman, 2013) further argue that **the same event should be acknowledged in multiple feedback layers simultaneously** — a hit must be *seen*, *heard*, *felt* (controller rumble / screenshake), and *quantified* (a damage number) — because each layer trains a different perceptual system, and redundancy is what makes the event feel real rather than computed.
+
+A useful diagnostic is Mick West's "feedback budget" rule from his 2008 GDC talk *"Doing it Wrong: Bad Game Feel"*: **count how many channels acknowledge each player action**. If the count is 1, the action feels weightless; if 4+, the action feels weighty. The cost is purely visual/audio discipline — no new mechanics required.
+
+### How Hellgate Defenders Layers Feedback
+
+Take a single Inferno Warlock cast — one tap of the AI's targeting code — and inventory how it touches the player's senses:
+
+| Layer | Channel | Acknowledgment |
+|---|---|---|
+| Diegetic | Tower model | Recoil kick opposite the firing line during `fire_flash` |
+| Diegetic | World effect | Triangular sigil flare + 6 radiating sparks at the muzzle |
+| Diegetic | Projectile | Arcane orb wrapped in a rotating triangular sigil cage, trailing 5 fading rune diamonds |
+| Diegetic | Impact | Layered shockwave: outer ring + trailing ring + inscribed pentagram + 6 scorch streaks + violet-to-white core flash |
+| Diegetic | Burn DoT | Ember tick on burning enemy each second |
+| Meta | Damage number | Floating purple value rises and fades; `≥15` damage upgrades to large gold "crit" font + larger shadow |
+| Meta | Hit spark | 6 white sparks + arcing debris + brief white flash on every hit |
+| Non-diegetic | Sin counter | HUD currency tick on kill |
+| Non-diegetic | Audio | Procedurally synthesised cast tone + impact crack |
+
+That single cast lights up *9 channels*. By West's heuristic this puts the warlock comfortably in the "weighty action" range — and crucially, the channels span all four diegetic quadrants, so the brain processes the cast in parallel through spatial perception, fictional inference, and abstract numeric reasoning. The 2026-04 visual pass on the warlock specifically deepened the *diegetic* column (which had been thinner than the meta column) so the fiction does more of the work and the HUD does less.
+
+### What Works Well
+
+- **Damage numbers occupy the right quadrant.** They are *meta* (in-fiction but rendered as text the player alone reads) — not in-world, not pure HUD. This is the conventional Diablo-lineage choice and works because the brain treats them as "narration of the moment" rather than UI clutter. Importantly, they are *colored to match the damage source*, which the diegetic taxonomy supports — non-diegetic info should still respect the fiction's colour grammar.
+- **Tower auras carry function in their fiction.** Cocytus's ring is cyan-frost; Soul Reaper's wisps are green-bone; Inferno Warlock's pentagram is violet. This means the player *learns the rules through the world* (diegetic teaching) instead of through a tutorial popup (non-diegetic teaching). Raph Koster's *A Theory of Fun* would call this "grokking through perception."
+- **Boss fictionality is layered.** Grand Paladin's golden-crown halo + Archangel Michael's wing-rays + Raphael's caduceus ribbons are all purely diegetic — they tell the player "this is important" without a "BOSS!" banner. The non-diegetic boss banner exists too, but the diegetic layer alone would do the job.
+- **Recoil is genuinely diegetic.** The model physically kicks. This is rare in tower defense — most TD towers are static turrets that emit projectiles like a Pez dispenser. The recoil reframes the act of firing as a physical event with reaction in the world, which is the strongest possible diegetic acknowledgment.
+
+### What Could Be Improved
+
+- **Audio is non-diegetic by default — the spatialisation is missing.** All sounds play at full volume regardless of where on the map the action happened. Two improvements would re-anchor sound to the diegesis: (a) attenuate volume by distance from the screen centre or from the player's last interaction point, and (b) light-pan stereo by horizontal screen position. Both are 10-line changes in `audio_manager.gd` and would dramatically increase how much the world *feels* like a place rather than a render.
+- **The Sin counter ticks are non-diegetic but want to be meta.** When an enemy dies and grants Sins, the HUD counter increments silently. A floating violet `+8` numeral that drifts toward the HUD (the trick used by *Slay the Spire* and *Hades*) would close the loop between the in-world death and the off-world balance. This is the same `dmg_number` machinery, just sourced from the kill event and routed to the corner.
+- **Dice-roll outcome is over-non-diegetic.** The current dice popup is a giant overlay panel — pure HUD. A meta-quadrant alternative would be to have the dice physically tumble onto the map (in the world, but only for the player's benefit), settle, and then a thematically-coloured aura sweep across the battlefield matching the outcome (red for curse, gold for blessing). This re-anchors the gambling layer in the fiction the player is already inhabiting and makes results feel like consequences rather than dialog boxes.
+- **Disabled towers are weakly fictionalised.** Disabled state is currently a 50% alpha dim — non-diegetic transparency. A diegetic alternative: drape the model with a chained-shackle overlay or a flickering "broken sigil" mark above the head. The fiction should explain *why* the tower is silent, not just announce that it is.
+- **Lucifer's global pulse spans channels but lacks audio commitment.** The visual stack is rich (cyan wave ring + jagged downstrike + impact flash on every crossed enemy), but the accompanying sound is a single tone. A two-stage audio cue — low rumble on cast, sharp crack per enemy struck — would let each strike acknowledge itself in the audio channel, matching the visual layering.
+
+### A Heuristic Worth Stealing
+
+When designing or critiquing a new effect, list every channel that touches the player's senses. If any channel is silent — especially the audio channel, which is cheap to expand — the moment is leaving feedback on the table. The Inferno Warlock pass was an explicit application of this heuristic: the impact channel was identified as under-served (one purple ring), and four new diegetic layers (pentagram + scorch streaks + trailing ring + core flash) were added to bring the cast's feedback budget in line with its damage output.
 
 ---
 
@@ -930,6 +987,7 @@ Purchases feel appropriately impactful — a new tower visibly changes defensive
 10. Solarski, C. (2012). *Drawing Basics and Video Game Art*. Watson-Guptill.
 10a. Palmer, S. (1999). *Vision Science: Photons to Phenomenology*. MIT Press. — canonical reference for Gestalt grouping laws as applied to perception.
 10b. Wertheimer, M. (1923). *Untersuchungen zur Lehre von der Gestalt II*. *Psychologische Forschung*, 4, 301–350. — the foundational Gestalt paper.
+10c. Davis, G. & Fagerholt, E. (2009). *Beyond the HUD — User Interfaces for Increased Player Immersion in FPS Games*. MA Thesis, Chalmers University of Technology. — the canonical four-quadrant diegetic/meta/spatial/non-diegetic UI taxonomy.
 
 ### Academic Papers
 
@@ -949,6 +1007,8 @@ Purchases feel appropriately impactful — a new tower visibly changes defensive
 21. Jonasson, M. & Purho, P. (2012). "Juice It or Lose It." GDC Europe 2012.
 22. Nijman, J.W. (2013). "The Art of Screenshake." Vlambeer/GDC.
 23. Doucet, L. (2013). "Optimizing Tower Defense for FOCUS and THINKING." Fortress of Doors.
+23a. West, M. (2008). "Doing it Wrong: Bad Game Feel." GDC 2008. — origin of the "feedback budget" heuristic for counting feedback channels per action.
+23b. Andrews, M. (2010). "Game UI Discoveries: What Players Want." *Gamasutra*. — popularised the diegetic/meta/spatial/non-diegetic taxonomy in mainstream game-design discourse.
 
 ### Industry Resources
 
