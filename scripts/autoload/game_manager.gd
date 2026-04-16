@@ -156,8 +156,7 @@ func earn(amount: int) -> void:
 # powHPG scaling: kill rewards grow with enemy HP scaling (exponent 0.85).
 # Keeps economy from dying as enemies get tougher in late waves.
 func reward_scale() -> float:
-	var w: float = maxf(0, wave - Config.SCALE_START_WAVE)
-	return pow(Config.WAVE_HP_COMPOUND, w * Config.REWARD_POW_HPG)
+	return Config.reward_scale(wave)
 
 func earn_from_kill(enemy_type: String, was_aoe: bool) -> void:
 	var data: Dictionary = Config.ENEMY_DATA.get(enemy_type, {})
@@ -321,9 +320,8 @@ func create_enemy(type: String) -> Dictionary:
 	var data: Dictionary = Config.ENEMY_DATA[type]
 	var sp := Config.spawn_pixel()
 	_next_id += 1
-	var w := maxf(0, wave - Config.SCALE_START_WAVE)
-	var scaled_hp: float = data["hp"] * pow(Config.WAVE_HP_COMPOUND, w)
-	var scaled_speed: float = data["speed"] * pow(Config.WAVE_SPD_COMPOUND, w)
+	var scaled_hp: float = data["hp"] * Config.hp_scale(wave)
+	var scaled_speed: float = data["speed"] * Config.spd_scale(wave)
 	return {
 		"id": _next_id,
 		"type": type,

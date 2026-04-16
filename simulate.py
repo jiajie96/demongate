@@ -28,6 +28,8 @@ REWARD_POW_HPG      = 0.85    # powHPG — see game_config.gd
 WAVE_HP_COMPOUND    = 1.08    # x1.08 enemy HP per wave (compound growth)
 WAVE_SPD_COMPOUND   = 1.015   # x1.015 speed per wave (compound growth)
 SCALE_START_WAVE    = 2       # scaling kicks in after this wave
+WAVE_HP_STEP_EVERY  = 5       # milestone bump every N waves
+WAVE_HP_STEP_MULT   = 1.15    # extra HP multiplier per milestone step
 
 UPGRADE_MULT        = 1.30
 MAX_TOWER_LEVEL     = 3
@@ -83,7 +85,7 @@ TOWER_DATA = {
         is_global=False, is_support=False,
     ),
     "hellfire_mage": dict(
-        name="MAG", damage=3.0, range=100.0, attack_speed=0.8,
+        name="MAG", damage=5.0, range=100.0, attack_speed=0.8,
         is_aoe=True, aoe_radius=60.0, slow_power=0.0,
         cost=90, upgrade_cost=70,
         is_global=False, is_support=False,
@@ -111,7 +113,7 @@ TOWER_DATA = {
         buff_multiplier=1.5, buff_cooldown=5.0, buff_duration=2.0,
     ),
     "cocytus": dict(
-        name="COC", damage=12.0, range=240.0, attack_speed=1.0,
+        name="COC", damage=5.0, range=240.0, attack_speed=1.0,
         is_aoe=False, aoe_radius=0.0, slow_power=0.0,
         cost=180, upgrade_cost=130,
         is_global=False, is_support=False,
@@ -172,13 +174,15 @@ WAVE_DATA = [
 # HELPER: wave-based HP / speed scale factor
 # ════════════════════════════════════════════════════════════
 def hp_scale(wave: int) -> float:
-    return WAVE_HP_COMPOUND ** max(0, wave - SCALE_START_WAVE)
+    compound = WAVE_HP_COMPOUND ** max(0, wave - SCALE_START_WAVE)
+    steps = wave // WAVE_HP_STEP_EVERY
+    return compound * (WAVE_HP_STEP_MULT ** steps)
 
 def spd_scale(wave: int) -> float:
     return WAVE_SPD_COMPOUND ** max(0, wave - SCALE_START_WAVE)
 
 def reward_scale(wave: int) -> float:
-    return WAVE_HP_COMPOUND ** (max(0, wave - SCALE_START_WAVE) * REWARD_POW_HPG)
+    return hp_scale(wave) ** REWARD_POW_HPG
 
 
 # ════════════════════════════════════════════════════════════

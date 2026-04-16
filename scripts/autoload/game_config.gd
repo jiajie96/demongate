@@ -25,6 +25,10 @@ const PROJECTILE_SPEED := 280.0
 const WAVE_HP_COMPOUND := 1.08   # ×1.08 enemy HP per wave (compound growth)
 const WAVE_SPD_COMPOUND := 1.015 # ×1.015 speed per wave (compound growth)
 const SCALE_START_WAVE := 2      # scaling kicks in after this wave
+# Milestone bump: every N waves, HP takes extra ×M jump on top of compound.
+# Makes waves 5/10/15/20 feel like real step-ups instead of a flat curve.
+const WAVE_HP_STEP_EVERY := 5
+const WAVE_HP_STEP_MULT := 1.15
 # powHPG: kill rewards & wave bonus scale with pow(hp_scale, REWARD_POW_HPG).
 # 0.85 per YYZ-Productions / gamedeveloper.com TD balance research —
 # income grows slower than HP, but fast enough to enable a new tower / upgrade every 1-2 waves.
@@ -100,7 +104,7 @@ var TOWER_DATA := {
 	"inferno_warlock": {
 		"name": "Inferno Warlock",
 		"desc": "AoE blast ignites burn stacks (1 dps/stack, caps 4, 3s)",
-		"damage": 3.0,
+		"damage": 5.0,
 		"range": 100.0,
 		"attack_speed": 0.8,
 		"is_aoe": true,
@@ -151,7 +155,7 @@ var TOWER_DATA := {
 	"cocytus": {
 		"name": "Cocytus",
 		"desc": "Continuous frost cone — always casting in one direction",
-		"damage": 12.0,
+		"damage": 5.0,
 		"range": 240.0,
 		"attack_speed": 1.0,
 		"is_aoe": false,
@@ -328,3 +332,19 @@ func grid_to_pixel(col: int, row: int) -> Vector2:
 func pixel_to_grid(px: float, py: float) -> Vector2i:
 	@warning_ignore("integer_division")
 	return Vector2i(int(px) / TILE_SIZE, int(py) / TILE_SIZE)
+
+# HP scale = compound growth × milestone-step bump (every WAVE_HP_STEP_EVERY waves).
+func hp_scale(current_wave: int) -> float:
+	var w: float = maxf(0.0, float(current_wave) - float(SCALE_START_WAVE))
+	@warning_ignore("integer_division")
+	var steps: int = current_wave / WAVE_HP_STEP_EVERY
+	return pow(WAVE_HP_COMPOUND, w) * pow(WAVE_HP_STEP_MULT, steps)
+
+func spd_scale(current_wave: int) -> float:
+	var w: float = maxf(0.0, float(current_wave) - float(SCALE_START_WAVE))
+	return pow(WAVE_SPD_COMPOUND, w)
+
+# Reward scale follows HP but at REWARD_POW_HPG exponent — kills pay more as HP climbs,
+# but slower than HP so economy never outruns difficulty.
+func reward_scale(current_wave: int) -> float:
+	return pow(hp_scale(current_wave), REWARD_POW_HPG)

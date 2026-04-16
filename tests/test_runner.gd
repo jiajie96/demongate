@@ -247,7 +247,7 @@ func _run_enemy_tests() -> void:
 	var scaled_scout := GM.create_enemy("seraph_scout")
 	_assert(scaled_scout["hp"] > 14.0, "Wave 10 seraph scouts have scaled HP")
 	_assert(scaled_scout["speed"] > 80.0, "Wave 10 seraph scouts have scaled speed")
-	var expected_hp: float = 14.0 * pow(Config.WAVE_HP_COMPOUND, maxf(0, 10 - Config.SCALE_START_WAVE))
+	var expected_hp: float = 14.0 * Config.hp_scale(10)
 	_assert_eq(scaled_scout["hp"], expected_hp, "Wave 10 scout HP matches scaling formula")
 
 	GM.reset_state()
