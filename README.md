@@ -5,8 +5,8 @@
 <p align="center">
   <a href="https://godotengine.org/"><img src="https://img.shields.io/badge/Godot-4.6-478cbf?logo=godot-engine&logoColor=white" alt="Godot 4.6"/></a>
   <a href="LICENSE"><img src="https://img.shields.io/badge/License-MIT-green" alt="MIT License"/></a>
-  <img src="https://img.shields.io/badge/Tests-447%20passed-brightgreen" alt="Tests"/>
-  <img src="https://img.shields.io/badge/Audio-Procedural-blueviolet" alt="Procedural Audio"/>
+  <img src="https://img.shields.io/badge/Tests-472%20passing-brightgreen" alt="Tests"/>
+  <img src="https://img.shields.io/badge/Audio-File%20%2B%20Procedural-blueviolet" alt="Hybrid Audio"/>
   <img src="https://img.shields.io/badge/Platform-Web%20%7C%20Windows%20%7C%20macOS%20%7C%20Linux-orange" alt="Platforms"/>
 </p>
 
@@ -31,37 +31,38 @@
 - **Heaven-to-Hell battlefield** — Enemies march from a radiant heaven zone down into the fiery depths
 - **High-stakes gambling** — Devil's Dice, Demonic Pacts, and Pandora's Relics create dramatic risk/reward moments
 - **Enemy synergies** — Archangels buff allies, Michael shields everyone, Zeus disables your towers, Raphael heals nearby enemies
-- **6 unique towers** — From fast Demon Archers to the global-pulse Lucifer, each fills an irreplaceable role
-- **Procedural audio** — All sound effects and music generated at runtime, zero audio files
-- **450+ automated tests** — Comprehensive test suite covering config, economy, combat, waves, and gambling
+- **6 unique towers** — From the Bone Marksman's rapid bolts to Lucifer's global pulse, each fills an irreplaceable role
+- **KayKit 3D avatars** — Skeleton roster pre-rendered to directional sprites, each tower a distinct silhouette + signature color
+- **Hybrid audio** — CC0 music tiered by wave intensity, file-based SFX with a procedural synthesis fallback
+- **470+ automated tests** — Comprehensive test suite covering config, economy, combat, waves, and gambling
 
 ## Towers
 
 | Tower | Cost | Role |
 |:------|:-----|:-----|
-| **Demon Archer** (ARC) | 50 | Fast single-target DPS, 1.8 atk/s |
-| **Hellfire Mage** (MAG) | 90 | AoE swarm clearer, 60-radius blast |
-| **Necromancer** (NEC) | 120 | 40% slow on hit, force multiplier |
-| **Hades** (HAD) | 160 | Buffs nearby towers + periodic AoE damage |
-| **Cocytus** (COC) | 180 | Ice spike beam, ramps damage on same target |
-| **Lucifer** (LUC) | 200 | Global pulse hits ALL enemies on map (limit: 1) |
+| **Bone Marksman** (ARC) | 50 | Fast single-target DPS, 1.8 atk/s |
+| **Inferno Warlock** (MAG) | 90 | AoE blast ignites burn stacks (1 dps/stack, cap 4, 3s) |
+| **Soul Reaper** (NEC) | 120 | Passive slow aura — enemies in range move 40% slower |
+| **Hades** (HAD) | 160 | Buffs nearby tower damage +50% on a 5s cycle |
+| **Cocytus** (COC) | 180 | Continuous 70° frost cone, 12 dmg/s, 240 range |
+| **Lucifer** (LUC) | 200 | Global pulse, executes enemies below 15% HP (limit: 1) |
 
-Each tower has 3 upgrade levels and 4 targeting modes (First / Last / Closest / Strongest). Sell for 65% refund.
+Each tower has 3 upgrade levels and 2 targeting modes (Closest / Strongest). Sell for 65% refund.
 
 ## Enemies
 
 | Enemy | HP | Threat |
 |:------|:---|:-------|
-| Angel Scout | 14 | Fast swarm unit |
-| Holy Knight | 45 | Armored frontline |
-| Divine Hunter | 28 | Speedster (130 speed) |
-| Monk | 32 | Support unit |
-| God of War | 110 | Heavy tank |
-| Archangel Commander | 55 | Aura: +25% speed, -25% dmg taken for allies |
-| Divine Guardian | 65 | Shield: enemies in first half of path are invulnerable |
+| Seraph Scout | 14 | Fast swarm unit |
+| Crusader | 45 | Armored frontline |
+| Swift Ranger | 28 | Speedster (130 speed) |
+| Temple Cleric | 32 | Support unit |
+| War Titan | 110 | Heavy tank |
+| Archangel Marshal | 55 | Aura: +25% speed, -25% dmg taken for allies |
+| Holy Sentinel | 65 | Shield: enemies in first half of path are invulnerable |
 | Archangel Raphael | 70 | Heals nearby enemies over time |
 | Zeus | 80 | Lightning: disables 1-2 towers every 6s |
-| **Paladin** (Boss) | 280 | Always drops a Pandora's Relic |
+| **Grand Paladin** (Boss) | 280 | Always drops a Pandora's Relic |
 | **Archangel Michael** (Boss) | 200 | Shields all enemies (50% dmg reduction) |
 
 Enemy HP and speed scale after wave 3. Waves feature increasing synergy combinations.
@@ -73,6 +74,10 @@ Enemy HP and speed scale after wave 3. Waves feature increasing synergy combinat
 **Demonic Pacts** (every 5 waves) — Choose from 3 powerful benefit/cost tradeoffs. Blood Rage doubles damage but costs 20 Core HP. Demonic Fervor gives permanent +50% speed but reduces max HP by 25.
 
 **Pandora's Relics** — Random loot drops: AoE bombs, sin caches, tower blessings, or dangerous traps.
+
+## Audio
+
+Music tiers by wave intensity: **Cavern Ambient** (waves 1–7) → **Determined Pursuit** (waves 8–14) → **Epic Boss Battle** (waves 15–20), plus victory/defeat stingers. All tracks are CC0 (see [assets/audio/CREDITS.md](assets/audio/CREDITS.md)). SFX load from OGG files with a procedural synth fallback for any missing file. Master / Music / SFX sliders in Settings persist to `user://settings.cfg`.
 
 ## Controls
 
@@ -157,7 +162,7 @@ Three autoload singletons drive the game:
 |:----------|:-----|:-----|
 | **Config** | `game_config.gd` | Pure data: tower/enemy/wave stats, map path, gambling tables |
 | **GM** | `game_manager.gd` | All mutable state: economy, combat, waves, effects |
-| **Audio** | `audio_manager.gd` | Procedurally generated SFX and music (no audio files) |
+| **Audio** | `audio_manager.gd` | Hybrid audio: OGG files + procedural fallback, 16-player priority pool, master/music/SFX buses with persistent volume |
 
 Rendering: a single `Node2D` draws everything via `_draw()` each frame. All game entities are plain Dictionaries in Arrays — no custom classes or node hierarchies.
 
@@ -169,12 +174,15 @@ scripts/
   autoload/
     game_config.gd       # Constants, tower/enemy/wave data, map path
     game_manager.gd      # Game state, combat, waves, gambling
-    audio_manager.gd     # Procedural sound generation
+    audio_manager.gd     # OGG loader + procedural fallback + volume persistence
     locale.gd            # i18n / translation
   game_world.gd          # 2D rendering + input handling
-  hud.gd                 # Programmatic UI
+  hud.gd                 # Programmatic UI, volume sliders
+assets/
+  audio/                 # CC0 music (3 wave-tiered tracks) + SFX (see CREDITS.md)
+  models/kaykit/         # KayKit 3D avatars pre-rendered to directional sprites
 tests/
-  test_runner.gd         # 447 automated tests
+  test_runner.gd         # 472 automated tests
 ```
 
 ## Design Deep Dive

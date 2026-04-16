@@ -20,6 +20,7 @@ A critical analysis of every design decision in **Hellgate Defenders** mapped to
 12. [Aesthetic Theory — Visual Design Language](#12-aesthetic-theory--visual-design-language)
 12b. [Gestalt Principles — Perceptual Grouping in the Battlefield](#12b-gestalt-principles--perceptual-grouping-in-the-battlefield)
 12c. [Diegetic vs Non-Diegetic Feedback — Layering the Combat Conversation](#12c-diegetic-vs-non-diegetic-feedback--layering-the-combat-conversation)
+12d. [Pacing & Kairos — The Cinematic Wave Announcement](#12d-pacing--kairos--the-cinematic-wave-announcement)
 13. [Bartle's Player Types — Audience Motivation](#13-bartles-player-types--audience-motivation)
 14. [The Hook Model — Engagement Loops](#14-the-hook-model--engagement-loops)
 15. [Player Onboarding — Tutorial & Scaffolding](#15-player-onboarding--tutorial--scaffolding)
@@ -723,6 +724,57 @@ That single cast lights up *9 channels*. By West's heuristic this puts the warlo
 
 When designing or critiquing a new effect, list every channel that touches the player's senses. If any channel is silent — especially the audio channel, which is cheap to expand — the moment is leaving feedback on the table. The Inferno Warlock pass was an explicit application of this heuristic: the impact channel was identified as under-served (one purple ring), and four new diegetic layers (pentagram + scorch streaks + trailing ring + core flash) were added to bring the cast's feedback budget in line with its damage output.
 
+### 2026-04 Visual Pass: Lucifer & Soul Reaper
+
+A second round of the same heuristic, this time tightening *fictional coherence* rather than adding new layers. Two tower-specific gaps had accumulated:
+
+- **Lucifer's aura was generic hellfire.** A single pulsing halo plus four embers. Functional but silent on fiction: nothing in the tile read as *fallen angel*. The visual was redrawn around an explicit "infernal brand" motif — a breathing molten pool beneath the model, a broken inner ring split into three rotating arc segments, an inverted-cross sigil painted flat on the ground (rotating slowly to read as a ritual mark, not a static decal), and a fractured halo of two counter-rotating arc segments floating above the model's head that flares white-hot during cast. This pushes three more acknowledgments into the diegetic column — ground mark, broken halo, cast-flare modulation — so the cast's feedback budget matches the Inferno Warlock's even though Lucifer has no projectile to decorate.
+
+- **Soul Reaper hits used the orange `hit_spark`.** A Necromancer's scythe hit visually read as a *fire impact*, because the generic hit_spark was hard-coded to warm amber regardless of source. This broke the "learn the rules through the world" principle — a player watching a green ghostly projectile land with an orange flash gets a mixed signal about what type of damage just happened. A dedicated `soul_hit` effect now replaces it for Soul Reaper: a rising green wisp cloud, a fading X-mark in spectral green, four curling wisp tendrils arcing upward, bone-chip specks falling with gravity, and a brief white spectral core. Mechanically identical to hit_spark; fictionally aligned to the tower's color grammar.
+
+Both changes are the same lesson in opposite directions: Lucifer added fiction that was missing, Soul Reaper removed fiction that was *wrong*. The feedback budget heuristic only answers "how many channels?" — the coherence heuristic asks "do they all tell the same story?"
+
+---
+
+## 12d. Pacing & Kairos — The Cinematic Wave Announcement
+
+### The Theory
+
+Greek rhetoricians distinguished *chronos* (sequential clock time) from *kairos* (the opportune, charged moment). Jesse Schell applies the distinction to games in *The Art of Game Design*, Lens #45 (Moments): memorable play is built from a small number of *kairotic* moments — charged transitions the player remembers for years — embedded in a much larger body of *chronotic* routine. The designer's job is to mark the kairotic moments unambiguously so the nervous system can tell "now is the time" from "now is the same as before."
+
+In tower defense specifically, the wave boundary is the canonical kairotic moment. It is the only instant where the player's preparation is tested against fresh data, and it is the instant most likely to be remembered as "the wave I died on" or "the wave where my Cocytus finally clicked." If the wave boundary is marked only by a small text notification in the corner of the HUD, the moment leaks into the surrounding chronotic flow and loses its charge. Schell: *"Mark your transitions. Players who don't notice them don't feel them."*
+
+The game industry's de-facto pattern is the **full-screen title card**: StarCraft II's "Zerg Rush" banner, Slay the Spire's "Act 2" wipe, Risk of Rain's planet name fade-in, Bloons TD 6's round countdown. Each is visually loud enough that the player's attention *snaps* to it, but short enough (<3 seconds) that it doesn't gate play.
+
+### How Hellgate Defenders Implements It
+
+Prior to the 2026-04 pass, wave transitions had two acknowledgments:
+
+| Channel | Acknowledgment |
+|---|---|
+| Non-diegetic | `wave_start` SFX chime |
+| Meta | Notification text row under the HUD, ~13pt font, stacked with five other notifications |
+
+Two channels, one of which (the notification) is visually indistinguishable from the combat log spam that follows it. By the feedback-budget heuristic, the wave boundary was *quieter* than a single tower firing a single arrow. This is exactly the inversion that kairos warns against — the rare charged moment given less weight than the routine background.
+
+The fix is a third channel, the **cinematic wave banner**: a 560×62px title card centered at 42% screen height, with three-phase animation — slide-in from the left (ease-out cubic, 0.35s), hold with no motion (1.55s), slide-out to the right while fading (0.7s). Boss waves (any wave containing `is_boss: true`) flip to a crimson palette; standard waves use amber. The layout is a feathered translucent band framed by two decorative diamonds, carrying "WAVE N" (or "BOSS WAVE N") as the headline and the wave's flavor-text description as subtitle.
+
+Crucially, the banner is purely **non-diegetic** — drawn in HUD space, not in the world. This is deliberate: kairotic marking of system-level transitions (wave, phase, act) is one of the few places where non-diegetic wins over diegetic. A diegetic alternative (a demonic sigil burning in the center of the map) would read as an in-world event the *characters* notice — but the wave transition is a *designer-level* event and the player should experience it as the author speaking directly.
+
+The total cost is ~90 lines in `game_world.gd` plus ~10 lines of state in `game_manager.gd`. No new mechanics, no new assets, no audio changes. The existing 2-second screenshake on `start_wave()` now has an anchor worth shaking the screen for.
+
+### What Works Well
+
+- **Kairos is honored without blocking chronos.** The banner holds 2.6 seconds total and never blocks input. The player can continue placing towers through the entire banner animation — the transition is *marked* rather than *gated*.
+- **Boss waves get their own palette.** This is a diegetic-leaning choice applied at the non-diegetic layer: the banner changes color to match the fictional stakes. Red = danger is one of the strongest pre-conscious color mappings in human perception (Elliot & Maier, *Psychological Review* 2012), so the player's threat-detection system fires before they finish reading the word "BOSS."
+- **Three-phase envelope mirrors classic title-card animation.** Slide-in, hold, slide-out. The ease-out cubic on the slide-in specifically is Disney's "slow-in / slow-out" principle from *The Illusion of Life* (Thomas & Johnston, 1981) — motion that decelerates reads as intentional and weighty, while constant-velocity motion reads as machine-like.
+
+### What Could Be Improved
+
+- **Audio doesn't match the visual upgrade.** The banner carries no dedicated cue beyond the existing `wave_start` chime. A two-note sting (low thud on slide-in, high sparkle on arrival) would give the cinematic moment an audio hit to match. Boss waves especially should get a distinct sting — same principle as the color shift.
+- **The banner could carry more information without becoming cluttered.** Enemy-count breakdown ("12 Seraph Scouts, 4 Crusaders, Grand Paladin incoming") would help planners at the expense of snap-readability. This is a design trade-off, not an oversight, and is best left optional (a toggle in a future settings menu).
+- **No persistence between runs.** A "Wave 15 — previous best" subtitle would turn the banner into an achiever hook (see Section 13, Bartle's Player Types). This requires a save file, which the game currently lacks.
+
 ---
 
 ## 13. Bartle's Player Types — Audience Motivation
@@ -988,6 +1040,7 @@ Purchases feel appropriately impactful — a new tower visibly changes defensive
 10a. Palmer, S. (1999). *Vision Science: Photons to Phenomenology*. MIT Press. — canonical reference for Gestalt grouping laws as applied to perception.
 10b. Wertheimer, M. (1923). *Untersuchungen zur Lehre von der Gestalt II*. *Psychologische Forschung*, 4, 301–350. — the foundational Gestalt paper.
 10c. Davis, G. & Fagerholt, E. (2009). *Beyond the HUD — User Interfaces for Increased Player Immersion in FPS Games*. MA Thesis, Chalmers University of Technology. — the canonical four-quadrant diegetic/meta/spatial/non-diegetic UI taxonomy.
+10d. Thomas, F. & Johnston, O. (1981). *The Illusion of Life: Disney Animation*. Disney Editions. — origin of the twelve principles of animation, including "slow-in / slow-out" used to justify ease-out cubic on the wave banner slide-in.
 
 ### Academic Papers
 
@@ -999,6 +1052,7 @@ Purchases feel appropriately impactful — a new tower visibly changes defensive
 16. Hunicke, R. (2005). "The Case for Dynamic Difficulty Adjustment in Games." *ACM SIGCHI Conference*.
 17. Lazzaro, N. (2004). "Why We Play Games: Four Keys to More Emotion Without Story." GDC 2004.
 18. Haw, J. (2008). "Random-ratio schedules of reinforcement: The role of early wins and unreinforced trials." *Journal of Gambling Issues*.
+18a. Elliot, A.J. & Maier, M.A. (2012). "Color-in-Context Theory." *Advances in Experimental Social Psychology*, 45, 61–125. — empirical grounding for red = danger / threat activation; used to justify the boss-wave palette on the cinematic wave banner.
 
 ### GDC Talks
 

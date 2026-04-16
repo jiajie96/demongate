@@ -14,6 +14,8 @@ var menu_btn: Button
 # Side panel
 var sins_label: Label
 var tower_buttons: Dictionary = {}
+var tower_style_idle: Dictionary = {}        # type -> StyleBoxFlat (dim/unavailable)
+var tower_style_ready: Dictionary = {}       # type -> StyleBoxFlat (affordable highlight)
 var tower_info_panel: PanelContainer
 var dice_section: PanelContainer
 var dice_title_label: Label
@@ -66,8 +68,12 @@ var btn_pause: Button
 var btn_restart: Button
 var btn_lang: Button
 var btn_close_settings: Button
-
-var _last_phase: String = ""
+var master_slider: HSlider
+var music_slider: HSlider
+var sfx_slider: HSlider
+var master_label: Label
+var music_label: Label
+var sfx_label: Label
 
 # ═══════════════════════════════════════════════════════
 # INITIALIZATION
@@ -253,6 +259,7 @@ func _create_side_panel() -> void:
 		btn.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 		btn.alignment = HORIZONTAL_ALIGNMENT_LEFT
 
+		# Idle style — dim border, faded bg (used for unaffordable / locked)
 		var btn_style := StyleBoxFlat.new()
 		btn_style.bg_color = Color(0.15, 0.08, 0.1)
 		btn_style.border_color = data["color"] * 0.5
@@ -261,18 +268,29 @@ func _create_side_panel() -> void:
 		btn_style.set_content_margin_all(6)
 		btn.add_theme_stylebox_override("normal", btn_style)
 
-		var btn_hover := btn_style.duplicate()
-		btn_hover.bg_color = Color(0.22, 0.12, 0.14)
-		btn_hover.border_color = data["color"]
+		# Ready style — full-saturation tower-color border, warmer bg, 2px width.
+		# Inset accent line + tinted background communicate "you can buy this now".
+		var ready_style: StyleBoxFlat = btn_style.duplicate()
+		ready_style.bg_color = Color(0.22, 0.12, 0.14).lerp(data["color"], 0.12)
+		ready_style.border_color = data["color"]
+		ready_style.set_border_width_all(2)
+		ready_style.shadow_color = Color(data["color"].r, data["color"].g, data["color"].b, 0.35)
+		ready_style.shadow_size = 3
+		ready_style.shadow_offset = Vector2.ZERO
+
+		var btn_hover := ready_style.duplicate()
+		btn_hover.bg_color = Color(0.30, 0.16, 0.18).lerp(data["color"], 0.15)
 		btn.add_theme_stylebox_override("hover", btn_hover)
 
-		var btn_pressed := btn_style.duplicate()
-		btn_pressed.bg_color = Color(0.3, 0.14, 0.18)
-		btn_pressed.border_color = data["color"]
+		var btn_pressed := ready_style.duplicate()
+		btn_pressed.bg_color = Color(0.38, 0.20, 0.22).lerp(data["color"], 0.20)
 		btn.add_theme_stylebox_override("pressed", btn_pressed)
 
 		btn.add_theme_font_size_override("font_size", 11)
 		btn.add_theme_color_override("font_color", Color(0.85, 0.85, 0.85))
+
+		tower_style_idle[type] = btn_style
+		tower_style_ready[type] = ready_style
 
 		var tower_type: String = type
 		btn.pressed.connect(_on_tower_button_pressed.bind(tower_type))
@@ -325,7 +343,7 @@ func _create_side_panel() -> void:
 	btn_row.add_child(btn_sell)
 
 	btn_targeting = Button.new()
-	btn_targeting.text = "Target: First"
+	btn_targeting.text = "Target: Closest"
 	btn_targeting.custom_minimum_size = Vector2(268, 28)
 	btn_targeting.add_theme_font_size_override("font_size", 11)
 	btn_targeting.pressed.connect(_on_targeting_pressed)
@@ -558,12 +576,12 @@ func _create_settings_overlay() -> void:
 	settings_overlay.visible = false
 	add_child(settings_overlay)
 
-	var panel := _make_centered_panel(320, 280)
+	var panel := _make_centered_panel(360, 440)
 	settings_overlay.add_child(panel)
 
 	var vbox := VBoxContainer.new()
 	vbox.alignment = BoxContainer.ALIGNMENT_CENTER
-	vbox.add_theme_constant_override("separation", 12)
+	vbox.add_theme_constant_override("separation", 8)
 	panel.add_child(vbox)
 
 	settings_title = Label.new()
@@ -572,6 +590,30 @@ func _create_settings_overlay() -> void:
 	settings_title.add_theme_color_override("font_color", Color(1, 0.8, 0.4))
 	settings_title.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	vbox.add_child(settings_title)
+
+	# Volume sliders — Master / Music / SFX
+	master_label = _make_slider_label("Master")
+	vbox.add_child(master_label)
+	master_slider = _make_volume_slider(Audio.master_volume)
+	master_slider.value_changed.connect(_on_master_volume_changed)
+	vbox.add_child(master_slider)
+
+	music_label = _make_slider_label("Music")
+	vbox.add_child(music_label)
+	music_slider = _make_volume_slider(Audio.music_volume)
+	music_slider.value_changed.connect(_on_music_volume_changed)
+	vbox.add_child(music_slider)
+
+	sfx_label = _make_slider_label("SFX")
+	vbox.add_child(sfx_label)
+	sfx_slider = _make_volume_slider(Audio.sfx_volume)
+	sfx_slider.value_changed.connect(_on_sfx_volume_changed)
+	vbox.add_child(sfx_slider)
+
+	# Spacer
+	var spacer := Control.new()
+	spacer.custom_minimum_size.y = 4
+	vbox.add_child(spacer)
 
 	btn_pause = _make_action_button(Locale.t("Pause"), Color(0.2, 0.35, 0.5))
 	btn_pause.pressed.connect(_on_pause_pressed)
@@ -588,6 +630,46 @@ func _create_settings_overlay() -> void:
 	btn_close_settings = _make_action_button(Locale.t("Close"), Color(0.35, 0.35, 0.35))
 	btn_close_settings.pressed.connect(_on_close_settings_pressed)
 	vbox.add_child(btn_close_settings)
+
+func _make_slider_label(title: String) -> Label:
+	var lbl := Label.new()
+	lbl.text = Locale.t(title) + ": 100%"
+	lbl.add_theme_font_size_override("font_size", 12)
+	lbl.add_theme_color_override("font_color", Color(0.9, 0.85, 0.75))
+	lbl.set_meta("title", title)
+	return lbl
+
+func _make_volume_slider(initial_value: float) -> HSlider:
+	var slider := HSlider.new()
+	slider.min_value = 0.0
+	slider.max_value = 1.0
+	slider.step = 0.01
+	slider.value = initial_value
+	slider.custom_minimum_size = Vector2(260, 20)
+	return slider
+
+func _on_master_volume_changed(value: float) -> void:
+	Audio.set_master_volume(value)
+	_update_volume_labels()
+	Audio.save_settings()
+
+func _on_music_volume_changed(value: float) -> void:
+	Audio.set_music_volume(value)
+	_update_volume_labels()
+	Audio.save_settings()
+
+func _on_sfx_volume_changed(value: float) -> void:
+	Audio.set_sfx_volume(value)
+	_update_volume_labels()
+	Audio.save_settings()
+
+func _update_volume_labels() -> void:
+	if master_label:
+		master_label.text = Locale.t(master_label.get_meta("title")) + ": " + str(int(Audio.master_volume * 100)) + "%"
+	if music_label:
+		music_label.text = Locale.t(music_label.get_meta("title")) + ": " + str(int(Audio.music_volume * 100)) + "%"
+	if sfx_label:
+		sfx_label.text = Locale.t(sfx_label.get_meta("title")) + ": " + str(int(Audio.sfx_volume * 100)) + "%"
 
 # ═══════════════════════════════════════════════════════
 # PROCESS — UPDATE UI FROM STATE
@@ -622,14 +704,31 @@ func _process(_dt: float) -> void:
 	# Sins
 	sins_label.text = Locale.tf("sins_display", {"amount": GM.sins})
 
-	# Tower button affordability + text (show desc only when Tab/overview held)
+	# Tower button affordability + uniqueness (show desc only when Tab/overview held)
 	var show_details := GM.show_overview
 	for type in Config.TOWER_DATA:
 		if tower_buttons.has(type):
 			var data: Dictionary = Config.TOWER_DATA[type]
-			var can_buy := GM.can_afford(data["cost"]) or GM.free_towers > 0
-			tower_buttons[type].modulate.a = 1.0 if can_buy else 0.5
-			tower_buttons[type].text = _tower_button_text(data, show_details)
+			var btn: Button = tower_buttons[type]
+			var at_limit: bool = data.get("unique", false) and GM.has_tower_type(type)
+			var can_afford: bool = GM.can_afford(data["cost"]) or GM.free_towers > 0
+			if at_limit:
+				# Locked — already owned and capped (e.g., Lucifer)
+				btn.modulate = Color(1.0, 0.45, 0.45, 0.55)
+				btn.add_theme_stylebox_override("normal", tower_style_idle[type])
+				btn.add_theme_color_override("font_color", Color(0.85, 0.85, 0.85))
+				btn.text = _tower_button_text(data, show_details) + "  [MAX]"
+			elif not can_afford:
+				btn.modulate = Color(1, 1, 1, 0.5)
+				btn.add_theme_stylebox_override("normal", tower_style_idle[type])
+				btn.add_theme_color_override("font_color", Color(0.7, 0.7, 0.7))
+				btn.text = _tower_button_text(data, show_details)
+			else:
+				# Ready — bright color border, warm bg, glow shadow, white font
+				btn.modulate = Color(1, 1, 1, 1)
+				btn.add_theme_stylebox_override("normal", tower_style_ready[type])
+				btn.add_theme_color_override("font_color", Color(1, 0.97, 0.85))
+				btn.text = _tower_button_text(data, show_details)
 
 	# Next wave button
 	btn_next_wave.visible = not GM.wave_active and not GM.show_pact and GM.phase == "playing"
@@ -668,7 +767,7 @@ func _process(_dt: float) -> void:
 		var refund: int = roundi(data["cost"] * Config.SELL_REFUND * tw["level"])
 		btn_sell.text = Locale.tf("sell_refund", {"cost": GM.format_cost(refund)})
 
-		var mode: String = tw.get("targeting_mode", "first")
+		var mode: String = tw.get("targeting_mode", "closest")
 		btn_targeting.text = Locale.t("Target") + ": " + mode.capitalize()
 		btn_targeting.visible = not tw["is_support"]
 	else:
@@ -731,6 +830,7 @@ func _update_locale_text() -> void:
 	btn_restart.text = Locale.t("Restart")
 	btn_lang.text = Locale.lang_display()
 	btn_close_settings.text = Locale.t("Close")
+	_update_volume_labels()
 
 # ═══════════════════════════════════════════════════════
 # OVERLAY VISIBILITY

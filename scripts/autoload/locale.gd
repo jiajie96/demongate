@@ -214,6 +214,9 @@ var _zh: Dictionary = {
 	"Restart": "重新开始",
 	"Language": "语言",
 	"Close": "关闭",
+	"Master": "主音量",
+	"Music": "音乐",
+	"SFX": "音效",
 
 	# --- Game world labels ---
 	"SPAWN": "出生点",
