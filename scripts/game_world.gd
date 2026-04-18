@@ -805,6 +805,35 @@ func _draw_enemies() -> void:
 				var my: float = ey + sin(ma) * (er + 3) * 0.5 + 2
 				draw_circle(Vector2(mx, my), 1.3, Color(0.5, 1.0, 0.7, 0.7))
 
+		# BURN DoT indicator — rising ember particles and orange body tint when
+		# the enemy has active burn stacks from Inferno Warlock hits.
+		var burn_stacks: int = e.get("burn_stacks", 0)
+		if burn_stacks > 0:
+			var burn_life: float = clampf(e.get("burn_timer", 0.0) / 3.0, 0.0, 1.0)
+			var burn_intensity: float = float(burn_stacks) / 4.0  # 0.25 to 1.0
+			# Orange-red body tint — stronger with more stacks
+			draw_circle(Vector2(ex, ey), er + 1, Color(1.0, 0.4, 0.08, 0.15 * burn_intensity * burn_life))
+			# Rising flame particles — more particles for more stacks
+			var n_flames: int = 1 + burn_stacks
+			for fi in range(n_flames):
+				var flame_seed: float = float(fi) * 2.3 + float(e["id"]) * 0.7
+				var flame_life: float = fmod(gt * 1.2 + flame_seed * 0.4, 1.5) / 1.5
+				var flame_x: float = ex + sin(flame_seed * 1.7 + gt * 2.5) * (er * 0.7)
+				var flame_y: float = ey + er * 0.3 - flame_life * (er + 10.0)
+				var flame_a: float = (1.0 - flame_life) * 0.65 * burn_intensity * burn_life
+				var flame_r: float = 1.2 + (1.0 - flame_life) * 1.5
+				# Flame core — bright orange-yellow
+				draw_circle(Vector2(flame_x, flame_y), flame_r, Color(1.0, 0.65, 0.12, flame_a))
+				# Flame outer glow — deeper red
+				draw_circle(Vector2(flame_x, flame_y), flame_r + 1.5, Color(1.0, 0.25, 0.05, flame_a * 0.35))
+			# Burn stack pips — small orange dots below the enemy showing stack count
+			var pip_y: float = ey + er + 4
+			var pip_start_x: float = ex - float(burn_stacks - 1) * 2.5
+			for pi in range(burn_stacks):
+				var pip_x: float = pip_start_x + float(pi) * 5.0
+				var pip_pulse: float = 0.7 + 0.3 * sin(gt * 6.0 + float(pi) * 1.5)
+				draw_circle(Vector2(pip_x, pip_y), 1.4, Color(1.0, 0.5, 0.1, 0.8 * pip_pulse * burn_life))
+
 		# Spawn fade-in portal effect
 		var spawn_t: float = e.get("spawn_timer", 0.0)
 		if spawn_t > 0:
@@ -2036,18 +2065,56 @@ func _draw_tower_model(tower: Dictionary, cx: float, cy: float, a: float) -> voi
 				draw_circle(Vector2(fx, fy), fsize + 1.2, Color(1.0, 0.45, 0.08, 0.25 * a))
 				draw_circle(Vector2(fx, fy), fsize, Color(1.0, 0.7, 0.25, (0.55 + cast_bloom * 0.4) * a))
 		"hades":
-			# Blue-purple support aura — pulses brighter during cast cycle
+			# Underworld throne aura — dark vortex with spectral pillars and
+			# necrotic ground runes. Pulses harder during buff cycle.
 			var is_buffing: bool = tower.get("buff_active_timer", 0.0) > 0
-			var aura_a: float = 0.15 if is_buffing else 0.06
-			draw_circle(Vector2(cx, cy + 2), 20, Color(0.3, 0.2, 0.8, aura_a * a))
-			# Runic symbols
-			for ri in range(3):
-				var ra: float = t * 0.6 + ri * TAU / 3.0
-				var rr: float = 16.0
+			var throne_pulse: float = 0.6 + 0.4 * sin(t * 2.5)
+			var buff_boost: float = 1.0 if not is_buffing else 1.6
+			var base := Vector2(cx, cy + 2)
+			# Dark vortex ground — layered concentric shadows
+			draw_circle(base, 22, Color(0.08, 0.02, 0.15, 0.18 * a * buff_boost))
+			draw_circle(base, 16, Color(0.12, 0.04, 0.22, 0.14 * a * buff_boost))
+			draw_circle(base, 10, Color(0.2, 0.08, 0.35, 0.12 * a * buff_boost))
+			# Outer throne ring — purple with slow counter-rotation
+			var throne_spin: float = -t * 0.35
+			draw_arc(base, 20, throne_spin, throne_spin + TAU, 32, Color(0.5, 0.2, 0.9, 0.3 * a * throne_pulse * buff_boost), 1.4)
+			# Inner broken ring — three segments with gaps (ritual circle)
+			for si in range(3):
+				var seg_a: float = t * 0.5 + si * TAU / 3.0
+				draw_arc(base, 14, seg_a, seg_a + TAU / 3.0 * 0.65, 10,
+					Color(0.7, 0.4, 1.0, 0.35 * a * throne_pulse * buff_boost), 1.1)
+			# Spectral pillars — 4 vertical energy columns rising from the ground
+			# around the throne base, giving a sense of an ethereal seat of power.
+			for pi in range(4):
+				var pa: float = t * 0.3 + pi * TAU / 4.0
+				var pillar_x: float = cx + cos(pa) * 18.0
+				var pillar_base_y: float = cy + sin(pa) * 18.0 * 0.45 + 2
+				var pillar_h: float = 16.0 + sin(t * 1.8 + pi * 1.4) * 3.0
+				var pillar_a: float = (0.25 + 0.15 * sin(t * 2.5 + pi * 0.9)) * a * buff_boost
+				# Pillar glow (wide, faint)
+				draw_line(Vector2(pillar_x, pillar_base_y), Vector2(pillar_x, pillar_base_y - pillar_h),
+					Color(0.45, 0.2, 0.85, pillar_a * 0.4), 4.0)
+				# Pillar core (thin, bright)
+				draw_line(Vector2(pillar_x, pillar_base_y), Vector2(pillar_x, pillar_base_y - pillar_h),
+					Color(0.75, 0.55, 1.0, pillar_a), 1.5)
+				# Pillar tip spark
+				draw_circle(Vector2(pillar_x, pillar_base_y - pillar_h), 1.8, Color(0.9, 0.7, 1.0, pillar_a * 1.2))
+			# Necrotic ground runes — 6-point hex inscribed on the floor
+			var rune_spin: float = t * 0.25
+			for ri in range(6):
+				var ra: float = rune_spin + ri * TAU / 6.0
+				var rr: float = 17.0
 				var rx: float = cx + cos(ra) * rr
 				var ry: float = cy + sin(ra) * rr * 0.4
-				var rp: float = 0.5 + 0.5 * sin(t * 3.0 + ri * 2.0)
-				draw_circle(Vector2(rx, ry), 1.5, Color(0.5, 0.35, 1.0, 0.4 * a * rp))
+				var rp: float = 0.45 + 0.55 * sin(t * 3.0 + ri * 1.05)
+				# Rune node
+				draw_circle(Vector2(rx, ry), 1.6, Color(0.6, 0.35, 1.0, 0.55 * a * rp * buff_boost))
+				# Connect to next node
+				var ra_next: float = rune_spin + (ri + 1) * TAU / 6.0
+				var nx: float = cx + cos(ra_next) * rr
+				var ny: float = cy + sin(ra_next) * rr * 0.4
+				draw_line(Vector2(rx, ry), Vector2(nx, ny),
+					Color(0.5, 0.25, 0.85, 0.2 * a * rp * buff_boost), 0.8)
 		"cocytus":
 			# Cold mist and frost aura
 			var pulse: float = 0.7 + 0.3 * sin(t * 2.0)
@@ -2196,26 +2263,62 @@ func _draw_tower_model(tower: Dictionary, cx: float, cy: float, a: float) -> voi
 				var ma: float = (1.0 - mp) * 0.25
 				draw_circle(Vector2(mx, my), 3.0, Color(0.7, 0.9, 1.0, a * ma))
 		"hades":
-			# Floating contract glyphs bound to the support tower by thin chains.
-			# Each glyph drifts on its own phase so they never land in unison.
-			for gi in range(3):
-				var ga: float = t * 0.9 + gi * TAU / 3.0
-				var gr: float = 10.0
-				var gx: float = cx + cos(ga) * gr
-				var gy: float = cy - 22 + sin(ga) * gr * 0.35
-				var gp: float = 0.45 + 0.55 * sin(t * 3.0 + float(gi) * 1.8)
-				# Chain tether — fades out along its length
-				draw_line(Vector2(cx, cy - 10), Vector2(gx, gy), Color(0.55, 0.4, 1.0, 0.18 * a * gp), 1.0)
-				# Outer runic glow
-				draw_circle(Vector2(gx, gy), 3.0, Color(0.55, 0.35, 1.0, 0.22 * a * gp))
-				# Glyph core — small diamond
-				var dpts := PackedVector2Array([
-					Vector2(gx, gy - 2.0),
-					Vector2(gx + 1.6, gy),
-					Vector2(gx, gy + 2.0),
-					Vector2(gx - 1.6, gy),
-				])
-				draw_colored_polygon(dpts, Color(0.85, 0.75, 1.0, 0.7 * a * gp))
+			# Spectral crown — a dark, jagged crown silhouette floats above the
+			# lord of the underworld. Three upward spikes with connecting arcs,
+			# orbited by soul wisps drawn to the crown's power. During buff
+			# cycles (buff_active_timer > 0) the crown flares and tendrils of
+			# dark energy reach down from it to the pillar tips.
+			var crown_cx: float = cx
+			var crown_cy: float = cy - 26 + sin(t * 1.4) * 0.7
+			var crown_r: float = 7.0
+			var is_casting: bool = tower.get("buff_active_timer", 0.0) > 0
+			var crown_boost: float = 1.0 if not is_casting else 1.5
+			var crown_pulse: float = 0.65 + 0.35 * sin(t * 3.0)
+			var crown_a: float = a * crown_pulse * crown_boost
+			# Crown spikes — 5 points alternating tall and short
+			var crown_pts := PackedVector2Array()
+			for ci in range(10):
+				var ca: float = float(ci) * TAU / 10.0 - PI / 2.0
+				var spike_r: float = crown_r if ci % 2 == 0 else crown_r * 0.55
+				crown_pts.append(Vector2(
+					crown_cx + cos(ca) * spike_r,
+					crown_cy + sin(ca) * spike_r * 0.55))
+			# Draw crown outline
+			for ci in range(crown_pts.size()):
+				var ni: int = (ci + 1) % crown_pts.size()
+				draw_line(crown_pts[ci], crown_pts[ni],
+					Color(0.6, 0.3, 1.0, 0.75 * crown_a), 1.3)
+			# Crown glow fill — dark purple semi-transparent
+			draw_colored_polygon(crown_pts, Color(0.25, 0.08, 0.45, 0.3 * crown_a))
+			# Bright gem at crown center
+			draw_circle(Vector2(crown_cx, crown_cy), 2.0, Color(0.85, 0.6, 1.0, 0.8 * crown_a))
+			draw_circle(Vector2(crown_cx, crown_cy), 1.0, Color(1, 0.9, 1, 0.95 * crown_a))
+			# Soul wisps orbiting the crown — 3 small spectral motes
+			for wi in range(3):
+				var wa: float = t * 1.8 + wi * TAU / 3.0
+				var wr: float = crown_r + 5.0 + sin(t * 2.2 + wi * 1.5) * 2.0
+				var wx: float = crown_cx + cos(wa) * wr
+				var wy: float = crown_cy + sin(wa) * wr * 0.4
+				draw_circle(Vector2(wx, wy), 1.5, Color(0.65, 0.4, 1.0, 0.5 * crown_a))
+				draw_circle(Vector2(wx, wy), 3.0, Color(0.45, 0.2, 0.8, 0.15 * crown_a))
+			# Tether from crown to model head
+			draw_line(Vector2(crown_cx, crown_cy + crown_r * 0.5), Vector2(cx, cy - 12),
+				Color(0.5, 0.25, 0.9, 0.14 * crown_a), 1.0)
+			# During buff: dark tendrils reaching outward from the crown
+			if is_casting:
+				for ti in range(4):
+					var ta: float = t * 1.2 + ti * TAU / 4.0
+					var tendril_len: float = 14.0 + sin(t * 3.0 + ti * 2.0) * 4.0
+					var tx: float = crown_cx + cos(ta) * tendril_len
+					var ty: float = crown_cy + sin(ta) * tendril_len * 0.5
+					# Midpoint with curve
+					var mid_x: float = crown_cx + cos(ta) * tendril_len * 0.5 + sin(t * 4.0 + ti) * 3.0
+					var mid_y: float = crown_cy + sin(ta) * tendril_len * 0.25 - 2.0
+					draw_line(Vector2(crown_cx, crown_cy), Vector2(mid_x, mid_y),
+						Color(0.5, 0.2, 0.85, 0.3 * a), 2.0)
+					draw_line(Vector2(mid_x, mid_y), Vector2(tx, ty),
+						Color(0.5, 0.2, 0.85, 0.2 * a), 1.5)
+					draw_circle(Vector2(tx, ty), 1.5, Color(0.75, 0.5, 1.0, 0.45 * a))
 
 func _draw_enemy_model(enemy: Dictionary, ex: float, ey: float, er: float, flash: bool) -> void:
 	var type_key: String = enemy["type"]
