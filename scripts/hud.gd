@@ -22,6 +22,8 @@ var dice_title_label: Label
 var dice_desc_label: Label
 var btn_dice_roll: Button
 var ti_name: Label
+var ti_desc: Label
+var ti_role: Label
 var ti_stats: Label
 var btn_upgrade: Button
 var btn_sell: Button
@@ -318,6 +320,17 @@ func _create_side_panel() -> void:
 	ti_name.add_theme_font_size_override("font_size", 13)
 	ti_name.add_theme_color_override("font_color", Color(1, 0.8, 0))
 	ti_vbox.add_child(ti_name)
+
+	ti_desc = Label.new()
+	ti_desc.add_theme_font_size_override("font_size", 10)
+	ti_desc.add_theme_color_override("font_color", Color(0.65, 0.6, 0.55))
+	ti_desc.autowrap_mode = TextServer.AUTOWRAP_WORD
+	ti_vbox.add_child(ti_desc)
+
+	ti_role = Label.new()
+	ti_role.add_theme_font_size_override("font_size", 10)
+	ti_role.add_theme_color_override("font_color", Color(0.5, 0.75, 0.9))
+	ti_vbox.add_child(ti_role)
 
 	ti_stats = Label.new()
 	ti_stats.add_theme_font_size_override("font_size", 11)
@@ -739,6 +752,22 @@ func _process(_dt: float) -> void:
 		var tw: Dictionary = GM.selected_tower
 		var data: Dictionary = Config.TOWER_DATA[tw["type"]]
 		ti_name.text = Locale.tf("tower_level", {"name": Locale.t(tw["name"]), "level": tw["level"]})
+		ti_desc.text = Locale.t(data["desc"])
+		# Tower role tag — short label indicating strategic function
+		var role_text: String = ""
+		if tw.get("is_global", false):
+			role_text = Locale.t("Role: Global Pulse — damages all enemies on screen")
+		elif tw.get("is_support", false):
+			role_text = Locale.t("Role: Support — buffs nearby towers and damages enemies")
+		elif tw.get("is_beam_cone", false):
+			role_text = Locale.t("Role: Area Denial — continuous frost cone in one direction")
+		elif tw.get("is_aoe", false):
+			role_text = Locale.t("Role: Swarm Clearer — AoE damage hits groups")
+		elif tw["type"] == "soul_reaper":
+			role_text = Locale.t("Role: Force Multiplier — slows enemies in aura range")
+		else:
+			role_text = Locale.t("Role: Single-Target DPS — fast reliable damage")
+		ti_role.text = role_text
 		var effective_dmg: float = tw["damage"] * tw["damage_mult"]
 		if GM.double_damage > 0:
 			effective_dmg *= 2.0

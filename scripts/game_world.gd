@@ -2207,6 +2207,31 @@ func _draw_tower_model(tower: Dictionary, cx: float, cy: float, a: float) -> voi
 			# and counter-rotating. When Lucifer pulses the global execute
 			# (fire_flash > 0) the halo flares white-hot and tilts sharply,
 			# reading as a charge surge rather than a static ornament.
+			#
+			# Pre-pulse charging: as cooldown approaches 0, energy converges
+			# inward — arcing tendrils collapse toward center, ground sigil
+			# brightens, and a low rumble glow intensifies. This gives the
+			# player a visual "tells" before the pulse fires.
+			var cooldown: float = tower.get("cooldown", 0.0)
+			var max_cd: float = 1.0 / maxf(0.01, tower.get("attack_speed", 0.3) * GM.perm_speed_buff * GM.temp_speed_buff)
+			var charge_t: float = clampf(1.0 - cooldown / maxf(0.01, max_cd), 0.0, 1.0)
+			# Converging energy tendrils — 6 arcs pulling inward as charge builds
+			if charge_t > 0.3:
+				var tend_a: float = (charge_t - 0.3) / 0.7  # 0→1 in the last 70% of charge
+				var tend_count: int = 6
+				for ti in range(tend_count):
+					var ta: float = float(ti) * TAU / float(tend_count) + t * 0.8
+					var start_r: float = 28.0 * (1.0 - tend_a * 0.6)
+					var end_r: float = 6.0
+					var sx: float = cx + cos(ta) * start_r
+					var sy: float = cy + sin(ta) * start_r * 0.5
+					var endx: float = cx + cos(ta) * end_r
+					var endy: float = cy + sin(ta) * end_r * 0.5
+					var t_col := Color(1.0, 0.5 + tend_a * 0.3, 0.1, tend_a * 0.35 * a)
+					draw_line(Vector2(sx, sy), Vector2(endx, endy), t_col, 1.0 + tend_a)
+				# Central charge glow intensifying
+				draw_circle(Vector2(cx, cy), 8.0 * charge_t, Color(1.0, 0.6, 0.15, charge_t * 0.18 * a))
+				draw_circle(Vector2(cx, cy), 4.0 * charge_t, Color(1.0, 0.8, 0.4, charge_t * 0.25 * a))
 			var halo_cx: float = cx
 			var halo_cy: float = cy - 24 + sin(t * 1.6) * 0.8
 			var halo_rx: float = 8.0
@@ -2353,11 +2378,31 @@ func _draw_enemy_model(enemy: Dictionary, ex: float, ey: float, er: float, flash
 			var pulse: float = 0.5 + 0.5 * sin(t * 3.0)
 			draw_arc(Vector2(ex, ey), er + 8, 0, TAU, 16, Color(1.0, 0.9, 0.4, 0.15 * pulse), 1.0)
 		"holy_sentinel":
-			# Protective dome
+			# Protective dome — layered shield with hexagonal facets and pulsing
+			# barrier lines. Communicates "invulnerability field generator" more
+			# clearly than a simple ring.
 			var pulse: float = 0.6 + 0.4 * sin(t * 2.0)
-			draw_arc(Vector2(ex, ey), er + 6, 0, TAU, 20, Color(0.5, 0.7, 1.0, 0.15 * pulse), 1.5)
-			# Inner dome glow — highlights on the front-facing half of the shield
+			# Outer barrier ring with energy nodes
+			draw_arc(Vector2(ex, ey), er + 8, 0, TAU, 24, Color(0.5, 0.7, 1.0, 0.12 * pulse), 1.8)
+			draw_arc(Vector2(ex, ey), er + 6, 0, TAU, 20, Color(0.5, 0.7, 1.0, 0.18 * pulse), 1.5)
+			# Inner dome glow — highlights on the front-facing half
 			draw_arc(Vector2(ex, ey), er + 4, PI * 0.85, PI * 1.45, 10, Color(0.8, 0.9, 1.0, 0.22 * pulse), 1.0)
+			# Hex barrier facets — 6 small shield nodes orbiting the dome
+			for hi in range(6):
+				var ha: float = t * 0.6 + hi * TAU / 6.0
+				var hx: float = ex + cos(ha) * (er + 7)
+				var hy: float = ey + sin(ha) * (er + 7) * 0.5
+				var node_a: float = 0.35 + 0.2 * sin(t * 3.5 + hi * 1.2)
+				draw_circle(Vector2(hx, hy), 1.8, Color(0.6, 0.8, 1.0, node_a * pulse))
+			# Shield emblem — a small diamond shape at the sentinel's center
+			var emblem_r: float = 3.5
+			var emblem_pts := PackedVector2Array([
+				Vector2(ex, ey - emblem_r),
+				Vector2(ex + emblem_r * 0.6, ey),
+				Vector2(ex, ey + emblem_r),
+				Vector2(ex - emblem_r * 0.6, ey),
+			])
+			draw_colored_polygon(emblem_pts, Color(0.6, 0.8, 1.0, 0.15 * pulse))
 		"zeus":
 			# Storm cloud wisps
 			for ci in range(3):
@@ -2382,6 +2427,21 @@ func _draw_enemy_model(enemy: Dictionary, ex: float, ey: float, er: float, flash
 		"seraph_scout":
 			# Golden halo
 			draw_arc(Vector2(ex, ey - er - 2), 4, 0, TAU, 12, Color(1, 0.9, 0.4, 0.6), 1.0)
+		"crusader":
+			# Armored knight effects — shield glint and tabard cross emblem.
+			# Reinforces "disciplined soldier" fiction with subtle military details.
+			var cross_y: float = ey - er * 0.1
+			var cross_pulse: float = 0.4 + 0.15 * sin(t * 2.5 + float(enemy["id"]) * 0.5)
+			var cross_col := Color(0.95, 0.95, 0.95, cross_pulse)
+			draw_line(Vector2(ex - 2.5, cross_y), Vector2(ex + 2.5, cross_y), cross_col, 1.3)
+			draw_line(Vector2(ex, cross_y - 3.0), Vector2(ex, cross_y + 3.0), cross_col, 1.3)
+			# Periodic shield glint — a bright flash that sweeps across
+			var glint_phase: float = fmod(t * 0.7 + float(enemy["id"]) * 0.3, 3.0)
+			if glint_phase < 0.3:
+				var glint_a: float = sin(glint_phase / 0.3 * PI) * 0.55
+				var glint_x: float = ex - er + glint_phase / 0.3 * er * 2.0
+				draw_line(Vector2(glint_x, ey - er * 0.6), Vector2(glint_x + 2, ey + er * 0.3),
+					Color(1.0, 1.0, 0.95, glint_a), 1.5)
 		"swift_ranger":
 			# Speed afterimage
 			for si in range(2):
@@ -2389,10 +2449,28 @@ func _draw_enemy_model(enemy: Dictionary, ex: float, ey: float, er: float, flash
 				var sa: float = 0.15 - float(si) * 0.06
 				draw_texture_rect(tex, Rect2(ex - half - off, ey - half - 4, draw_size, draw_size), false, Color(tint.r, tint.g, tint.b, sa))
 		"war_titan":
-			# Angry eye glow
+			# Imposing war presence — angry eye glow, ground tremor dust, and
+			# a heavy aura that communicates "this enemy hits hard and takes hits."
+			# Angry eye glow (enhanced with pulsing outer bloom)
 			var glow_a: float = 0.5 + 0.3 * sin(t * 5.0)
+			draw_circle(Vector2(ex - 2, ey - er * 0.3), 3.5, Color(1.0, 0.2, 0.0, glow_a * 0.2))
 			draw_circle(Vector2(ex - 2, ey - er * 0.3), 2.0, Color(1.0, 0.3, 0.1, glow_a))
+			draw_circle(Vector2(ex + 2, ey - er * 0.3), 3.5, Color(1.0, 0.2, 0.0, glow_a * 0.2))
 			draw_circle(Vector2(ex + 2, ey - er * 0.3), 2.0, Color(1.0, 0.3, 0.1, glow_a))
+			# Ground tremor dust — small dust puffs kicked up at the titan's feet
+			# that cycle with a walking cadence, selling the unit's mass.
+			for di in range(3):
+				var dust_seed: float = float(di) * 1.9 + float(enemy["id"]) * 0.4
+				var dust_life: float = fmod(t * 1.8 + dust_seed, 1.2) / 1.2
+				var dust_x: float = ex + sin(dust_seed * 3.7) * (er + 2.0)
+				var dust_y: float = ey + er * 0.6 - dust_life * 6.0
+				var dust_a: float = (1.0 - dust_life) * 0.35
+				var dust_r: float = 1.5 + dust_life * 2.5
+				draw_circle(Vector2(dust_x, dust_y), dust_r, Color(0.7, 0.55, 0.35, dust_a))
+			# Heavy stance aura — faint orange ring at feet showing mass/threat
+			var stance_pulse: float = 0.4 + 0.2 * sin(t * 2.0 + float(enemy["id"]))
+			draw_arc(Vector2(ex, ey + er * 0.3), er + 2, 0, TAU, 16,
+				Color(1.0, 0.5, 0.2, stance_pulse * 0.18), 1.5)
 		"grand_paladin":
 			# Golden crown glow
 			for ci in range(3):
