@@ -22,19 +22,18 @@ const SELL_REFUND := 0.65
 
 const PROJECTILE_SPEED := 280.0
 
-const WAVE_HP_COMPOUND := 1.08   # ×1.08 enemy HP per wave (compound growth)
+const WAVE_HP_COMPOUND := 1.12   # ×1.12 enemy HP per wave (compound growth)
 const WAVE_SPD_COMPOUND := 1.015 # ×1.015 speed per wave (compound growth)
 const SCALE_START_WAVE := 2      # scaling kicks in after this wave
 # Milestone bump: every N waves, HP takes extra ×M jump on top of compound.
 # Makes waves 5/10/15/20 feel like real step-ups instead of a flat curve.
 const WAVE_HP_STEP_EVERY := 5
-const WAVE_HP_STEP_MULT := 1.15
+const WAVE_HP_STEP_MULT := 1.25
 # powHPG: kill rewards & wave bonus scale with pow(hp_scale, REWARD_POW_HPG).
 # 0.85 per YYZ-Productions / gamedeveloper.com TD balance research —
 # income grows slower than HP, but fast enough to enable a new tower / upgrade every 1-2 waves.
 const REWARD_POW_HPG := 0.85
 
-const PACT_EVERY := 5
 
 # ═══════════════════════════════════════════════════════
 # COLORS
@@ -155,7 +154,7 @@ var TOWER_DATA := {
 	"cocytus": {
 		"name": "Cocytus",
 		"desc": "Continuous frost cone — always casting in one direction",
-		"damage": 5.0,
+		"damage": 3.5,
 		"range": 240.0,
 		"attack_speed": 1.0,
 		"is_aoe": false,
@@ -196,7 +195,7 @@ var ENEMY_DATA := {
 	"swift_ranger": {"name": "Swift Ranger", "hp": 28.0, "speed": 130.0, "core_dmg": 5, "is_boss": false, "color": Color(0.267, 0.867, 1.0), "radius": 8.0, "sin_reward": 6},
 	"war_titan": {"name": "War Titan", "hp": 110.0, "speed": 38.0, "core_dmg": 14, "is_boss": false, "color": Color(1.0, 0.533, 0.267), "radius": 11.0, "sin_reward": 15},
 	"grand_paladin": {"name": "Grand Paladin", "hp": 280.0, "speed": 42.0, "core_dmg": 30, "is_boss": true, "color": Color(1.0, 0.8, 0.0), "radius": 13.0, "sin_reward": 30},
-	"temple_cleric": {"name": "Temple Cleric", "hp": 32.0, "speed": 60.0, "core_dmg": 4, "is_boss": false, "color": Color(0.533, 1.0, 0.533), "radius": 8.0, "sin_reward": 8},
+	"temple_cleric": {"name": "Temple Cleric", "hp": 32.0, "speed": 60.0, "core_dmg": 4, "is_boss": false, "color": Color(0.533, 1.0, 0.533), "radius": 8.0, "sin_reward": 8, "heal_aura_radius": 80.0, "heal_aura_pct": 0.02},
 	"archangel_marshal": {"name": "Archangel Marshal", "hp": 55.0, "speed": 42.0, "core_dmg": 10, "is_boss": false, "color": Color(1.0, 0.9, 0.5), "radius": 10.0, "sin_reward": 22},
 	"holy_sentinel": {"name": "Holy Sentinel", "hp": 65.0, "speed": 38.0, "core_dmg": 8, "is_boss": false, "color": Color(0.6, 0.8, 1.0), "radius": 10.0, "sin_reward": 25},
 	"archangel_michael": {"name": "Archangel Michael", "hp": 200.0, "speed": 35.0, "core_dmg": 25, "is_boss": true, "color": Color(1.0, 0.95, 0.8), "radius": 12.0, "sin_reward": 25},
@@ -263,14 +262,6 @@ func get_dice_outcome(total: int, current_wave: int) -> Dictionary:
 		return DICE_OUTCOMES_EARLY[total]
 	return DICE_OUTCOMES[total]
 
-var PACT_POOL := [
-	{"name": "Blood Rage", "benefit": "All towers 2x damage for 3 waves", "cost_desc": "Core loses 20 HP", "b_effect": "double_dmg_3", "c_effect": "core_-20"},
-	{"name": "Infernal Discount", "benefit": "Next 2 towers are free", "cost_desc": "Enemies 30% faster for 2 waves", "b_effect": "free_towers_2", "c_effect": "fast_enemy_2"},
-	{"name": "Soul Harvest", "benefit": "Double sin income for 1 wave", "cost_desc": "Enemies 20% faster for 2 waves", "b_effect": "double_sins_1", "c_effect": "fast_enemy_2"},
-	{"name": "Hellfire Rain", "benefit": "Instant massive AoE to all enemies", "cost_desc": "All towers disabled 10 seconds", "b_effect": "massive_aoe", "c_effect": "disable_10s"},
-	{"name": "Demonic Fervor", "benefit": "All towers +30% attack speed (perm)", "cost_desc": "Core max HP reduced by 30", "b_effect": "speed_30_perm", "c_effect": "core_max_-30"},
-	{"name": "Sin Amplifier", "benefit": "All sin earnings doubled for 3 waves", "cost_desc": "All current sins halved", "b_effect": "double_earn_3", "c_effect": "halve_sins"},
-]
 
 var RELIC_LOOT := [
 	{"name": "Hellfire Bomb", "weight": 31, "type": "aoe", "value": 50},
@@ -312,15 +303,18 @@ func _init_path() -> void:
 	path_set.clear()
 	path_pixels.clear()
 	for cell in MAP_PATH:
-		var key := str(cell.x) + "," + str(cell.y)
+		var key := tile_key(cell.x, cell.y)
 		path_set[key] = true
 		path_pixels.append(Vector2(
 			cell.x * TILE_SIZE + TILE_SIZE / 2.0,
 			cell.y * TILE_SIZE + TILE_SIZE / 2.0
 		))
 
+func tile_key(col: int, row: int) -> String:
+	return str(col) + "," + str(row)
+
 func is_path(col: int, row: int) -> bool:
-	return path_set.has(str(col) + "," + str(row))
+	return path_set.has(tile_key(col, row))
 
 func spawn_pixel() -> Vector2:
 	var first := MAP_PATH[0]

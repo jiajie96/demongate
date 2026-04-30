@@ -130,14 +130,6 @@ var _templates: Dictionary = {
 		"en": "{name} cursed!",
 		"zh": "{name} 被诅咒了！",
 	},
-	"pact_accepted_notify": {
-		"en": "Pact accepted: {name}",
-		"zh": "已接受契约: {name}",
-	},
-	"pact_button": {
-		"en": "{name}\n+ {benefit}\n- {cost_desc}",
-		"zh": "{name}\n+ {benefit}\n- {cost_desc}",
-	},
 	# Dice templates
 	"dice_title": {
 		"en": "DEVIL'S DICE ({count})",
@@ -155,6 +147,10 @@ var _templates: Dictionary = {
 		"en": "Free tower! ({count} left)",
 		"zh": "免费建塔！(剩余{count})",
 	},
+	"legendary_upgrade": {
+		"en": "Legendary! {name} upgraded to Lv.{level}!",
+		"zh": "传说！{name} 升级到等级{level}！",
+	},
 }
 
 # ═══════════════════════════════════════════════════════
@@ -169,15 +165,11 @@ var _zh: Dictionary = {
 	"TRY AGAIN": "再试一次",
 	"HELL ENDURES!": "地狱永存！",
 	"PLAY AGAIN": "再来一局",
-	"DEMONIC PACT": "恶魔契约",
-	"Choose a pact — great power at great cost.": "选择一个契约 - 强大力量，沉重代价。",
-	"No Deal": "拒绝交易",
-
 	# --- HUD labels ---
 	"TOWERS": "塔防",
 	"SEND NEXT WAVE": "发送下一波",
 	"MAX LEVEL": "最高等级",
-	"Right-click: Deselect | Tab: Overview\nSpace: Skip Timer | Esc: Cancel": "右键：取消选择 | Tab：总览\n空格：跳过等待 | Esc：取消",
+	"4-9: Towers | U: Upgrade | X: Sell | T: Target | P: Pause\nSpace: Skip | Tab: Overview | D: Dice | Esc: Cancel": "4-9：选塔 | U：升级 | X：出售 | T：目标 | P：暂停\n空格：跳过 | Tab：总览 | D：骰子 | Esc：取消",
 
 	# --- Dice UI ---
 	"DEVIL'S DICE": "恶魔骰子",
@@ -205,8 +197,6 @@ var _zh: Dictionary = {
 	"Slow Curse": "减速诅咒",
 	"Tremor": "微震",
 	"Devil's Tax": "恶魔税",
-	"Demonic Pact offered!": "恶魔契约来了！",
-
 	# --- Settings popup ---
 	"SETTINGS": "设置",
 	"Pause": "暂停",
@@ -275,36 +265,10 @@ var _zh: Dictionary = {
 	"BOSS: Heaven's last stand — all heroes": "首领：天堂的最后一战——全英雄出击",
 	"Michael's divine shield protects all!": "米迦勒的神盾保护了所有人！",
 
-	# --- Pact names ---
-	"Blood Rage": "血怒",
-	"Infernal Discount": "地狱折扣",
-	"Soul Harvest": "灵魂收割",
-	"Hellfire Rain": "地狱火雨",
-	"Demonic Fervor": "恶魔狂热",
-	"Sin Amplifier": "罪孽放大器",
-
-	# --- Pact benefits ---
-	"All towers 2x damage for 3 waves": "所有塔3波内伤害翻倍",
-	"Next 2 towers are free": "接下来2座塔免费",
-	"Double sin income for 1 wave": "1波内罪孽收入翻倍",
-	"Instant massive AoE to all enemies": "对所有敌人造成大范围伤害",
-	"All towers +30% attack speed (perm)": "所有塔攻击速度永久+30%",
-	"All sin earnings doubled for 3 waves": "3波内所有罪孽收入翻倍",
-
-	# --- Pact costs ---
-	"Core loses 20 HP": "核心失去20生命值",
-	"Enemies 30% faster for 2 waves": "敌人2波内速度增加30%",
-	"Enemies 20% faster for 2 waves": "敌人2波内速度增加20%",
-	"All towers disabled 10 seconds": "所有塔禁用10秒",
-	"Core max HP reduced by 30": "核心最大生命值减少30",
-	"All current sins halved": "当前所有罪孽减半",
-
 	# --- Dice outcomes ---
 	"Tithe": "献金",
 	"Demonic Surge": "恶魔涌潮",
 	"Hellstorm": "地狱风暴",
-	"Hellfire Rain will strike 3 times next wave!": "下一波地狱火雨将轰击3次！",
-	"Hellfire Rain strikes!": "地狱火雨轰击！",
 	"Backfire": "反噬",
 	"Earthquake": "地震",
 	"DEVIL'S BETRAYAL": "恶魔背叛",
@@ -320,10 +284,22 @@ var _zh: Dictionary = {
 	"Trojan Relic": "特洛伊遗物",
 	"Pandora's True Gift": "潘多拉的真礼物",
 
+	# --- Relic effect messages ---
+	"Corruption Wave! All enemies slowed!": "腐化之波！所有敌人被减速！",
+	"Time Warp! Enemies crawl for 5 seconds!": "时间扭曲！敌人缓行5秒！",
+	"Time Warp faded": "时间扭曲消退",
+	"All towers maxed! +80 Sins instead": "所有塔已满级！替换为+80罪孽",
+	"Pandora grants 2x damage for 1 wave!": "潘多拉赐予1波2倍伤害！",
+	"Pandora grants 100 Sins!": "潘多拉赐予100罪孽！",
+	"PANDORA'S TRUE GIFT": "潘多拉的真礼物",
+	"Choose your reward wisely.": "明智地选择你的奖励。",
+	"2x Damage (1 wave)": "2倍伤害（1波）",
+	"+100 Sins": "+100 罪孽",
+	"Next:": "下一波：",
+
 	# --- Notification messages ---
 	"A Fallen Hero has joined your cause!": "一位堕落英雄加入了你的阵营！",
 	"Prepare your defenses!": "准备你的防御！",
-	"No deal.": "拒绝交易。",
 	"Trojan Relic! Elite enemies spawned!": "特洛伊遗物！精锐敌人出现！",
 	"Only one Lucifer allowed!": "只能拥有一个路西法！",
 	"Not enough sins!": "罪孽不足！",

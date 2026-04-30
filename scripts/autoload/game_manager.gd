@@ -4,7 +4,7 @@ extends Node
 # SIGNALS
 # ═══════════════════════════════════════════════════════
 signal notification_added(text: String, color: Color)
-signal pact_offered(choices: Array)
+
 
 # ═══════════════════════════════════════════════════════
 # GAME STATE
@@ -39,8 +39,6 @@ var wave_desc: String = ""
 
 var dice_uses_left: int = 2
 
-var show_pact: bool = false
-var pact_choices: Array = []
 var show_dice_result: bool = false
 var dice_result: Dictionary = {}
 var dice_result_timer: float = 0.0
@@ -66,8 +64,9 @@ var screen_shake_intensity: float = 0.0
 var speed_buff_timer: float = 0.0
 var speed_buff_factor: float = 1.0  # what was multiplied, divide to undo
 var game_speed: float = 1.0
-var hellfire_strikes_left: int = 0    # Hellfire Rain pact: strikes remaining for next wave
-var hellfire_strike_timer: float = 0.0
+var time_warp_timer: float = 0.0
+var time_warp_prev_speed: float = 1.0
+var pending_pandora_choice: bool = false
 
 # Wave announcement banner — cinematic title card shown when a wave starts.
 # Counts down from its initial value; game_world reads it each frame to draw
@@ -81,6 +80,10 @@ var wave_banner_desc: String = ""
 var wave_banner_is_boss: bool = false
 
 var _next_id: int = 0
+
+# Per-frame cache for _has_alive_type — cleared at start of each update cycle.
+var _alive_type_cache: Dictionary = {}
+
 
 # ═══════════════════════════════════════════════════════
 # RESET
@@ -109,8 +112,6 @@ func reset_state() -> void:
 	between_wave_timer = Config.FIRST_WAVE_DELAY
 	wave_desc = "Prepare your defenses!"  # translated at display point
 	dice_uses_left = Config.DICE_MAX_USES
-	show_pact = false
-	pact_choices.clear()
 	show_dice_result = false
 	dice_result = {}
 	dice_result_timer = 0.0
@@ -134,13 +135,15 @@ func reset_state() -> void:
 	speed_buff_factor = 1.0
 	game_speed = 1.0
 	Engine.time_scale = 1.0
-	hellfire_strikes_left = 0
-	hellfire_strike_timer = 0.0
+	time_warp_timer = 0.0
+	time_warp_prev_speed = 1.0
+	pending_pandora_choice = false
 	wave_banner_timer = 0.0
 	wave_banner_num = 0
 	wave_banner_desc = ""
 	wave_banner_is_boss = false
 	_next_id = 0
+	_alive_type_cache.clear()
 
 func set_game_speed(speed: float) -> void:
 	game_speed = speed
@@ -293,7 +296,7 @@ func sell_tower(tower: Dictionary) -> void:
 		if towers[i]["id"] == tower["id"]:
 			towers.remove_at(i)
 			break
-	occupied_tiles.erase(str(tower["col"]) + "," + str(tower["row"]))
+	occupied_tiles.erase(Config.tile_key(tower["col"], tower["row"]))
 	if selected_tower != null and selected_tower["id"] == tower["id"]:
 		selected_tower = null
 	notify(Locale.tf("sold_tower", {"name": Locale.t(tower["name"])}), Color(0.667, 0.667, 0.667))
@@ -309,7 +312,7 @@ func is_buildable(col: int, row: int) -> bool:
 		return false
 	if Config.is_path(col, row):
 		return false
-	if occupied_tiles.has(str(col) + "," + str(row)):
+	if occupied_tiles.has(Config.tile_key(col, row)):
 		return false
 	return true
 
@@ -351,10 +354,18 @@ func create_enemy(type: String) -> Dictionary:
 	}
 
 func _has_alive_type(etype: String) -> bool:
+	if _alive_type_cache.has(etype):
+		return _alive_type_cache[etype]
+	var result := false
 	for e in enemies:
 		if e["alive"] and e["type"] == etype:
-			return true
-	return false
+			result = true
+			break
+	_alive_type_cache[etype] = result
+	return result
+
+func clear_alive_type_cache() -> void:
+	_alive_type_cache.clear()
 
 func _is_guardian_protected(enemy: Dictionary) -> bool:
 	if enemy["type"] == "holy_sentinel":
@@ -429,7 +440,7 @@ func update_enemies(dt: float) -> void:
 	if nec_towers.size() > 0:
 		nec_aura_slow = Config.TOWER_DATA["soul_reaper"].get("aura_slow", 0.0)
 
-	# Process Michael, Zeus, and Raphael abilities
+	# Process Michael, Zeus, Raphael, and Temple Cleric abilities
 	for e in enemies:
 		if not e["alive"]:
 			continue
@@ -442,6 +453,19 @@ func update_enemies(dt: float) -> void:
 					_zeus_lightning(e)
 				elif e["type"] == "archangel_raphael":
 					_raphael_heal(e)
+		# Temple Cleric passive heal aura — heals nearby allies 2% max HP/s
+		elif e["type"] == "temple_cleric":
+			var cleric_data: Dictionary = Config.ENEMY_DATA["temple_cleric"]
+			var aura_r2: float = cleric_data["heal_aura_radius"] * cleric_data["heal_aura_radius"]
+			var heal_rate: float = cleric_data["heal_aura_pct"]
+			for ally in enemies:
+				if not ally["alive"] or ally == e:
+					continue
+				var adx: float = ally["x"] - e["x"]
+				var ady: float = ally["y"] - e["y"]
+				if adx * adx + ady * ady <= aura_r2:
+					var heal: float = ally["max_hp"] * heal_rate * dt
+					ally["hp"] = minf(ally["hp"] + heal, ally["max_hp"])
 
 	var i := enemies.size() - 1
 	while i >= 0:
@@ -863,7 +887,7 @@ func _cocytus_cone(tower: Dictionary, dt: float) -> void:
 	var fy: float = sin(eff_facing)
 	var has_cmd := _has_alive_type("archangel_marshal")
 	var corruption: float = Config.TOWER_DATA["hades"].get("corruption_mult", 1.0)
-	var hit_any := false
+	var _hit_any := false
 	for e in enemies:
 		if not e["alive"]:
 			continue
@@ -901,7 +925,7 @@ func _cocytus_cone(tower: Dictionary, dt: float) -> void:
 		# REDESIGN: frost state instead of white flash — snowflake icon + slow
 		e["frost_timer"] = 0.3
 		tower["total_damage"] = tower.get("total_damage", 0.0) + tick_dmg
-		hit_any = true
+		_hit_any = true
 		if e["hp"] <= 0:
 			combat_kill(e, tower)
 	# Periodic frost spike emit inside cone for visual continuity
@@ -1032,6 +1056,11 @@ func start_wave() -> void:
 	shake(2.0, 0.15)
 
 func update_waves(dt: float) -> void:
+	if time_warp_timer > 0:
+		time_warp_timer -= dt
+		if time_warp_timer <= 0:
+			set_game_speed(time_warp_prev_speed)
+			notify(Locale.t("Time Warp faded"), Color(0.5, 0.5, 0.5))
 	if wave_active:
 		spawn_timer -= dt
 		if spawn_timer <= 0 and spawn_queue.size() > 0:
@@ -1040,27 +1069,10 @@ func update_waves(dt: float) -> void:
 			var wave_def: Dictionary = Config.WAVE_DATA[wave - 1]
 			spawn_timer = wave_def["interval"]
 
-		# Hellfire Rain pact: multiple strikes spread across the wave (3s, 8s, 13s in)
-		if hellfire_strikes_left > 0:
-			hellfire_strike_timer -= dt
-			if hellfire_strike_timer <= 0:
-				for e in enemies:
-					if e["alive"]:
-						e["hp"] -= e["max_hp"] * 0.30
-						e["flash_timer"] = 0.3
-						if e["hp"] <= 0:
-							e["alive"] = false
-							stats["enemies_killed"] += 1
-							earn_from_kill(e["type"], true)
-				add_effect("screen_flash", 0, 0, 0, Color(1.0, 0.2, 0.0))
-				notify(Locale.t("Hellfire Rain strikes!"), Color(1.0, 0.4, 0.0))
-				hellfire_strikes_left -= 1
-				hellfire_strike_timer = 5.0  # next strike 5s later
-
 		if spawn_queue.size() == 0 and enemies.size() == 0:
 			complete_wave()
 	else:
-		if phase == "playing" and not show_pact:
+		if phase == "playing":
 			between_wave_timer -= dt
 			if between_wave_timer <= 0:
 				start_wave()
@@ -1092,10 +1104,22 @@ func complete_wave() -> void:
 		Audio.play_music_stinger("victory")
 		return
 
-	if wave % Config.PACT_EVERY == 0:
-		offer_pact()
-
 	between_wave_timer = Config.BETWEEN_WAVE_DELAY
+
+# ═══════════════════════════════════════════════════════
+# GAMBLING — HELPERS
+# ═══════════════════════════════════════════════════════
+func _damage_all_percent(pct: float, flash_time: float) -> void:
+	for e in enemies:
+		if e["alive"]:
+			var dmg: float = e["max_hp"] * pct
+			e["hp"] -= dmg
+			e["flash_timer"] = flash_time
+			if e["hp"] <= 0:
+				e["alive"] = false
+				stats["enemies_killed"] += 1
+				earn_from_kill(e["type"], true)
+				add_effect("death", e["x"], e["y"], e["radius"], e["color"])
 
 # ═══════════════════════════════════════════════════════
 # GAMBLING — DEVIL'S DICE
@@ -1122,26 +1146,10 @@ func roll_dice() -> Dictionary:
 		"surge":
 			_apply_speed_buff(1.8, 15.0)
 		"aoe_25":
-			for e in enemies:
-				if e["alive"]:
-					var dmg: float = e["max_hp"] * 0.25
-					e["hp"] -= dmg
-					e["flash_timer"] = 0.2
-					if e["hp"] <= 0:
-						e["alive"] = false
-						stats["enemies_killed"] += 1
-						earn_from_kill(e["type"], true)
+			_damage_all_percent(0.25, 0.2)
 			add_effect("screen_flash", 0, 0, 0, Color(1.0, 0.4, 0.0))
 		"aoe_10":
-			for e in enemies:
-				if e["alive"]:
-					var dmg: float = e["max_hp"] * 0.10
-					e["hp"] -= dmg
-					e["flash_timer"] = 0.15
-					if e["hp"] <= 0:
-						e["alive"] = false
-						stats["enemies_killed"] += 1
-						earn_from_kill(e["type"], true)
+			_damage_all_percent(0.10, 0.15)
 			add_effect("screen_flash", 0, 0, 0, Color(1.0, 0.6, 0.2))
 		"speed_boost":
 			_apply_speed_buff(1.3, 10.0)
@@ -1209,69 +1217,51 @@ func drop_relic(rx: float, ry: float) -> void:
 				strongest["is_disabled"] = true
 				strongest["disable_timer"] = 10.0
 				notify(Locale.tf("tower_cursed", {"name": Locale.t(strongest["name"])}), Color(0.8, 0.2, 0.2))
+		"mass_corrupt":
+			for e in enemies:
+				if e["alive"]:
+					e["slow_amount"] = 0.3
+					e["slow_timer"] = 5.0
+			notify(Locale.t("Corruption Wave! All enemies slowed!"), Color(0.6, 0.2, 0.8))
+		"rewind":
+			time_warp_timer = 5.0
+			time_warp_prev_speed = game_speed
+			set_game_speed(game_speed * 0.35)
+			notify(Locale.t("Time Warp! Enemies crawl for 5 seconds!"), Color(0.3, 0.6, 1.0))
+		"legendary":
+			var best_tower = null
+			var best_val := -1.0
+			for t in towers:
+				if t["level"] < Config.MAX_TOWER_LEVEL:
+					var val: float = t["damage"] * t["damage_mult"] * t["attack_speed"]
+					if val > best_val:
+						best_val = val
+						best_tower = t
+			if best_tower != null:
+				best_tower["level"] += 1
+				best_tower["damage"] *= Config.UPGRADE_MULT
+				best_tower["range"] *= 1.1
+				best_tower["attack_speed"] *= 1.15
+				notify(Locale.tf("legendary_upgrade", {"name": Locale.t(best_tower["name"]), "level": best_tower["level"]}), Color(1.0, 0.85, 0.0))
+			else:
+				earn(80)
+				notify(Locale.t("All towers maxed! +80 Sins instead"), Color(0.8, 0.267, 1.0))
+		"choice":
+			pending_pandora_choice = true
 		"trap":
 			enemies.append(create_enemy("war_titan"))
 			notify(Locale.t("Trojan Relic! Elite enemy spawned!"), Color(0.8, 0.2, 0.2))
-		_:
-			earn(30)
 
-# ═══════════════════════════════════════════════════════
-# GAMBLING — PACTS
-# ═══════════════════════════════════════════════════════
-func offer_pact() -> void:
-	var pool := Config.PACT_POOL.duplicate()
-	pool.shuffle()
-	pact_choices = pool.slice(0, 3)
-	show_pact = true
-	pact_offered.emit(pact_choices)
-
-func accept_pact(pact: Dictionary) -> void:
-	match pact["b_effect"]:
-		"double_dmg_3":
-			double_damage = 3
-		"free_towers_2":
-			free_towers = 2
-		"double_sins_1":
-			sin_multiplier = 2.0
-			sin_mult_waves = 1
-		"massive_aoe":
-			hellfire_strikes_left = 3
-			hellfire_strike_timer = 3.0  # first strike 3s into next wave
-			notify(Locale.t("Hellfire Rain will strike 3 times next wave!"), Color(1.0, 0.4, 0.0))
-		"speed_30_perm":
-			perm_speed_buff += 0.3
-		"double_earn_3":
-			sin_multiplier = 2.0
-			sin_mult_waves = 3
-
-	match pact["c_effect"]:
-		"core_-20":
-			core_hp = maxf(0, core_hp - 20)
-			if core_hp <= 0:
-				phase = "gameover"
-				Audio.play_music_stinger("defeat")
-		"fast_enemy_2":
-			fast_enemy_waves = 2
-		"disable_10s":
-			for t in towers:
-				t["is_disabled"] = true
-				t["disable_timer"] = 10.0
-		"core_max_-30":
-			core_max_hp -= 30
-			core_hp = minf(core_hp, core_max_hp)
-		"halve_sins":
-			@warning_ignore("integer_division")
-			sins = sins / 2
-
-	notify(Locale.tf("pact_accepted_notify", {"name": Locale.t(pact["name"])}), Color(0.8, 0.267, 1.0))
+func accept_pandora_choice(choice: int) -> void:
+	pending_pandora_choice = false
 	Audio.play_sfx("pact_accept")
-	show_pact = false
-	between_wave_timer = Config.BETWEEN_WAVE_DELAY
+	if choice == 0:
+		double_damage = maxi(double_damage, 1)
+		notify(Locale.t("Pandora grants 2x damage for 1 wave!"), Color(1.0, 0.85, 0.0))
+	else:
+		earn(100)
+		notify(Locale.t("Pandora grants 100 Sins!"), Color(0.8, 0.267, 1.0))
 
-func decline_pact() -> void:
-	show_pact = false
-	between_wave_timer = Config.BETWEEN_WAVE_DELAY
-	notify(Locale.t("No deal."), Color(0.533, 0.533, 0.533))
 
 # ═══════════════════════════════════════════════════════
 # EFFECTS & NOTIFICATIONS

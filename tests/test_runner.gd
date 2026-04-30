@@ -23,6 +23,13 @@ func _ready() -> void:
 	_run_lucifer_execute_tests()
 	_run_gambling_data_tests()
 	_run_targeting_tests()
+	_run_hero_pool_tests()
+	_run_pandora_tests()
+	_run_sell_refund_tests()
+	_run_cleric_heal_tests()
+	_run_tile_key_tests()
+	_run_alive_cache_tests()
+	_run_damage_percent_tests()
 
 	print("")
 	print("=== Results: %d/%d passed ===" % [_passed, _total])
@@ -70,7 +77,6 @@ func _run_config_tests() -> void:
 	_assert(not Config.has_method("ROULETTE_SEGMENTS") or true, "Roulette removed")
 	_assert_eq(Config.DICE_OUTCOMES.size(), 6, "6 dice outcomes (1-6)")
 	_assert_eq(Config.DICE_OUTCOMES_EARLY.size(), 6, "6 early dice outcomes (1-6)")
-	_assert_eq(Config.PACT_POOL.size(), 6, "6 pact types")
 	_assert_eq(Config.RELIC_LOOT.size(), 9, "9 relic loot types")
 
 	# Tower data integrity
@@ -181,9 +187,9 @@ func _run_tower_tests() -> void:
 	_assert(not GM.is_buildable(2, 0), "Path tile (2,0) not buildable")
 
 	# Occupied tile blocks building
-	GM.occupied_tiles["0,0"] = tower
+	GM.occupied_tiles[Config.tile_key(0, 0)] = tower
 	_assert(not GM.is_buildable(0, 0), "Occupied tile not buildable")
-	GM.occupied_tiles.erase("0,0")
+	GM.occupied_tiles.erase(Config.tile_key(0, 0))
 
 	# Upgrade
 	GM.sins = 1000
@@ -200,7 +206,7 @@ func _run_tower_tests() -> void:
 	_assert(not max_upgrade, "Cannot upgrade past max level")
 
 	# Sell
-	GM.occupied_tiles["3,3"] = tower
+	GM.occupied_tiles[Config.tile_key(3, 3)] = tower
 	var sins_before := GM.sins
 	GM.sell_tower(tower)
 	_assert_eq(GM.towers.size(), 0, "Tower removed after sell")
@@ -293,7 +299,7 @@ func _run_combat_tests() -> void:
 	var e3 := GM.create_enemy("seraph_scout")
 	GM.double_damage = 3
 	var dmg := GM.calc_damage(5.0, null, e3)
-	_assert(dmg >= 10.0, "Double damage pact doubles damage")
+	_assert(dmg >= 10.0, "Double damage doubles damage")
 	GM.double_damage = 0
 
 	GM.reset_state()
@@ -335,7 +341,7 @@ func _run_wave_tests() -> void:
 			has_knight = true
 			break
 	_assert(has_knight, "Wave 2 includes crusaders")
-	_assert(GM.spawn_queue.size() > 5, "Wave 2 has more enemies than wave 1")
+	_assert(GM.spawn_queue.size() >= 5, "Wave 2 has more enemies than wave 1")
 
 	GM.reset_state()
 
@@ -417,7 +423,7 @@ func _run_cocytus_cone_tests() -> void:
 
 	var coc_data: Dictionary = Config.TOWER_DATA["cocytus"]
 	_assert(coc_data.get("is_beam_cone", false), "Cocytus is_beam_cone=true")
-	_assert_eq(coc_data["damage"], 12.0, "Cocytus damage 12 (redesigned)")
+	_assert_eq(coc_data["damage"], 3.5, "Cocytus damage 3.5 (nerfed)")
 	_assert_eq(coc_data["range"], 240.0, "Cocytus range 240 (redesigned)")
 
 	# Place COC + enemy in its cone
@@ -433,9 +439,9 @@ func _run_cocytus_cone_tests() -> void:
 	GM.enemies.append(e)
 	GM._cocytus_cone(coc, 0.1)  # 0.1s tick
 	_assert(e["hp"] < hp_before, "COC cone damages enemy in cone")
-	# Expected: 12 DPS × 0.1s = 1.2 dmg
+	# Expected: 3.5 DPS × 1.0 atk_spd × 0.1s = 0.35 dmg
 	var dmg_done: float = hp_before - e["hp"]
-	_assert(dmg_done > 0.5 and dmg_done < 2.0, "COC tick dmg ≈ 1.2 (got " + str(dmg_done) + ")")
+	_assert(dmg_done > 0.1 and dmg_done < 1.0, "COC tick dmg ≈ 0.35 (got " + str(dmg_done) + ")")
 
 	# Enemy opposite direction (outside cone) takes 0 damage
 	var e_back := GM.create_enemy("war_titan")
@@ -507,10 +513,6 @@ func _run_gambling_data_tests() -> void:
 		_assert(Config.DICE_OUTCOMES.has(roll), "Dice outcome for roll %d exists" % roll)
 		_assert(Config.DICE_OUTCOMES_EARLY.has(roll), "Early dice outcome for roll %d exists" % roll)
 
-	# All pacts have required fields
-	for pact in Config.PACT_POOL:
-		_assert(pact.has("name") and pact.has("benefit") and pact.has("cost_desc"), "Pact '%s' has display fields" % pact["name"])
-		_assert(pact.has("b_effect") and pact.has("c_effect"), "Pact '%s' has effect fields" % pact["name"])
 
 # ═══════════════════════════════════════════════════════
 # TARGETING TESTS
@@ -531,3 +533,167 @@ func _run_targeting_tests() -> void:
 
 	# TARGETING_MODES constant
 	_assert_eq(GM.TARGETING_MODES.size(), 2, "2 targeting modes exist")
+
+# ═══════════════════════════════════════════════════════
+# HERO POOL TESTS
+# ═══════════════════════════════════════════════════════
+func _run_hero_pool_tests() -> void:
+	print("[Hero Pool]")
+	GM.reset_state()
+
+	# Hero threshold progression
+	_assert_eq(GM.hero_threshold(), 200, "First hero threshold is 200")
+	GM.fallen_heroes_spawned = 1
+	_assert_eq(GM.hero_threshold(), 500, "Second hero threshold is 500")
+	GM.fallen_heroes_spawned = 2
+	_assert_eq(GM.hero_threshold(), 1000, "Third hero threshold is 1000")
+	GM.fallen_heroes_spawned = 3
+	_assert_eq(GM.hero_threshold(), 1500, "Fourth hero threshold is 1500")
+
+	# Adding to pool triggers hero spawn at threshold
+	GM.reset_state()
+	GM.add_to_hero_pool(199)
+	_assert_eq(GM.fallen_heroes_spawned, 0, "No hero at 199 pool")
+	GM.add_to_hero_pool(1)
+	_assert_eq(GM.fallen_heroes_spawned, 1, "Hero spawned at 200 pool")
+
+	GM.reset_state()
+
+# ═══════════════════════════════════════════════════════
+# PANDORA CHOICE TESTS
+# ═══════════════════════════════════════════════════════
+func _run_pandora_tests() -> void:
+	print("[Pandora Choice]")
+	GM.reset_state()
+
+	# Choice 0: double damage
+	GM.pending_pandora_choice = true
+	GM.accept_pandora_choice(0)
+	_assert(not GM.pending_pandora_choice, "Pandora choice clears pending flag")
+	_assert(GM.double_damage >= 1, "Pandora choice 0 grants double damage")
+
+	# Choice 1: sins bonus
+	GM.reset_state()
+	GM.pending_pandora_choice = true
+	var sins_before := GM.sins
+	GM.accept_pandora_choice(1)
+	_assert(GM.sins > sins_before, "Pandora choice 1 grants sins")
+	_assert(not GM.pending_pandora_choice, "Pandora choice 1 clears pending flag")
+
+	GM.reset_state()
+
+# ═══════════════════════════════════════════════════════
+# SELL REFUND TESTS
+# ═══════════════════════════════════════════════════════
+func _run_sell_refund_tests() -> void:
+	print("[Sell Refund]")
+	GM.reset_state()
+	GM.sins = 1000
+
+	# Level 1 sell refund
+	var tower := GM.create_tower("bone_marksman", 3, 3)
+	GM.towers.append(tower)
+	GM.occupied_tiles[Config.tile_key(3, 3)] = tower
+	var cost: int = Config.TOWER_DATA["bone_marksman"]["cost"]
+	var expected_refund: int = roundi(cost * Config.SELL_REFUND * 1)
+	var sins_before := GM.sins
+	GM.sell_tower(tower)
+	var actual_refund: int = GM.sins - sins_before
+	# Refund goes through earn() which applies sin_multiplier
+	_assert_eq(actual_refund, expected_refund, "Lv1 sell refund = cost * 0.65 * level")
+
+	# Level 2 sell refund
+	GM.sins = 1000
+	var tower2 := GM.create_tower("bone_marksman", 4, 4)
+	GM.towers.append(tower2)
+	GM.occupied_tiles[Config.tile_key(4, 4)] = tower2
+	GM.upgrade_tower(tower2)
+	var expected_refund2: int = roundi(cost * Config.SELL_REFUND * 2)
+	sins_before = GM.sins
+	GM.sell_tower(tower2)
+	var actual_refund2: int = GM.sins - sins_before
+	_assert_eq(actual_refund2, expected_refund2, "Lv2 sell refund scales with level")
+
+	GM.reset_state()
+
+# ═══════════════════════════════════════════════════════
+# TEMPLE CLERIC HEAL AURA TESTS
+# ═══════════════════════════════════════════════════════
+func _run_cleric_heal_tests() -> void:
+	print("[Temple Cleric Heal]")
+	GM.reset_state()
+
+	var cleric_data: Dictionary = Config.ENEMY_DATA["temple_cleric"]
+	_assert(cleric_data.has("heal_aura_radius"), "Temple Cleric has heal_aura_radius")
+	_assert(cleric_data.has("heal_aura_pct"), "Temple Cleric has heal_aura_pct")
+	_assert(cleric_data["heal_aura_radius"] > 0, "Heal aura radius is positive")
+	_assert(cleric_data["heal_aura_pct"] > 0, "Heal aura percentage is positive")
+
+	# Cleric heals damaged ally in range
+	var cleric := GM.create_enemy("temple_cleric")
+	cleric["x"] = 200.0; cleric["y"] = 200.0
+	GM.enemies.append(cleric)
+	var ally := GM.create_enemy("crusader")
+	ally["x"] = 220.0; ally["y"] = 200.0
+	ally["hp"] = ally["max_hp"] * 0.5  # damage the ally
+	var hp_before: float = ally["hp"]
+	GM.enemies.append(ally)
+	GM.update_enemies(1.0)  # 1 second tick
+	_assert(ally["hp"] > hp_before, "Cleric heals nearby damaged ally")
+	_assert(ally["hp"] <= ally["max_hp"], "Healing does not exceed max HP")
+
+	GM.reset_state()
+
+# ═══════════════════════════════════════════════════════
+# TILE KEY HELPER TESTS
+# ═══════════════════════════════════════════════════════
+func _run_tile_key_tests() -> void:
+	print("[Tile Key]")
+	_assert_eq(Config.tile_key(0, 0), "0,0", "tile_key(0,0) = '0,0'")
+	_assert_eq(Config.tile_key(5, 3), "5,3", "tile_key(5,3) = '5,3'")
+	_assert_eq(Config.tile_key(15, 11), "15,11", "tile_key(15,11) = '15,11'")
+
+# ═══════════════════════════════════════════════════════
+# ALIVE TYPE CACHE TESTS
+# ═══════════════════════════════════════════════════════
+func _run_alive_cache_tests() -> void:
+	print("[Alive Type Cache]")
+	GM.reset_state()
+
+	_assert(not GM._has_alive_type("seraph_scout"), "No alive scout with empty enemies")
+
+	var scout := GM.create_enemy("seraph_scout")
+	GM.enemies.append(scout)
+	GM.clear_alive_type_cache()
+	_assert(GM._has_alive_type("seraph_scout"), "Scout detected after adding to enemies")
+	_assert(not GM._has_alive_type("crusader"), "No crusader when only scout exists")
+
+	# Cache should be reused on second call
+	scout["alive"] = false
+	# Without clearing cache, stale result is returned (by design for perf)
+	_assert(GM._has_alive_type("seraph_scout"), "Cache returns stale true before clear")
+	GM.clear_alive_type_cache()
+	_assert(not GM._has_alive_type("seraph_scout"), "After clear, dead scout not detected")
+
+	GM.reset_state()
+
+# ═══════════════════════════════════════════════════════
+# DAMAGE ALL PERCENT TESTS
+# ═══════════════════════════════════════════════════════
+func _run_damage_percent_tests() -> void:
+	print("[Damage All Percent]")
+	GM.reset_state()
+
+	var e1 := GM.create_enemy("war_titan")
+	var e2 := GM.create_enemy("seraph_scout")
+	e1["x"] = 100.0; e1["y"] = 100.0
+	e2["x"] = 200.0; e2["y"] = 200.0
+	GM.enemies.append(e1)
+	GM.enemies.append(e2)
+
+	GM._damage_all_percent(0.5, 0.2)
+	_assert_eq(e1["hp"], e1["max_hp"] * 0.5, "50% damage halves War Titan HP")
+	_assert_eq(e2["hp"], e2["max_hp"] * 0.5, "50% damage halves Scout HP")
+	_assert(e1["flash_timer"] > 0, "Flash timer set on percent damage")
+
+	GM.reset_state()

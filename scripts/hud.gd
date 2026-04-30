@@ -38,12 +38,11 @@ var speed_buttons: Array = []
 var menu_overlay: Control
 var gameover_overlay: Control
 var victory_overlay: Control
-var pact_overlay: Control
 var settings_overlay: Control
 
 var go_stats_label: Label
 var vic_stats_label: Label
-var pact_container: VBoxContainer
+var pandora_overlay: Control
 
 # Menu overlay refs for locale
 var menu_title: Label
@@ -58,11 +57,6 @@ var go_restart_btn: Button
 # Victory overlay refs
 var vic_title: Label
 var vic_play_again_btn: Button
-
-# Pact overlay refs
-var pact_title: Label
-var pact_desc: Label
-var pact_decline_btn: Button
 
 # Settings overlay refs
 var settings_title: Label
@@ -442,7 +436,7 @@ func _create_side_panel() -> void:
 
 	# Controls help
 	help_label = Label.new()
-	help_label.text = Locale.t("Right-click: Deselect | Tab: Overview\nSpace: Skip Timer | Esc: Cancel")
+	help_label.text = Locale.t("4-9: Towers | U: Upgrade | X: Sell | T: Target | P: Pause\nSpace: Skip | Tab: Overview | D: Dice | Esc: Cancel")
 	help_label.add_theme_font_size_override("font_size", 10)
 	help_label.add_theme_color_override("font_color", Color(0.4, 0.4, 0.4))
 	vbox.add_child(help_label)
@@ -546,40 +540,47 @@ func _create_overlays() -> void:
 	vic_play_again_btn.pressed.connect(_on_start_pressed)
 	vic_vbox.add_child(vic_play_again_btn)
 
-	# --- Pact ---
-	pact_overlay = _make_overlay_bg()
-	pact_overlay.visible = false
-	add_child(pact_overlay)
+	# --- Pandora's True Gift choice ---
+	pandora_overlay = _make_overlay_bg()
+	pandora_overlay.visible = false
+	add_child(pandora_overlay)
 
-	var pact_panel := _make_centered_panel(500, 380)
-	pact_overlay.add_child(pact_panel)
+	var pan_panel := _make_centered_panel(420, 220)
+	pandora_overlay.add_child(pan_panel)
 
-	var pact_vbox := VBoxContainer.new()
-	pact_vbox.alignment = BoxContainer.ALIGNMENT_CENTER
-	pact_vbox.add_theme_constant_override("separation", 10)
-	pact_panel.add_child(pact_vbox)
+	var pan_vbox := VBoxContainer.new()
+	pan_vbox.alignment = BoxContainer.ALIGNMENT_CENTER
+	pan_vbox.add_theme_constant_override("separation", 12)
+	pan_panel.add_child(pan_vbox)
 
-	pact_title = Label.new()
-	pact_title.text = Locale.t("DEMONIC PACT")
-	pact_title.add_theme_font_size_override("font_size", 20)
-	pact_title.add_theme_color_override("font_color", Color(0.8, 0.267, 1))
-	pact_title.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-	pact_vbox.add_child(pact_title)
+	var pan_title := Label.new()
+	pan_title.text = Locale.t("PANDORA'S TRUE GIFT")
+	pan_title.add_theme_font_size_override("font_size", 20)
+	pan_title.add_theme_color_override("font_color", Color(1.0, 0.85, 0.0))
+	pan_title.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	pan_vbox.add_child(pan_title)
 
-	pact_desc = Label.new()
-	pact_desc.text = Locale.t("Choose a pact — great power at great cost.")
-	pact_desc.add_theme_font_size_override("font_size", 11)
-	pact_desc.add_theme_color_override("font_color", Color(0.6, 0.6, 0.6))
-	pact_desc.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-	pact_vbox.add_child(pact_desc)
+	var pan_desc := Label.new()
+	pan_desc.text = Locale.t("Choose your reward wisely.")
+	pan_desc.add_theme_font_size_override("font_size", 11)
+	pan_desc.add_theme_color_override("font_color", Color(0.6, 0.6, 0.6))
+	pan_desc.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	pan_vbox.add_child(pan_desc)
 
-	pact_container = VBoxContainer.new()
-	pact_container.add_theme_constant_override("separation", 8)
-	pact_vbox.add_child(pact_container)
+	var pan_btns := HBoxContainer.new()
+	pan_btns.alignment = BoxContainer.ALIGNMENT_CENTER
+	pan_btns.add_theme_constant_override("separation", 16)
+	pan_vbox.add_child(pan_btns)
 
-	pact_decline_btn = _make_action_button(Locale.t("No Deal"), Color(0.4, 0.4, 0.4))
-	pact_decline_btn.pressed.connect(_on_decline_pact_pressed)
-	pact_vbox.add_child(pact_decline_btn)
+	var btn_dmg := _make_action_button(Locale.t("2x Damage (1 wave)"), Color(0.8, 0.2, 0.15))
+	btn_dmg.custom_minimum_size = Vector2(180, 50)
+	btn_dmg.pressed.connect(_on_pandora_choice.bind(0))
+	pan_btns.add_child(btn_dmg)
+
+	var btn_sins := _make_action_button(Locale.t("+100 Sins"), Color(0.5, 0.2, 0.7))
+	btn_sins.custom_minimum_size = Vector2(180, 50)
+	btn_sins.pressed.connect(_on_pandora_choice.bind(1))
+	pan_btns.add_child(btn_sins)
 
 # ═══════════════════════════════════════════════════════
 # SETTINGS OVERLAY
@@ -708,11 +709,15 @@ func _process(_dt: float) -> void:
 
 	if GM.wave_active:
 		wave_desc_label.text = Locale.t(GM.wave_desc)
-	elif GM.show_pact:
-		wave_desc_label.text = Locale.t("Demonic Pact offered!")
 	else:
 		var t := ceili(GM.between_wave_timer)
-		wave_desc_label.text = Locale.tf("next_wave_timer", {"time": t}) if t > 0 else ""
+		var timer_text: String = Locale.tf("next_wave_timer", {"time": t}) if t > 0 else ""
+		var next_idx: int = GM.wave
+		if next_idx < Config.WAVE_DATA.size():
+			var preview := _build_wave_preview(next_idx)
+			wave_desc_label.text = timer_text + "\n" + preview if timer_text != "" else preview
+		else:
+			wave_desc_label.text = timer_text
 
 	# Sins
 	sins_label.text = Locale.tf("sins_display", {"amount": GM.sins})
@@ -744,7 +749,7 @@ func _process(_dt: float) -> void:
 				btn.text = _tower_button_text(data, show_details)
 
 	# Next wave button
-	btn_next_wave.visible = not GM.wave_active and not GM.show_pact and GM.phase == "playing"
+	btn_next_wave.visible = not GM.wave_active and GM.phase == "playing"
 
 	# Tower info
 	if GM.selected_tower != null:
@@ -833,7 +838,7 @@ func _process(_dt: float) -> void:
 func _update_locale_text() -> void:
 	towers_title.text = Locale.t("TOWERS")
 	btn_next_wave.text = Locale.t("SEND NEXT WAVE")
-	help_label.text = Locale.t("Right-click: Deselect | Tab: Overview\nSpace: Skip Timer | Esc: Cancel")
+	help_label.text = Locale.t("4-9: Towers | U: Upgrade | X: Sell | T: Target | P: Pause\nSpace: Skip | Tab: Overview | D: Dice | Esc: Cancel")
 
 	# Menu overlay
 	menu_title.text = Locale.t("HELLGATE DEFENDERS")
@@ -849,11 +854,6 @@ func _update_locale_text() -> void:
 	vic_title.text = Locale.t("HELL ENDURES!")
 	vic_play_again_btn.text = Locale.t("PLAY AGAIN")
 
-	# Pact
-	pact_title.text = Locale.t("DEMONIC PACT")
-	pact_desc.text = Locale.t("Choose a pact — great power at great cost.")
-	pact_decline_btn.text = Locale.t("No Deal")
-
 	# Settings
 	settings_title.text = Locale.t("SETTINGS")
 	btn_restart.text = Locale.t("Restart")
@@ -868,50 +868,7 @@ func _update_overlay_visibility() -> void:
 	menu_overlay.visible = GM.phase == "menu"
 	gameover_overlay.visible = GM.phase == "gameover"
 	victory_overlay.visible = GM.phase == "victory"
-	pact_overlay.visible = GM.show_pact
-
-	# Populate pact choices when shown
-	if GM.show_pact and pact_container.get_child_count() == 0:
-		_populate_pact_choices()
-
-	# Clean up when hidden
-	if not GM.show_pact and pact_container.get_child_count() > 0:
-		for child in pact_container.get_children():
-			child.queue_free()
-
-func _populate_pact_choices() -> void:
-	for child in pact_container.get_children():
-		child.queue_free()
-
-	for pact in GM.pact_choices:
-		var btn := Button.new()
-		btn.text = Locale.tf("pact_button", {
-			"name": Locale.t(pact["name"]),
-			"benefit": Locale.t(pact["benefit"]),
-			"cost_desc": Locale.t(pact["cost_desc"]),
-		})
-		btn.custom_minimum_size = Vector2(450, 65)
-		btn.alignment = HORIZONTAL_ALIGNMENT_LEFT
-
-		var pact_style := StyleBoxFlat.new()
-		pact_style.bg_color = Color(0.15, 0.06, 0.2)
-		pact_style.border_color = Color(0.5, 0.2, 0.6)
-		pact_style.set_border_width_all(1)
-		pact_style.set_corner_radius_all(4)
-		pact_style.set_content_margin_all(8)
-		btn.add_theme_stylebox_override("normal", pact_style)
-
-		var pact_hover := pact_style.duplicate()
-		pact_hover.bg_color = Color(0.25, 0.1, 0.3)
-		btn.add_theme_stylebox_override("hover", pact_hover)
-
-		btn.add_theme_font_size_override("font_size", 11)
-		btn.add_theme_color_override("font_color", Color(0.85, 0.85, 0.85))
-
-		var p: Dictionary = pact
-		btn.focus_mode = Control.FOCUS_NONE
-		btn.pressed.connect(_on_pact_accepted.bind(p))
-		pact_container.add_child(btn)
+	pandora_overlay.visible = GM.pending_pandora_choice
 
 # ═══════════════════════════════════════════════════════
 # BUTTON HANDLERS
@@ -947,21 +904,17 @@ func _on_speed_pressed(speed: float) -> void:
 
 func _on_next_wave_pressed() -> void:
 	Audio.play_sfx("ui_click")
-	if GM.phase == "playing" and not GM.wave_active and not GM.show_pact:
+	if GM.phase == "playing" and not GM.wave_active:
 		GM.between_wave_timer = 0
-
-func _on_pact_accepted(pact: Dictionary) -> void:
-	Audio.play_sfx("ui_click")
-	GM.accept_pact(pact)
-
-func _on_decline_pact_pressed() -> void:
-	Audio.play_sfx("ui_click")
-	GM.decline_pact()
 
 func _on_dice_roll_pressed() -> void:
 	Audio.play_sfx("ui_click")
 	if GM.wave_active and GM.dice_uses_left > 0:
 		GM.roll_dice()
+
+func _on_pandora_choice(choice: int) -> void:
+	Audio.play_sfx("ui_click")
+	GM.accept_pandora_choice(choice)
 
 func _on_menu_btn_pressed() -> void:
 	Audio.play_sfx("ui_click")
@@ -1015,6 +968,14 @@ func _tower_button_text(data: Dictionary, show_details: bool = false) -> String:
 		"name": Locale.t(data["name"]),
 		"cost": GM.format_cost(data["cost"]),
 	})
+
+func _build_wave_preview(wave_idx: int) -> String:
+	var wave_def: Dictionary = Config.WAVE_DATA[wave_idx]
+	var parts: PackedStringArray = []
+	for group in wave_def["enemies"]:
+		var ename: String = Config.ENEMY_DATA[group["type"]]["name"]
+		parts.append(str(group["count"]) + "x " + Locale.t(ename))
+	return Locale.t("Next:") + " " + ", ".join(parts)
 
 func _make_separator() -> HSeparator:
 	var sep := HSeparator.new()

@@ -35,6 +35,7 @@ func _process(dt: float) -> void:
 		return
 
 	GM.game_time += dt
+	GM.clear_alive_type_cache()
 	GM.update_waves(dt)
 	GM.update_enemies(dt)
 	GM.update_towers(dt)
@@ -853,7 +854,12 @@ func _draw_enemies() -> void:
 				draw_line(Vector2(ex - er - streak_off, ey + 1), Vector2(ex - er - streak_off + 3, ey + 1), Color(1, 0.85, 0.3, streak_a), 1.0)
 
 		# Monk healing sparkles — green particles rising from monks
+		# Temple Cleric now has a heal aura: show a subtle green pulse ring
 		if e["type"] == "temple_cleric":
+			# Heal aura ring — soft green pulse showing the area of effect
+			var aura_r: float = Config.ENEMY_DATA["temple_cleric"].get("heal_aura_radius", 80.0)
+			var aura_pulse: float = 0.3 + 0.15 * sin(gt * 2.0 + e["id"] * 0.5)
+			draw_arc(Vector2(ex, ey), aura_r, 0, TAU, 24, Color(0.4, 0.9, 0.5, 0.06 * aura_pulse), 1.0)
 			for pi in range(3):
 				var spark_phase: float = fmod(gt * 1.5 + pi * 0.7, 2.0)
 				if spark_phase < 1.0:
@@ -2536,7 +2542,7 @@ func _draw_enemy_model(enemy: Dictionary, ex: float, ey: float, er: float, flash
 # INPUT
 # ═══════════════════════════════════════════════════════
 func _unhandled_input(event: InputEvent) -> void:
-	if GM.phase != "playing" or GM.paused:
+	if GM.phase != "playing":
 		return
 
 	if event is InputEventMouseButton and event.pressed:
@@ -2584,6 +2590,7 @@ func _unhandled_input(event: InputEvent) -> void:
 					GM.preview_cone_manual = true
 					get_viewport().set_input_as_handled()
 					return
+			var tower_keys := Config.TOWER_DATA.keys()
 			match event.keycode:
 				KEY_ESCAPE:
 					GM.selected_tower_type = ""
@@ -2591,17 +2598,52 @@ func _unhandled_input(event: InputEvent) -> void:
 					GM.preview_cone_manual = false
 					GM.preview_cone_last_grid = Vector2i(-99, -99)
 				KEY_D:
-					if GM.wave_active:
+					if GM.wave_active and not GM.paused:
 						GM.roll_dice()
 				KEY_SPACE, KEY_ENTER:
-					if not GM.wave_active and not GM.show_pact:
+					if not GM.wave_active:
 						GM.between_wave_timer = 0
+				KEY_P:
+					GM.paused = not GM.paused
+				KEY_U:
+					if GM.selected_tower != null:
+						GM.upgrade_tower(GM.selected_tower)
+				KEY_T:
+					if GM.selected_tower != null:
+						GM.cycle_targeting(GM.selected_tower)
+				KEY_X:
+					if GM.selected_tower != null:
+						GM.sell_tower(GM.selected_tower)
 				KEY_1:
 					GM.set_game_speed(0.5)
 				KEY_2:
 					GM.set_game_speed(1.0)
 				KEY_3:
 					GM.set_game_speed(2.0)
+				KEY_4:
+					if tower_keys.size() > 0:
+						GM.selected_tower_type = tower_keys[0]
+						GM.selected_tower = null
+				KEY_5:
+					if tower_keys.size() > 1:
+						GM.selected_tower_type = tower_keys[1]
+						GM.selected_tower = null
+				KEY_6:
+					if tower_keys.size() > 2:
+						GM.selected_tower_type = tower_keys[2]
+						GM.selected_tower = null
+				KEY_7:
+					if tower_keys.size() > 3:
+						GM.selected_tower_type = tower_keys[3]
+						GM.selected_tower = null
+				KEY_8:
+					if tower_keys.size() > 4:
+						GM.selected_tower_type = tower_keys[4]
+						GM.selected_tower = null
+				KEY_9:
+					if tower_keys.size() > 5:
+						GM.selected_tower_type = tower_keys[5]
+						GM.selected_tower = null
 
 func _handle_left_click(pos: Vector2) -> void:
 	var grid := Config.pixel_to_grid(pos.x, pos.y)
@@ -2634,11 +2676,11 @@ func _handle_left_click(pos: Vector2) -> void:
 				GM.preview_cone_manual = false
 				GM.preview_cone_last_grid = Vector2i(-99, -99)
 			GM.towers.append(tower)
-			GM.occupied_tiles[str(grid.x) + "," + str(grid.y)] = tower
+			GM.occupied_tiles[Config.tile_key(grid.x, grid.y)] = tower
 			GM.stats["towers_placed"] += 1
 	else:
 		# Selection mode
-		var key := str(grid.x) + "," + str(grid.y)
+		var key := Config.tile_key(grid.x, grid.y)
 		if GM.occupied_tiles.has(key):
 			GM.selected_tower = GM.occupied_tiles[key]
 		else:

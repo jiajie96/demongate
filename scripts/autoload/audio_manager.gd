@@ -27,13 +27,12 @@ const SFX_FILES := {
 							  "res://assets/audio/sfx/enemy_death_02.ogg"],
 	"core_hit":              "res://assets/audio/sfx/core_hit.ogg",
 	"wave_start":            "res://assets/audio/sfx/wave_start.ogg",
-	"wave_complete":         "res://assets/audio/sfx/wave_complete.ogg",
 	"ui_click":              "res://assets/audio/sfx/ui_click.ogg",
 	"ui_select":             "res://assets/audio/sfx/ui_select.ogg",
 	"dice_roll":             "res://assets/audio/sfx/dice_roll.ogg",
-	"pact_accept":           "res://assets/audio/sfx/pact_accept.ogg",
 	"hades_buff":            "res://assets/audio/sfx/hades_buff.ogg",
 	"lucifer_pulse":         "res://assets/audio/sfx/lucifer_pulse.ogg",
+	"pact_accept":           "res://assets/audio/sfx/pact_accept.ogg",
 }
 
 # Priority table — higher = more important; low-priority sounds get dropped first
@@ -43,8 +42,8 @@ const SFX_PRIORITY := {
 	"wave_start":     9,
 	"wave_complete":  9,
 	"lucifer_pulse":  8,
-	"pact_accept":    8,
 	"dice_roll":      7,
+	"pact_accept":    6,
 	"hades_buff":     3,
 	"enemy_death":    2,
 	"ui_click":       2,
@@ -318,8 +317,6 @@ func _generate_fallback_sounds() -> void:
 		_proc_sounds["ui_click"] = _make_ui_click()
 	if not _streams.has("dice_roll"):
 		_proc_sounds["dice_roll"] = _make_dice_roll()
-	if not _streams.has("pact_accept"):
-		_proc_sounds["pact_accept"] = _make_pact_accept()
 	if not _streams.has("hades_buff"):
 		_proc_sounds["hades_buff"] = _make_hades_buff()
 	if not _streams.has("lucifer_pulse"):
@@ -525,20 +522,6 @@ func _make_dice_roll() -> AudioStreamWAV:
 				rattle = _noise(i + k * 1000) * (1.0 - absf(t - click_t) / 0.006)
 		lpf += 0.25 * (rattle - lpf)
 		_pack(buf, i, lpf * env * 0.3)
-	return _make_wav(buf)
-
-func _make_pact_accept() -> AudioStreamWAV:
-	var n := _n_samples(0.5)
-	var buf := PackedByteArray()
-	buf.resize(n * 2)
-	for i in range(n):
-		var t := float(i) / SAMPLE_RATE
-		var env := _env_ad(i, n, 0.08)
-		var s := sin(t * 73.4 * TAU) * 0.35
-		s += sin(t * 103.8 * TAU) * 0.25
-		s += sin(t * 146.8 * TAU) * 0.2
-		s = _saturate(s * 1.2)
-		_pack(buf, i, s * env * 0.3)
 	return _make_wav(buf)
 
 # ═══════════════════════════════════════════════════════
