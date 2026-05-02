@@ -82,12 +82,12 @@ var _templates: Dictionary = {
 		"zh": "{cost} 罪孽",
 	},
 	"gameover_stats": {
-		"en": "Wave: {wave} | Kills: {kills} | Towers: {towers}",
-		"zh": "波次: {wave} | 击杀: {kills} | 塔: {towers}",
+		"en": "Wave: {wave} | Kills: {kills} | Towers: {towers} | Sins: {sins} | Dmg: {dmg}",
+		"zh": "波次: {wave} | 击杀: {kills} | 塔: {towers} | 罪孽: {sins} | 伤害: {dmg}",
 	},
 	"victory_stats": {
-		"en": "Kills: {kills} | Towers: {towers}",
-		"zh": "击杀: {kills} | 塔: {towers}",
+		"en": "Kills: {kills} | Towers: {towers} | Sins: {sins} | Dmg: {dmg}",
+		"zh": "击杀: {kills} | 塔: {towers} | 罪孽: {sins} | 伤害: {dmg}",
 	},
 	"tower_button": {
 		"en": "{name} [{symbol}]\n{desc}\n{cost}",
@@ -312,4 +312,12 @@ var _zh: Dictionary = {
 	# --- Overview labels ---
 	"GLOBAL": "全局",
 	"SUPPORT": "辅助",
+
+	# --- Tower role tooltips ---
+	"Role: Global Pulse — damages all enemies on screen": "定位：全局脉冲 - 对屏幕上所有敌人造成伤害",
+	"Role: Support — buffs nearby towers and damages enemies": "定位：辅助 - 增强附近塔并对敌人造成伤害",
+	"Role: Area Denial — continuous frost cone in one direction": "定位：区域封锁 - 向一个方向持续发射冰霜锥形",
+	"Role: Swarm Clearer — AoE damage hits groups": "定位：清群 - 范围伤害打击群体",
+	"Role: Force Multiplier — slows enemies in aura range": "定位：增效 - 减速光环范围内的敌人",
+	"Role: Single-Target DPS — fast reliable damage": "定位：单体输出 - 快速稳定的伤害",
 }

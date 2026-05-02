@@ -33,6 +33,7 @@ const SFX_FILES := {
 	"hades_buff":            "res://assets/audio/sfx/hades_buff.ogg",
 	"lucifer_pulse":         "res://assets/audio/sfx/lucifer_pulse.ogg",
 	"pact_accept":           "res://assets/audio/sfx/pact_accept.ogg",
+	"wave_complete":         "res://assets/audio/sfx/wave_complete.ogg",
 }
 
 # Priority table — higher = more important; low-priority sounds get dropped first

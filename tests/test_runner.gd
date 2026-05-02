@@ -30,6 +30,19 @@ func _ready() -> void:
 	_run_tile_key_tests()
 	_run_alive_cache_tests()
 	_run_damage_percent_tests()
+	_run_zeus_lightning_tests()
+	_run_michael_shield_tests()
+	_run_weakest_targeting_tests()
+	_run_stats_tracking_tests()
+	_run_cocytus_config_constants_tests()
+	_run_raphael_heal_tests()
+	_run_first_targeting_tests()
+	_run_combat_constants_tests()
+	_run_upgrade_cost_scaling_tests()
+	_run_guardian_protection_tests()
+	_run_damage_stat_tracking_tests()
+	_run_insurance_payout_tests()
+	_run_wave_bonus_tests()
 
 	print("")
 	print("=== Results: %d/%d passed ===" % [_passed, _total])
@@ -527,12 +540,16 @@ func _run_targeting_tests() -> void:
 
 	# Cycle through modes
 	GM.cycle_targeting(tower)
+	_assert_eq(tower["targeting_mode"], "first", "Cycle to 'first'")
+	GM.cycle_targeting(tower)
 	_assert_eq(tower["targeting_mode"], "strongest", "Cycle to 'strongest'")
+	GM.cycle_targeting(tower)
+	_assert_eq(tower["targeting_mode"], "weakest", "Cycle to 'weakest'")
 	GM.cycle_targeting(tower)
 	_assert_eq(tower["targeting_mode"], "closest", "Cycle wraps to 'closest'")
 
 	# TARGETING_MODES constant
-	_assert_eq(GM.TARGETING_MODES.size(), 2, "2 targeting modes exist")
+	_assert_eq(GM.TARGETING_MODES.size(), 4, "4 targeting modes exist")
 
 # ═══════════════════════════════════════════════════════
 # HERO POOL TESTS
@@ -695,5 +712,389 @@ func _run_damage_percent_tests() -> void:
 	_assert_eq(e1["hp"], e1["max_hp"] * 0.5, "50% damage halves War Titan HP")
 	_assert_eq(e2["hp"], e2["max_hp"] * 0.5, "50% damage halves Scout HP")
 	_assert(e1["flash_timer"] > 0, "Flash timer set on percent damage")
+
+	GM.reset_state()
+
+# ═══════════════════════════════════════════════════════
+# ZEUS LIGHTNING TESTS
+# ═══════════════════════════════════════════════════════
+func _run_zeus_lightning_tests() -> void:
+	print("[Zeus Lightning]")
+	GM.reset_state()
+
+	# Zeus disables nearby towers
+	var zeus := GM.create_enemy("zeus")
+	zeus["x"] = 200.0; zeus["y"] = 200.0
+	zeus["ability_timer"] = 0.0  # ready to fire
+	GM.enemies.append(zeus)
+
+	var tower1 := GM.create_tower("bone_marksman", 4, 4)  # near zeus
+	tower1["x"] = 220.0; tower1["y"] = 200.0
+	GM.towers.append(tower1)
+	var tower2 := GM.create_tower("bone_marksman", 5, 4)
+	tower2["x"] = 240.0; tower2["y"] = 200.0
+	GM.towers.append(tower2)
+
+	_assert(not tower1["is_disabled"], "Tower1 starts enabled")
+	_assert(not tower2["is_disabled"], "Tower2 starts enabled")
+
+	GM._zeus_lightning(zeus)
+	_assert(tower1["is_disabled"], "Zeus disables closest tower 1")
+	_assert(tower2["is_disabled"], "Zeus disables closest tower 2")
+	_assert_eq(zeus["ability_timer"], Config.ZEUS_LIGHTNING_COOLDOWN, "Zeus ability resets to cooldown")
+	_assert(tower1["disable_timer"] > 0, "Disabled tower has timer set")
+
+	GM.reset_state()
+
+# ═══════════════════════════════════════════════════════
+# MICHAEL SHIELD TESTS
+# ═══════════════════════════════════════════════════════
+func _run_michael_shield_tests() -> void:
+	print("[Michael Shield]")
+	GM.reset_state()
+
+	var michael := GM.create_enemy("archangel_michael")
+	michael["x"] = 200.0; michael["y"] = 200.0
+	michael["ability_timer"] = 0.0
+	GM.enemies.append(michael)
+
+	var ally := GM.create_enemy("crusader")
+	ally["x"] = 250.0; ally["y"] = 200.0
+	GM.enemies.append(ally)
+
+	_assert(not ally["shield_buff"], "Ally starts without shield buff")
+
+	GM._michael_shield(michael)
+	_assert(ally["shield_buff"], "Michael grants shield buff to ally")
+	_assert(ally["shield_buff_timer"] > 0, "Shield buff timer set")
+	_assert_eq(michael["ability_timer"], Config.MICHAEL_SHIELD_COOLDOWN, "Michael ability resets to cooldown")
+
+	# Shield buff reduces damage by 30%
+	var hp_before: float = ally["hp"]
+	GM.combat_hit(ally, 10.0, null)
+	var actual_dmg: float = hp_before - ally["hp"]
+	# shield_buff gives 0.7 multiplier
+	_assert(actual_dmg < 10.0, "Shield buff reduces incoming damage")
+	_assert(actual_dmg >= 6.5 and actual_dmg <= 7.5, "Shield buff gives ~30% reduction (got " + str(actual_dmg) + ")")
+
+	GM.reset_state()
+
+# ═══════════════════════════════════════════════════════
+# WEAKEST TARGETING MODE TESTS
+# ═══════════════════════════════════════════════════════
+func _run_weakest_targeting_tests() -> void:
+	print("[Weakest Targeting]")
+	GM.reset_state()
+
+	var tower := GM.create_tower("bone_marksman", 5, 5)
+	GM.towers.append(tower)
+
+	_assert_eq(GM.TARGETING_MODES.size(), 4, "4 targeting modes exist")
+	_assert_eq(GM.TARGETING_MODES[3], "weakest", "Fourth mode is 'weakest'")
+
+	# Cycle through all modes
+	_assert_eq(tower["targeting_mode"], "closest", "Starts at closest")
+	GM.cycle_targeting(tower)
+	_assert_eq(tower["targeting_mode"], "first", "Cycles to first")
+	GM.cycle_targeting(tower)
+	_assert_eq(tower["targeting_mode"], "strongest", "Cycles to strongest")
+	GM.cycle_targeting(tower)
+	_assert_eq(tower["targeting_mode"], "weakest", "Cycles to weakest")
+	GM.cycle_targeting(tower)
+	_assert_eq(tower["targeting_mode"], "closest", "Wraps back to closest")
+
+	# Weakest targeting picks lowest HP enemy
+	tower["targeting_mode"] = "weakest"
+	var strong := GM.create_enemy("war_titan")
+	strong["x"] = tower["x"] + 20; strong["y"] = tower["y"]
+	strong["hp"] = 100.0
+	GM.enemies.append(strong)
+
+	var weak := GM.create_enemy("seraph_scout")
+	weak["x"] = tower["x"] + 40; weak["y"] = tower["y"]
+	weak["hp"] = 5.0
+	GM.enemies.append(weak)
+
+	var target = GM.find_target(tower)
+	_assert(target != null, "Weakest mode finds a target")
+	_assert_eq(target["hp"], 5.0, "Weakest mode picks lowest HP enemy")
+
+	GM.reset_state()
+
+# ═══════════════════════════════════════════════════════
+# STATS TRACKING TESTS
+# ═══════════════════════════════════════════════════════
+func _run_stats_tracking_tests() -> void:
+	print("[Stats Tracking]")
+	GM.reset_state()
+
+	_assert_eq(GM.stats["total_sins_earned"], 0, "Total sins earned starts at 0")
+
+	GM.earn(50)
+	_assert_eq(GM.stats["total_sins_earned"], 50, "Earning 50 tracks to total_sins_earned")
+
+	GM.earn(30)
+	_assert_eq(GM.stats["total_sins_earned"], 80, "Cumulative sins earned = 80")
+
+	# Sin multiplier affects tracked amount
+	GM.sin_multiplier = 2.0
+	GM.earn(10)
+	_assert_eq(GM.stats["total_sins_earned"], 100, "2x multiplier: earn(10) tracks 20, total=100")
+	GM.sin_multiplier = 1.0
+
+	GM.reset_state()
+
+# ═══════════════════════════════════════════════════════
+# COCYTUS CONFIG CONSTANTS TESTS
+# ═══════════════════════════════════════════════════════
+func _run_cocytus_config_constants_tests() -> void:
+	print("[Cocytus Config Constants]")
+
+	_assert(Config.COCYTUS_FROST_SLOW > 0 and Config.COCYTUS_FROST_SLOW < 1.0, "Frost slow is between 0 and 1")
+	_assert_eq(Config.COCYTUS_FROST_SLOW, 0.35, "Frost slow is 35%")
+	_assert(Config.COCYTUS_SWEEP_SPEED > 0, "Sweep speed is positive")
+	_assert(Config.COCYTUS_SWEEP_ANGLE > 0, "Sweep angle is positive")
+	_assert(Config.COCYTUS_SWEEP_ANGLE < PI / 4.0, "Sweep angle < 45 degrees")
+
+# ═══════════════════════════════════════════════════════
+# RAPHAEL HEAL BALANCE TESTS
+# ═══════════════════════════════════════════════════════
+func _run_raphael_heal_tests() -> void:
+	print("[Raphael Heal]")
+	GM.reset_state()
+
+	var raphael := GM.create_enemy("archangel_raphael")
+	raphael["x"] = 200.0; raphael["y"] = 200.0
+	raphael["ability_timer"] = 0.0
+	GM.enemies.append(raphael)
+
+	var ally := GM.create_enemy("war_titan")
+	ally["x"] = 250.0; ally["y"] = 200.0
+	ally["hp"] = ally["max_hp"] * 0.5  # 50% HP
+	var hp_before: float = ally["hp"]
+	GM.enemies.append(ally)
+
+	GM._raphael_heal(raphael)
+	_assert(ally["hp"] > hp_before, "Raphael heals damaged ally")
+	# Should heal RAPHAEL_HEAL_PERCENT of max HP
+	var expected_heal: float = ally["max_hp"] * Config.RAPHAEL_HEAL_PERCENT
+	var actual_heal: float = ally["hp"] - hp_before
+	_assert(absf(actual_heal - expected_heal) < 0.01, "Raphael heals 12% max HP (got " + str(actual_heal) + ")")
+	_assert_eq(raphael["ability_timer"], Config.RAPHAEL_HEAL_COOLDOWN, "Raphael ability resets to cooldown")
+
+	# Raphael does not heal self
+	raphael["hp"] = raphael["max_hp"] * 0.3
+	var raph_hp: float = raphael["hp"]
+	# Make ally full HP so raphael would be the most damaged
+	ally["hp"] = ally["max_hp"]
+	GM._raphael_heal(raphael)
+	# Raphael should not self-heal (skips self in loop)
+	_assert_eq(raphael["hp"], raph_hp, "Raphael does not heal self")
+
+	GM.reset_state()
+
+# ═══════════════════════════════════════════════════════
+# FIRST TARGETING MODE TESTS
+# ═══════════════════════════════════════════════════════
+func _run_first_targeting_tests() -> void:
+	print("[First Targeting]")
+	GM.reset_state()
+
+	# Verify 4 targeting modes now
+	_assert_eq(GM.TARGETING_MODES.size(), 4, "4 targeting modes exist")
+	_assert_eq(GM.TARGETING_MODES[1], "first", "Second mode is 'first'")
+
+	# Cycle through all modes
+	var tower := GM.create_tower("bone_marksman", 5, 5)
+	GM.towers.append(tower)
+	_assert_eq(tower["targeting_mode"], "closest", "Starts at closest")
+	GM.cycle_targeting(tower)
+	_assert_eq(tower["targeting_mode"], "first", "Cycles to first")
+	GM.cycle_targeting(tower)
+	_assert_eq(tower["targeting_mode"], "strongest", "Cycles to strongest")
+	GM.cycle_targeting(tower)
+	_assert_eq(tower["targeting_mode"], "weakest", "Cycles to weakest")
+	GM.cycle_targeting(tower)
+	_assert_eq(tower["targeting_mode"], "closest", "Wraps back to closest")
+
+	# First targeting picks enemy furthest along path
+	tower["targeting_mode"] = "first"
+	var early := GM.create_enemy("seraph_scout")
+	early["x"] = tower["x"] + 20; early["y"] = tower["y"]
+	early["path_index"] = 5
+	GM.enemies.append(early)
+
+	var advanced := GM.create_enemy("seraph_scout")
+	advanced["x"] = tower["x"] + 40; advanced["y"] = tower["y"]
+	advanced["path_index"] = 20
+	GM.enemies.append(advanced)
+
+	var target = GM.find_target(tower)
+	_assert(target != null, "First mode finds a target")
+	_assert_eq(target["path_index"], 20, "First mode picks enemy furthest along path")
+
+	GM.reset_state()
+
+# ═══════════════════════════════════════════════════════
+# COMBAT CONSTANTS TESTS
+# ═══════════════════════════════════════════════════════
+func _run_combat_constants_tests() -> void:
+	print("[Combat Constants]")
+
+	# Verify all extracted constants exist and have sane values
+	_assert_eq(Config.SHIELD_BUFF_REDUCTION, 0.7, "Shield buff reduction is 0.7")
+	_assert_eq(Config.COMMANDER_SPEED_BUFF, 1.25, "Commander speed buff is 1.25")
+	_assert_eq(Config.COMMANDER_DAMAGE_REDUCTION, 0.75, "Commander damage reduction is 0.75")
+	_assert_eq(Config.INSURANCE_MULT, 1.5, "Insurance multiplier is 1.5")
+	_assert_eq(Config.MICHAEL_SHIELD_COOLDOWN, 8.0, "Michael shield cooldown is 8s")
+	_assert_eq(Config.MICHAEL_SHIELD_DURATION, 2.0, "Michael shield duration is 2s")
+	_assert_eq(Config.ZEUS_LIGHTNING_COOLDOWN, 6.0, "Zeus lightning cooldown is 6s")
+	_assert_eq(Config.ZEUS_DISABLE_DURATION, 2.0, "Zeus disable duration is 2s")
+	_assert_eq(Config.ZEUS_MAX_TARGETS, 2, "Zeus max targets is 2")
+	_assert_eq(Config.RAPHAEL_HEAL_COOLDOWN, 6.0, "Raphael heal cooldown is 6s")
+	_assert_eq(Config.RAPHAEL_HEAL_PERCENT, 0.12, "Raphael heal percent is 0.12")
+
+	# Verify calc_damage uses the constants correctly
+	GM.reset_state()
+	var enemy := GM.create_enemy("seraph_scout")
+	enemy["shield_buff"] = true
+	var dmg := GM.calc_damage(10.0, null, enemy)
+	# shield_buff applies Config.SHIELD_BUFF_REDUCTION (0.7)
+	_assert(dmg >= 6.5 and dmg <= 7.5, "Shield buff reduces damage by 30% (got " + str(dmg) + ")")
+	GM.reset_state()
+
+# ═══════════════════════════════════════════════════════
+# UPGRADE COST SCALING TESTS
+# ═══════════════════════════════════════════════════════
+func _run_upgrade_cost_scaling_tests() -> void:
+	print("[Upgrade Cost Scaling]")
+	GM.reset_state()
+	GM.sins = 10000
+
+	var tower := GM.create_tower("bone_marksman", 3, 3)
+	GM.towers.append(tower)
+	var base_upgrade: int = Config.TOWER_DATA["bone_marksman"]["upgrade_cost"]
+
+	# Level 1 -> 2 costs base upgrade
+	var lv1_cost: int = roundi(base_upgrade * pow(1.5, 0))
+	_assert_eq(lv1_cost, base_upgrade, "Lv1->2 cost equals base upgrade cost")
+
+	# Level 2 -> 3 costs base * 1.5
+	var lv2_cost: int = roundi(base_upgrade * pow(1.5, 1))
+	_assert(lv2_cost > base_upgrade, "Lv2->3 costs more than lv1->2")
+
+	# Upgrade stats compound correctly
+	var dmg_before: float = tower["damage"]
+	GM.upgrade_tower(tower)
+	var dmg_after: float = tower["damage"]
+	var expected_dmg: float = dmg_before * Config.UPGRADE_MULT
+	_assert(absf(dmg_after - expected_dmg) < 0.01, "Upgrade multiplies damage by UPGRADE_MULT")
+
+	var range_lv1: float = Config.TOWER_DATA["bone_marksman"]["range"]
+	_assert(tower["range"] > range_lv1, "Range increases on upgrade")
+
+	GM.reset_state()
+
+# ═══════════════════════════════════════════════════════
+# GUARDIAN PROTECTION TESTS
+# ═══════════════════════════════════════════════════════
+func _run_guardian_protection_tests() -> void:
+	print("[Guardian Protection]")
+	GM.reset_state()
+
+	# Without a Holy Sentinel, no protection
+	var enemy := GM.create_enemy("seraph_scout")
+	enemy["path_index"] = 5
+	GM.enemies.append(enemy)
+	GM.clear_alive_type_cache()
+	_assert(not GM._is_guardian_protected(enemy), "No protection without Holy Sentinel")
+
+	# With Holy Sentinel, enemy in first half is protected
+	var guard := GM.create_enemy("holy_sentinel")
+	GM.enemies.append(guard)
+	GM.clear_alive_type_cache()
+	_assert(GM._is_guardian_protected(enemy), "Enemy in first half protected by Sentinel")
+
+	# Holy Sentinel itself is NOT protected
+	guard["path_index"] = 5
+	_assert(not GM._is_guardian_protected(guard), "Holy Sentinel is not self-protected")
+
+	# Enemy past halfway is NOT protected
+	@warning_ignore("integer_division")
+	var past_half := GM.create_enemy("seraph_scout")
+	past_half["path_index"] = Config.path_pixels.size() - 1
+	GM.enemies.append(past_half)
+	_assert(not GM._is_guardian_protected(past_half), "Enemy past halfway not protected")
+
+	GM.reset_state()
+
+# ═══════════════════════════════════════════════════════
+# DAMAGE STAT TRACKING TESTS
+# ═══════════════════════════════════════════════════════
+func _run_damage_stat_tracking_tests() -> void:
+	print("[Damage Stat Tracking]")
+	GM.reset_state()
+
+	_assert(GM.stats.has("total_damage_dealt"), "Stats has total_damage_dealt key")
+	_assert_eq(GM.stats["total_damage_dealt"], 0.0, "Total damage starts at 0")
+
+	var enemy := GM.create_enemy("war_titan")
+	GM.enemies.append(enemy)
+	GM.combat_hit(enemy, 10.0, null)
+	_assert(GM.stats["total_damage_dealt"] > 0, "Damage tracked after combat_hit")
+
+	GM.reset_state()
+
+# ═══════════════════════════════════════════════════════
+# INSURANCE PAYOUT TESTS
+# ═══════════════════════════════════════════════════════
+func _run_insurance_payout_tests() -> void:
+	print("[Insurance Payout]")
+	GM.reset_state()
+
+	# Insurance constant should match
+	_assert_eq(Config.INSURANCE_MULT, 1.5, "Insurance payout is 1.5x core damage")
+
+	# Verify enemy leak gives insurance sins
+	var enemy := GM.create_enemy("seraph_scout")
+	enemy["path_index"] = Config.path_pixels.size()  # past end
+	GM.enemies.append(enemy)
+	var sins_before := GM.sins
+	GM.update_enemies(0.016)
+	# Enemy should have leaked and given insurance
+	_assert(GM.sins > sins_before, "Insurance sins earned on enemy leak")
+
+	GM.reset_state()
+
+# ═══════════════════════════════════════════════════════
+# WAVE BONUS TESTS
+# ═══════════════════════════════════════════════════════
+func _run_wave_bonus_tests() -> void:
+	print("[Wave Bonus]")
+	GM.reset_state()
+
+	# Complete wave should give sins
+	GM.wave = 1
+	GM.wave_active = true
+	var sins_before := GM.sins
+	GM.complete_wave()
+	_assert(GM.sins > sins_before, "Wave completion gives bonus sins")
+	_assert(not GM.wave_active, "Wave deactivated after completion")
+
+	# Dice replenish
+	GM.reset_state()
+	GM.dice_uses_left = 0
+	GM.wave = 1
+	GM.wave_active = true
+	GM.complete_wave()
+	_assert_eq(GM.dice_uses_left, 1, "Dice replenished after wave completion")
+
+	# Double damage decrements
+	GM.reset_state()
+	GM.double_damage = 2
+	GM.wave = 1
+	GM.wave_active = true
+	GM.complete_wave()
+	_assert_eq(GM.double_damage, 1, "Double damage decremented after wave")
 
 	GM.reset_state()

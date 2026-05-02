@@ -124,7 +124,7 @@ func reset_state() -> void:
 	fast_enemy_waves = 0
 	fallen_hero_pool = 0
 	fallen_heroes_spawned = 0
-	stats = {"enemies_killed": 0, "towers_placed": 0}
+	stats = {"enemies_killed": 0, "towers_placed": 0, "total_sins_earned": 0, "total_damage_dealt": 0.0}
 	occupied_tiles.clear()
 	notifications.clear()
 	game_time = 0.0
@@ -155,6 +155,7 @@ func set_game_speed(speed: float) -> void:
 func earn(amount: int) -> void:
 	var total := roundi(amount * sin_multiplier)
 	sins += total
+	stats["total_sins_earned"] += total
 
 # powHPG scaling: kill rewards grow with enemy HP scaling (exponent 0.85).
 # Keeps economy from dying as enemies get tougher in late waves.
@@ -377,19 +378,17 @@ func _is_guardian_protected(enemy: Dictionary) -> bool:
 	return enemy.get("path_index", 0) < half
 
 func _michael_shield(michael: Dictionary) -> void:
-	# Every 8 seconds, grant all enemies 50% damage reduction for 2 seconds
-	michael["ability_timer"] = 8.0
+	michael["ability_timer"] = Config.MICHAEL_SHIELD_COOLDOWN
 	for e in enemies:
 		if e["alive"] and e["type"] != "archangel_michael":
 			e["shield_buff"] = true
-			e["shield_buff_timer"] = 2.0
+			e["shield_buff_timer"] = Config.MICHAEL_SHIELD_DURATION
 	# Golden shield dome from Michael's position
 	effects.append({"type": "michael_shield", "x": michael["x"], "y": michael["y"], "radius": 0, "color": Color(1.0, 0.95, 0.6), "timer": 0.8})
 	notify(Locale.t("Michael's divine shield protects all!"), Color(1.0, 0.95, 0.8))
 
 func _zeus_lightning(zeus: Dictionary) -> void:
-	# Every 6 seconds, disable 1-2 closest towers for 2 seconds
-	zeus["ability_timer"] = 6.0
+	zeus["ability_timer"] = Config.ZEUS_LIGHTNING_COOLDOWN
 	var zx: float = zeus["x"]
 	var zy: float = zeus["y"]
 	var candidates: Array = []
@@ -400,19 +399,18 @@ func _zeus_lightning(zeus: Dictionary) -> void:
 		var dy: float = t["y"] - zy
 		candidates.append({"tower": t, "dist": dx * dx + dy * dy})
 	candidates.sort_custom(func(a, b): return a["dist"] < b["dist"])
-	var count := mini(2, candidates.size())
+	var count := mini(Config.ZEUS_MAX_TARGETS, candidates.size())
 	for j in range(count):
 		var t: Dictionary = candidates[j]["tower"]
 		t["is_disabled"] = true
-		t["disable_timer"] = 2.0
+		t["disable_timer"] = Config.ZEUS_DISABLE_DURATION
 		# Lightning bolt from Zeus to tower
 		effects.append({"type": "zeus_bolt", "x": zx, "y": zy, "x2": t["x"], "y2": t["y"], "radius": 0, "color": Color(0.8, 0.9, 1.0), "timer": 0.4})
 	if count > 0:
 		Audio.play_sfx("core_hit")
 
 func _raphael_heal(raphael: Dictionary) -> void:
-	# Every 6 seconds, heal the most damaged ally for 20% max HP
-	raphael["ability_timer"] = 6.0
+	raphael["ability_timer"] = Config.RAPHAEL_HEAL_COOLDOWN
 	var best = null
 	var best_missing := 0.0
 	for e in enemies:
@@ -423,7 +421,7 @@ func _raphael_heal(raphael: Dictionary) -> void:
 			best_missing = missing
 			best = e
 	if best != null and best_missing > 0:
-		var heal: float = best["max_hp"] * 0.15
+		var heal: float = best["max_hp"] * Config.RAPHAEL_HEAL_PERCENT
 		best["hp"] = minf(best["hp"] + heal, best["max_hp"])
 		effects.append({"type": "heal_beam", "x": raphael["x"], "y": raphael["y"], "x2": best["x"], "y2": best["y"], "radius": 0, "color": Color(0.4, 1.0, 0.5), "timer": 0.3})
 		add_effect("heal_pulse", best["x"], best["y"], best.get("radius", 8.0), Color(0.4, 1.0, 0.5))
@@ -542,19 +540,19 @@ func update_enemies(dt: float) -> void:
 					break
 		# REDESIGN: COC frost slow — while enemy has active frost_timer
 		if e["frost_timer"] > 0:
-			spd *= 0.65  # 35% slow while being frozen by cone
+			spd *= (1.0 - Config.COCYTUS_FROST_SLOW)
 		if fast_enemy_waves > 0:
 			spd *= 1.3
-		# Archangel Commander aura: +25% speed to allies
+		# Archangel Commander aura: speed buff to allies
 		if has_commander and e["type"] != "archangel_marshal":
-			spd *= 1.25
+			spd *= Config.COMMANDER_SPEED_BUFF
 
 		if e["path_index"] >= path_px.size():
 			e["alive"] = false
 			e["reached_core"] = true
 			core_hp = maxf(0, core_hp - e["core_dmg"])
 			# Catch-up: insurance payout when enemies leak
-			var insurance := roundi(e["core_dmg"] * 1.5)
+			var insurance := roundi(e["core_dmg"] * Config.INSURANCE_MULT)
 			earn(insurance)
 			var last_pt: Vector2 = path_px[path_px.size() - 1]
 			add_effect("core_hit", last_pt.x, last_pt.y, 10.0, Color.RED)
@@ -640,7 +638,7 @@ func update_projectiles(dt: float) -> void:
 # ═══════════════════════════════════════════════════════
 # TARGETING
 # ═══════════════════════════════════════════════════════
-const TARGETING_MODES := ["closest", "strongest"]
+const TARGETING_MODES := ["closest", "first", "strongest", "weakest"]
 
 func cycle_targeting(tower: Dictionary) -> void:
 	var idx := TARGETING_MODES.find(tower.get("targeting_mode", "closest"))
@@ -649,7 +647,7 @@ func cycle_targeting(tower: Dictionary) -> void:
 func find_target(tower: Dictionary):
 	var mode: String = tower.get("targeting_mode", "closest")
 	var best = null
-	var best_val: float = -1.0 if mode != "closest" else INF
+	var best_val: float = -1.0 if mode != "closest" and mode != "weakest" else INF
 	var r2: float = tower["range"] * tower["range"]
 	for e in enemies:
 		if not e["alive"]:
@@ -664,9 +662,18 @@ func find_target(tower: Dictionary):
 				if dist_sq < best_val:
 					best_val = dist_sq
 					best = e
+			"first":
+				var pi: float = float(e.get("path_index", 0))
+				if pi > best_val:
+					best_val = pi
+					best = e
 			"strongest":
 				if e["max_hp"] > best_val:
 					best_val = e["max_hp"]
+					best = e
+			"weakest":
+				if e["hp"] < best_val:
+					best_val = e["hp"]
 					best = e
 	return best
 
@@ -694,10 +701,10 @@ func calc_damage(base_dmg: float, tower, enemy: Dictionary) -> float:
 	if enemy.get("shield", 0.0) > 0:
 		dmg *= (1.0 - enemy["shield"])
 	if enemy.get("shield_buff", false):
-		dmg *= 0.7
-	# Archangel Commander aura: 25% damage reduction for allies
+		dmg *= Config.SHIELD_BUFF_REDUCTION
+	# Archangel Commander aura: damage reduction for allies
 	if _has_alive_type("archangel_marshal") and enemy.get("type", "") != "archangel_marshal":
-		dmg *= 0.75
+		dmg *= Config.COMMANDER_DAMAGE_REDUCTION
 	return maxf(1.0, dmg)
 
 func combat_hit(enemy: Dictionary, base_dmg: float, tower) -> void:
@@ -711,7 +718,8 @@ func combat_hit(enemy: Dictionary, base_dmg: float, tower) -> void:
 	enemy["hp"] -= dmg
 	enemy["flash_timer"] = 0.12
 
-	# Track damage for overview
+	# Track damage for overview and global stats
+	stats["total_damage_dealt"] = stats.get("total_damage_dealt", 0.0) + dmg
 	if tower != null and tower is Dictionary:
 		tower["total_damage"] = tower.get("total_damage", 0.0) + dmg
 
@@ -765,14 +773,13 @@ func combat_kill(enemy: Dictionary, tower) -> void:
 # TOWER UPDATE
 # ═══════════════════════════════════════════════════════
 func update_towers(dt: float) -> void:
-	# Decay Hades buff timers on all towers
 	for t in towers:
+		# Decay Hades buff timers inline (avoids a separate loop)
 		if t["hades_buffed"]:
 			t["hades_buff_timer"] -= dt
 			if t["hades_buff_timer"] <= 0:
 				t["hades_buffed"] = false
 
-	for t in towers:
 		if t["fire_flash"] > 0:
 			t["fire_flash"] -= dt
 		if t["build_timer"] > 0:
@@ -881,7 +888,7 @@ func _cocytus_cone(tower: Dictionary, dt: float) -> void:
 	var half_angle: float = Config.TOWER_DATA[tower["type"]]["cone_half_angle"]
 	var cos_half: float = cos(half_angle)
 	# REDESIGN: oscillating sweep — ±15° around set facing, synced to draw
-	var sweep: float = sin(game_time * 1.5) * (PI / 12.0)
+	var sweep: float = sin(game_time * Config.COCYTUS_SWEEP_SPEED) * Config.COCYTUS_SWEEP_ANGLE
 	var eff_facing: float = tower["facing_angle"] + sweep
 	var fx: float = cos(eff_facing)
 	var fy: float = sin(eff_facing)
@@ -909,9 +916,9 @@ func _cocytus_cone(tower: Dictionary, dt: float) -> void:
 		if e.get("shield", 0.0) > 0:
 			tick_dmg *= (1.0 - e["shield"])
 		if e.get("shield_buff", false):
-			tick_dmg *= 0.7
+			tick_dmg *= Config.SHIELD_BUFF_REDUCTION
 		if has_cmd and e.get("type", "") != "archangel_marshal":
-			tick_dmg *= 0.75
+			tick_dmg *= Config.COMMANDER_DAMAGE_REDUCTION
 		if corruption > 1.0:
 			for h in towers:
 				if h["type"] != "hades" or h["is_disabled"]:
@@ -1120,6 +1127,7 @@ func _damage_all_percent(pct: float, flash_time: float) -> void:
 				stats["enemies_killed"] += 1
 				earn_from_kill(e["type"], true)
 				add_effect("death", e["x"], e["y"], e["radius"], e["color"])
+				Audio.play_sfx("enemy_death")
 
 # ═══════════════════════════════════════════════════════
 # GAMBLING — DEVIL'S DICE
@@ -1249,8 +1257,10 @@ func drop_relic(rx: float, ry: float) -> void:
 		"choice":
 			pending_pandora_choice = true
 		"trap":
-			enemies.append(create_enemy("war_titan"))
-			notify(Locale.t("Trojan Relic! Elite enemy spawned!"), Color(0.8, 0.2, 0.2))
+			var trap_count: int = int(loot.get("value", 1))
+			for _j in range(trap_count):
+				enemies.append(create_enemy("war_titan"))
+			notify(Locale.t("Trojan Relic! Elite enemies spawned!"), Color(0.8, 0.2, 0.2))
 
 func accept_pandora_choice(choice: int) -> void:
 	pending_pandora_choice = false

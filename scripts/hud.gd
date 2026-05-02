@@ -823,10 +823,11 @@ func _process(_dt: float) -> void:
 		btn_dice_roll.text = Locale.t("ROLL THE DICE")
 
 	# End screen stats
+	var _dmg_str := _format_large_number(GM.stats.get("total_damage_dealt", 0.0))
 	if GM.phase == "gameover":
-		go_stats_label.text = Locale.tf("gameover_stats", {"wave": GM.wave, "kills": GM.stats["enemies_killed"], "towers": GM.stats["towers_placed"]})
+		go_stats_label.text = Locale.tf("gameover_stats", {"wave": GM.wave, "kills": GM.stats["enemies_killed"], "towers": GM.stats["towers_placed"], "sins": GM.stats["total_sins_earned"], "dmg": _dmg_str})
 	elif GM.phase == "victory":
-		vic_stats_label.text = Locale.tf("victory_stats", {"kills": GM.stats["enemies_killed"], "towers": GM.stats["towers_placed"]})
+		vic_stats_label.text = Locale.tf("victory_stats", {"kills": GM.stats["enemies_killed"], "towers": GM.stats["towers_placed"], "sins": GM.stats["total_sins_earned"], "dmg": _dmg_str})
 
 	# Settings pause button text
 	if settings_overlay.visible:
@@ -968,6 +969,13 @@ func _tower_button_text(data: Dictionary, show_details: bool = false) -> String:
 		"name": Locale.t(data["name"]),
 		"cost": GM.format_cost(data["cost"]),
 	})
+
+func _format_large_number(value: float) -> String:
+	if value >= 1000000:
+		return str(snappedf(value / 1000000.0, 0.1)) + "M"
+	elif value >= 1000:
+		return str(snappedf(value / 1000.0, 0.1)) + "k"
+	return str(roundi(value))
 
 func _build_wave_preview(wave_idx: int) -> String:
 	var wave_def: Dictionary = Config.WAVE_DATA[wave_idx]

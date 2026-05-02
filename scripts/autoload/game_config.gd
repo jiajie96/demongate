@@ -21,6 +21,9 @@ const MAX_TOWER_LEVEL := 3
 const SELL_REFUND := 0.65
 
 const PROJECTILE_SPEED := 280.0
+const COCYTUS_FROST_SLOW := 0.35    # 35% slow while frosted by cone
+const COCYTUS_SWEEP_SPEED := 1.5    # oscillation frequency (rad/s)
+const COCYTUS_SWEEP_ANGLE := PI / 12.0  # ±15° sweep amplitude
 
 const WAVE_HP_COMPOUND := 1.12   # ×1.12 enemy HP per wave (compound growth)
 const WAVE_SPD_COMPOUND := 1.015 # ×1.015 speed per wave (compound growth)
@@ -33,6 +36,19 @@ const WAVE_HP_STEP_MULT := 1.25
 # 0.85 per YYZ-Productions / gamedeveloper.com TD balance research —
 # income grows slower than HP, but fast enough to enable a new tower / upgrade every 1-2 waves.
 const REWARD_POW_HPG := 0.85
+
+# Combat constants — extracted from inline magic numbers for clarity & tuning
+const SHIELD_BUFF_REDUCTION := 0.7       # Michael's shield buff: 30% damage reduction
+const COMMANDER_SPEED_BUFF := 1.25       # Archangel Marshal: +25% speed to allies
+const COMMANDER_DAMAGE_REDUCTION := 0.75 # Archangel Marshal: 25% damage reduction
+const INSURANCE_MULT := 1.5              # Leak insurance: core_dmg × 1.5 sins back
+const MICHAEL_SHIELD_COOLDOWN := 8.0     # seconds between shield activations
+const MICHAEL_SHIELD_DURATION := 2.0     # seconds shield buff lasts
+const ZEUS_LIGHTNING_COOLDOWN := 6.0     # seconds between lightning strikes
+const ZEUS_DISABLE_DURATION := 2.0       # seconds towers stay disabled
+const ZEUS_MAX_TARGETS := 2              # max towers hit per lightning
+const RAPHAEL_HEAL_COOLDOWN := 6.0       # seconds between heals
+const RAPHAEL_HEAL_PERCENT := 0.12       # heals 12% of ally's max HP
 
 
 # ═══════════════════════════════════════════════════════
@@ -195,7 +211,7 @@ var ENEMY_DATA := {
 	"swift_ranger": {"name": "Swift Ranger", "hp": 28.0, "speed": 130.0, "core_dmg": 5, "is_boss": false, "color": Color(0.267, 0.867, 1.0), "radius": 8.0, "sin_reward": 6},
 	"war_titan": {"name": "War Titan", "hp": 110.0, "speed": 38.0, "core_dmg": 14, "is_boss": false, "color": Color(1.0, 0.533, 0.267), "radius": 11.0, "sin_reward": 15},
 	"grand_paladin": {"name": "Grand Paladin", "hp": 280.0, "speed": 42.0, "core_dmg": 30, "is_boss": true, "color": Color(1.0, 0.8, 0.0), "radius": 13.0, "sin_reward": 30},
-	"temple_cleric": {"name": "Temple Cleric", "hp": 32.0, "speed": 60.0, "core_dmg": 4, "is_boss": false, "color": Color(0.533, 1.0, 0.533), "radius": 8.0, "sin_reward": 8, "heal_aura_radius": 80.0, "heal_aura_pct": 0.02},
+	"temple_cleric": {"name": "Temple Cleric", "hp": 32.0, "speed": 60.0, "core_dmg": 4, "is_boss": false, "color": Color(0.533, 1.0, 0.533), "radius": 8.0, "sin_reward": 8, "heal_aura_radius": 90.0, "heal_aura_pct": 0.02},
 	"archangel_marshal": {"name": "Archangel Marshal", "hp": 55.0, "speed": 42.0, "core_dmg": 10, "is_boss": false, "color": Color(1.0, 0.9, 0.5), "radius": 10.0, "sin_reward": 22},
 	"holy_sentinel": {"name": "Holy Sentinel", "hp": 65.0, "speed": 38.0, "core_dmg": 8, "is_boss": false, "color": Color(0.6, 0.8, 1.0), "radius": 10.0, "sin_reward": 25},
 	"archangel_michael": {"name": "Archangel Michael", "hp": 200.0, "speed": 35.0, "core_dmg": 25, "is_boss": true, "color": Color(1.0, 0.95, 0.8), "radius": 12.0, "sin_reward": 25},

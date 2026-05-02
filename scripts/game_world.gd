@@ -729,7 +729,7 @@ func _draw_cone_overlay(tower: Dictionary, cx: float, cy: float, a: float) -> vo
 	var range_px: float = tower["range"]
 	var half_angle: float = Config.TOWER_DATA[tower["type"]]["cone_half_angle"]
 	# Oscillating sweep: ±15° (30° total arc) around the set facing
-	var sweep: float = sin(GM.game_time * 1.5) * deg_to_rad(15.0)
+	var sweep: float = sin(GM.game_time * Config.COCYTUS_SWEEP_SPEED) * Config.COCYTUS_SWEEP_ANGLE
 	var facing: float = tower["facing_angle"] + sweep
 
 	# BLIZZARD STREAM — dense flowing snow along effective facing
