@@ -50,6 +50,26 @@ const ZEUS_MAX_TARGETS := 2              # max towers hit per lightning
 const RAPHAEL_HEAL_COOLDOWN := 6.0       # seconds between heals
 const RAPHAEL_HEAL_PERCENT := 0.12       # heals 12% of ally's max HP
 
+# Effect durations — visual feedback timers
+const FX_HIT_SPARK_DURATION := 0.2       # single-target hit spark
+const FX_SOUL_HIT_DURATION := 0.32       # Soul Reaper spectral hit
+const FX_DEATH_DURATION := 0.5           # enemy death burst
+const FX_LUCIFER_WAVE_DURATION := 1.2    # Lucifer expanding ring
+const FX_LUCIFER_HIT_DURATION := 0.4     # per-enemy Lucifer hit flash (with delay)
+const FX_HADES_WAVE_DURATION := 0.6      # Hades corruption wave
+const FX_DMG_NUMBER_DURATION := 0.6      # floating damage number
+const FX_FLASH_ON_HIT := 0.12            # white flash on enemy hit
+const FX_RELIC_DURATION := 0.8           # relic pickup burst
+const FX_AOE_DURATION := 0.5             # AoE splash ring
+
+# Demonic Pact system — risky between-wave tradeoffs
+const PACT_OFFER_CHANCE := 0.35          # 35% chance a pact is offered between waves
+const PACT_OFFER_MIN_WAVE := 3           # pacts start appearing after this wave
+
+# Relic AoE scaling — base damage scales with wave so relics stay relevant
+const RELIC_AOE_BASE_DAMAGE := 50.0
+const RELIC_AOE_SCALE_PER_WAVE := 0.08   # +8% per wave
+
 
 # ═══════════════════════════════════════════════════════
 # COLORS
@@ -289,6 +309,18 @@ var RELIC_LOOT := [
 	{"name": "Divine Curse", "weight": 3, "type": "curse", "value": 2},
 	{"name": "Trojan Relic", "weight": 2, "type": "trap", "value": 2},
 	{"name": "Pandora's True Gift", "weight": 2, "type": "choice", "value": 0},
+]
+
+# ═══════════════════════════════════════════════════════
+# DEMONIC PACTS — risky between-wave tradeoffs
+# ═══════════════════════════════════════════════════════
+# Each pact has a benefit and a cost. The player chooses accept or decline.
+var DEMONIC_PACTS := [
+	{"name": "Blood Tithe", "benefit": "sin_boost", "benefit_desc": "+50% Sin income for 2 waves", "cost": "core_dmg", "cost_desc": "Lose 15 Core HP", "b_val": 1.5, "b_dur": 2, "c_val": 15.0},
+	{"name": "Infernal Forge", "benefit": "tower_dmg_boost", "benefit_desc": "All towers +20% damage permanently", "cost": "disable_random", "cost_desc": "2 random towers disabled for 8s", "b_val": 0.2, "b_dur": 0, "c_val": 8.0},
+	{"name": "Soul Harvest", "benefit": "flat_sins", "benefit_desc": "Gain 120 Sins instantly", "cost": "fast_enemies", "cost_desc": "Enemies +30% speed for 2 waves", "b_val": 120, "b_dur": 0, "c_val": 2},
+	{"name": "Dark Resilience", "benefit": "core_heal", "benefit_desc": "Restore 20 Core HP", "cost": "sin_tax", "cost_desc": "Lose 25% of current Sins", "b_val": 20.0, "b_dur": 0, "c_val": 0.25},
+	{"name": "Chaos Pact", "benefit": "double_dmg", "benefit_desc": "Double damage for 1 wave", "cost": "extra_enemies", "cost_desc": "Next wave spawns 3 extra War Titans", "b_val": 1, "b_dur": 0, "c_val": 3},
 ]
 
 # ═══════════════════════════════════════════════════════

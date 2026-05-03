@@ -67,6 +67,8 @@ var game_speed: float = 1.0
 var time_warp_timer: float = 0.0
 var time_warp_prev_speed: float = 1.0
 var pending_pandora_choice: bool = false
+var pending_pact: Dictionary = {}
+var pact_extra_enemies: int = 0  # extra War Titans to spawn next wave
 
 # Wave announcement banner — cinematic title card shown when a wave starts.
 # Counts down from its initial value; game_world reads it each frame to draw
@@ -124,7 +126,7 @@ func reset_state() -> void:
 	fast_enemy_waves = 0
 	fallen_hero_pool = 0
 	fallen_heroes_spawned = 0
-	stats = {"enemies_killed": 0, "towers_placed": 0, "total_sins_earned": 0, "total_damage_dealt": 0.0}
+	stats = {"enemies_killed": 0, "towers_placed": 0, "total_sins_earned": 0, "total_damage_dealt": 0.0, "pacts_accepted": 0, "fallen_heroes": 0}
 	occupied_tiles.clear()
 	notifications.clear()
 	game_time = 0.0
@@ -138,6 +140,8 @@ func reset_state() -> void:
 	time_warp_timer = 0.0
 	time_warp_prev_speed = 1.0
 	pending_pandora_choice = false
+	pending_pact = {}
+	pact_extra_enemies = 0
 	wave_banner_timer = 0.0
 	wave_banner_num = 0
 	wave_banner_desc = ""
@@ -189,6 +193,7 @@ func add_to_hero_pool(amount: int) -> void:
 	if fallen_hero_pool >= threshold:
 		fallen_hero_pool -= threshold
 		fallen_heroes_spawned += 1
+		stats["fallen_heroes"] = stats.get("fallen_heroes", 0) + 1
 		notify(Locale.t("A Fallen Hero has joined your cause!"), Color(1.0, 0.8, 0.0))
 
 func hero_threshold() -> int:
@@ -716,7 +721,7 @@ func combat_hit(enemy: Dictionary, base_dmg: float, tower) -> void:
 		return
 	var dmg := calc_damage(base_dmg, tower, enemy)
 	enemy["hp"] -= dmg
-	enemy["flash_timer"] = 0.12
+	enemy["flash_timer"] = Config.FX_FLASH_ON_HIT
 
 	# Track damage for overview and global stats
 	stats["total_damage_dealt"] = stats.get("total_damage_dealt", 0.0) + dmg
@@ -1043,6 +1048,11 @@ func start_wave() -> void:
 	for i in range(specials.size()):
 		var idx: int = mini(insert_start + i * 2, spawn_queue.size())
 		spawn_queue.insert(idx, specials[i])
+	# Inject extra enemies from accepted Demonic Pacts
+	if pact_extra_enemies > 0:
+		for _j in range(pact_extra_enemies):
+			spawn_queue.append("war_titan")
+		pact_extra_enemies = 0
 	spawn_timer = 0.5
 
 	notify(Locale.tf("wave_start_notify", {"wave": wave, "desc": Locale.t(wave_desc)}), Color(1.0, 0.8, 0.0))
@@ -1112,6 +1122,7 @@ func complete_wave() -> void:
 		return
 
 	between_wave_timer = Config.BETWEEN_WAVE_DELAY
+	maybe_offer_pact()
 
 # ═══════════════════════════════════════════════════════
 # GAMBLING — HELPERS
@@ -1199,7 +1210,8 @@ func drop_relic(rx: float, ry: float) -> void:
 
 	match loot["type"]:
 		"aoe":
-			combat_aoe(rx, ry, 80.0, 50.0, null)
+			var relic_dmg: float = Config.RELIC_AOE_BASE_DAMAGE * (1.0 + Config.RELIC_AOE_SCALE_PER_WAVE * wave)
+			combat_aoe(rx, ry, 80.0, relic_dmg, null)
 			add_effect("aoe", rx, ry, 80.0, Color(1.0, 0.47, 0.12, 0.25))
 		"random_sins":
 			var amt: int = 50 + randi() % 100
@@ -1274,24 +1286,92 @@ func accept_pandora_choice(choice: int) -> void:
 
 
 # ═══════════════════════════════════════════════════════
+# DEMONIC PACTS — risky between-wave tradeoffs
+# ═══════════════════════════════════════════════════════
+func maybe_offer_pact() -> void:
+	if wave < Config.PACT_OFFER_MIN_WAVE:
+		return
+	if pending_pandora_choice or not pending_pact.is_empty():
+		return
+	if randf() > Config.PACT_OFFER_CHANCE:
+		return
+	var pact: Dictionary = Config.DEMONIC_PACTS[randi() % Config.DEMONIC_PACTS.size()]
+	pending_pact = pact.duplicate()
+	notify(Locale.t("A Demonic Pact is offered..."), Color(0.8, 0.2, 0.6))
+
+func accept_pact() -> void:
+	if pending_pact.is_empty():
+		return
+	var pact: Dictionary = pending_pact
+	Audio.play_sfx("pact_accept")
+	stats["pacts_accepted"] = stats.get("pacts_accepted", 0) + 1
+
+	# Apply benefit
+	match pact["benefit"]:
+		"sin_boost":
+			sin_multiplier = float(pact["b_val"])
+			sin_mult_waves = int(pact["b_dur"])
+		"tower_dmg_boost":
+			for t in towers:
+				t["damage_mult"] += float(pact["b_val"])
+		"flat_sins":
+			earn(int(pact["b_val"]))
+		"core_heal":
+			core_hp = minf(core_hp + float(pact["b_val"]), core_max_hp)
+		"double_dmg":
+			double_damage = maxi(double_damage, int(pact["b_val"]))
+
+	# Apply cost
+	match pact["cost"]:
+		"core_dmg":
+			core_hp = maxf(1.0, core_hp - float(pact["c_val"]))
+		"disable_random":
+			var candidates: Array = []
+			for t in towers:
+				if not t["is_disabled"]:
+					candidates.append(t)
+			candidates.shuffle()
+			var count := mini(2, candidates.size())
+			for j in range(count):
+				candidates[j]["is_disabled"] = true
+				candidates[j]["disable_timer"] = float(pact["c_val"])
+		"fast_enemies":
+			fast_enemy_waves += int(pact["c_val"])
+		"sin_tax":
+			var lost: int = roundi(sins * float(pact["c_val"]))
+			sins -= lost
+		"extra_enemies":
+			pact_extra_enemies += int(pact["c_val"])
+
+	notify(Locale.t(pact["name"]) + " — " + Locale.t("Accepted!"), Color(0.8, 0.2, 0.6))
+	pending_pact = {}
+
+func decline_pact() -> void:
+	if pending_pact.is_empty():
+		return
+	Audio.play_sfx("ui_click")
+	notify(Locale.t("Pact declined."), Color(0.6, 0.6, 0.6))
+	pending_pact = {}
+
+
+# ═══════════════════════════════════════════════════════
 # EFFECTS & NOTIFICATIONS
 # ═══════════════════════════════════════════════════════
 func add_effect(type: String, ex: float, ey: float, radius: float = 10.0, color: Color = Color.WHITE) -> void:
-	var duration := 0.5
-	if type == "hit_spark":
-		duration = 0.2
-	elif type == "soul_hit":
-		duration = 0.32
-	elif type == "lucifer_wave":
-		duration = 1.2
-	elif type == "lucifer_hit":
-		duration = 0.4
-	elif type == "hades_wave":
-		duration = 0.6
+	var duration: float
+	match type:
+		"hit_spark": duration = Config.FX_HIT_SPARK_DURATION
+		"soul_hit": duration = Config.FX_SOUL_HIT_DURATION
+		"lucifer_wave": duration = Config.FX_LUCIFER_WAVE_DURATION
+		"lucifer_hit": duration = Config.FX_LUCIFER_HIT_DURATION
+		"hades_wave": duration = Config.FX_HADES_WAVE_DURATION
+		"relic": duration = Config.FX_RELIC_DURATION
+		"aoe": duration = Config.FX_AOE_DURATION
+		_: duration = Config.FX_DEATH_DURATION
 	effects.append({"type": type, "x": ex, "y": ey, "radius": radius, "color": color, "timer": duration})
 
 func add_dmg_number(ex: float, ey: float, dmg: float, color: Color) -> void:
-	effects.append({"type": "dmg_number", "x": ex, "y": ey, "radius": 0, "color": color, "timer": 0.6, "value": dmg})
+	effects.append({"type": "dmg_number", "x": ex, "y": ey, "radius": 0, "color": color, "timer": Config.FX_DMG_NUMBER_DURATION, "value": dmg})
 
 func notify(text: String, color: Color = Color.WHITE) -> void:
 	notifications.append({"text": text, "color": color, "timer": 4.0})

@@ -43,6 +43,14 @@ func _ready() -> void:
 	_run_damage_stat_tracking_tests()
 	_run_insurance_payout_tests()
 	_run_wave_bonus_tests()
+	_run_fx_duration_constants_tests()
+	_run_demonic_pact_tests()
+	_run_relic_aoe_scaling_tests()
+	_run_speed_buff_tests()
+	_run_dice_edge_case_tests()
+	_run_relic_drop_rate_tests()
+	_run_fallen_hero_stat_tests()
+	_run_pact_config_tests()
 
 	print("")
 	print("=== Results: %d/%d passed ===" % [_passed, _total])
@@ -62,6 +70,15 @@ func _assert(condition: bool, test_name: String) -> void:
 	else:
 		_failed += 1
 		print("  FAIL: " + test_name)
+
+func _assert_near(actual: float, expected: float, tolerance: float, test_name: String) -> void:
+	_total += 1
+	if absf(actual - expected) <= tolerance:
+		_passed += 1
+		print("  PASS: " + test_name)
+	else:
+		_failed += 1
+		print("  FAIL: " + test_name + " (expected ~" + str(expected) + " ±" + str(tolerance) + ", got " + str(actual) + ")")
 
 func _assert_eq(actual, expected, test_name: String) -> void:
 	_total += 1
@@ -1098,3 +1115,290 @@ func _run_wave_bonus_tests() -> void:
 	_assert_eq(GM.double_damage, 1, "Double damage decremented after wave")
 
 	GM.reset_state()
+
+# ═══════════════════════════════════════════════════════
+# EFFECT DURATION CONSTANTS TESTS
+# ═══════════════════════════════════════════════════════
+func _run_fx_duration_constants_tests() -> void:
+	print("[FX Duration Constants]")
+
+	# Verify all FX constants exist and are positive
+	_assert(Config.FX_HIT_SPARK_DURATION > 0, "FX_HIT_SPARK_DURATION is positive")
+	_assert(Config.FX_SOUL_HIT_DURATION > 0, "FX_SOUL_HIT_DURATION is positive")
+	_assert(Config.FX_DEATH_DURATION > 0, "FX_DEATH_DURATION is positive")
+	_assert(Config.FX_LUCIFER_WAVE_DURATION > 0, "FX_LUCIFER_WAVE_DURATION is positive")
+	_assert(Config.FX_LUCIFER_HIT_DURATION > 0, "FX_LUCIFER_HIT_DURATION is positive")
+	_assert(Config.FX_HADES_WAVE_DURATION > 0, "FX_HADES_WAVE_DURATION is positive")
+	_assert(Config.FX_DMG_NUMBER_DURATION > 0, "FX_DMG_NUMBER_DURATION is positive")
+	_assert(Config.FX_FLASH_ON_HIT > 0, "FX_FLASH_ON_HIT is positive")
+	_assert(Config.FX_RELIC_DURATION > 0, "FX_RELIC_DURATION is positive")
+	_assert(Config.FX_AOE_DURATION > 0, "FX_AOE_DURATION is positive")
+
+	# Verify specific values match expected
+	_assert_near(Config.FX_HIT_SPARK_DURATION, 0.2, 0.01, "Hit spark is 0.2s")
+	_assert_near(Config.FX_SOUL_HIT_DURATION, 0.32, 0.01, "Soul hit is 0.32s")
+	_assert_near(Config.FX_LUCIFER_WAVE_DURATION, 1.2, 0.01, "Lucifer wave is 1.2s")
+	_assert_near(Config.FX_FLASH_ON_HIT, 0.12, 0.01, "Flash on hit is 0.12s")
+
+	# Verify add_effect uses the constants (effect timer should match constant)
+	GM.reset_state()
+	GM.add_effect("hit_spark", 100, 100, 5.0, Color.WHITE)
+	_assert_eq(GM.effects.size(), 1, "Effect added")
+	_assert_near(GM.effects[0]["timer"], Config.FX_HIT_SPARK_DURATION, 0.001, "hit_spark uses FX constant")
+
+	GM.add_effect("soul_hit", 100, 100, 5.0, Color.GREEN)
+	_assert_near(GM.effects[1]["timer"], Config.FX_SOUL_HIT_DURATION, 0.001, "soul_hit uses FX constant")
+
+	GM.add_effect("death", 100, 100, 5.0, Color.RED)
+	_assert_near(GM.effects[2]["timer"], Config.FX_DEATH_DURATION, 0.001, "death uses FX_DEATH_DURATION")
+
+	# dmg_number should use FX_DMG_NUMBER_DURATION
+	GM.add_dmg_number(100, 100, 5.0, Color.WHITE)
+	var dmg_fx: Dictionary = GM.effects[GM.effects.size() - 1]
+	_assert_near(dmg_fx["timer"], Config.FX_DMG_NUMBER_DURATION, 0.001, "dmg_number uses FX constant")
+
+	GM.reset_state()
+
+# ═══════════════════════════════════════════════════════
+# DEMONIC PACT TESTS
+# ═══════════════════════════════════════════════════════
+func _run_demonic_pact_tests() -> void:
+	print("[Demonic Pacts]")
+	GM.reset_state()
+
+	# Pact data integrity
+	_assert(Config.DEMONIC_PACTS.size() >= 3, "At least 3 demonic pacts defined")
+	for pact in Config.DEMONIC_PACTS:
+		_assert(pact.has("name"), "Pact has name")
+		_assert(pact.has("benefit"), "Pact has benefit type")
+		_assert(pact.has("cost"), "Pact has cost type")
+		_assert(pact.has("benefit_desc"), "Pact has benefit description")
+		_assert(pact.has("cost_desc"), "Pact has cost description")
+
+	# Pact constants
+	_assert(Config.PACT_OFFER_CHANCE > 0 and Config.PACT_OFFER_CHANCE <= 1.0, "Pact offer chance between 0 and 1")
+	_assert(Config.PACT_OFFER_MIN_WAVE >= 1, "Pact min wave >= 1")
+
+	# No pact offered before min wave
+	GM.wave = 1
+	GM.maybe_offer_pact()
+	_assert(GM.pending_pact.is_empty(), "No pact offered at wave 1 (below min)")
+
+	# Accept pact: flat_sins benefit + sin_tax cost
+	GM.reset_state()
+	GM.pending_pact = {"name": "Test Pact", "benefit": "flat_sins", "cost": "sin_tax",
+		"benefit_desc": "Test", "cost_desc": "Test", "b_val": 100, "b_dur": 0, "c_val": 0.5}
+	var sins_before := GM.sins
+	GM.accept_pact()
+	_assert(GM.pending_pact.is_empty(), "Pact cleared after accept")
+	_assert(GM.stats["pacts_accepted"] >= 1, "Pact acceptance tracked in stats")
+	# Earned 100 sins (through earn() with multiplier 1.0) then lost 50% of total
+	_assert(GM.sins != sins_before, "Sins changed after pact")
+
+	# Accept pact: core_heal benefit + core_dmg cost
+	GM.reset_state()
+	GM.core_hp = 50.0
+	GM.pending_pact = {"name": "Heal Pact", "benefit": "core_heal", "cost": "core_dmg",
+		"benefit_desc": "Test", "cost_desc": "Test", "b_val": 20.0, "b_dur": 0, "c_val": 15.0}
+	GM.accept_pact()
+	# HP should be 50 + 20 - 15 = 55 (benefit applied first, then cost)
+	_assert(GM.core_hp > 50.0, "Core HP increased from heal pact benefit")
+
+	# Accept pact: extra_enemies cost
+	GM.reset_state()
+	GM.pending_pact = {"name": "Chaos", "benefit": "double_dmg", "cost": "extra_enemies",
+		"benefit_desc": "Test", "cost_desc": "Test", "b_val": 1, "b_dur": 0, "c_val": 3}
+	GM.accept_pact()
+	_assert_eq(GM.pact_extra_enemies, 3, "Pact sets extra enemies for next wave")
+	_assert(GM.double_damage >= 1, "Pact grants double damage benefit")
+
+	# Decline pact
+	GM.reset_state()
+	GM.pending_pact = {"name": "Test", "benefit": "flat_sins", "cost": "sin_tax",
+		"benefit_desc": "T", "cost_desc": "T", "b_val": 100, "b_dur": 0, "c_val": 0.5}
+	GM.decline_pact()
+	_assert(GM.pending_pact.is_empty(), "Pact cleared after decline")
+	_assert_eq(GM.sins, 50, "Sins unchanged after declining pact")
+
+	# Extra enemies injected into spawn queue
+	GM.reset_state()
+	GM.pact_extra_enemies = 2
+	GM.start_wave()
+	var titan_count := 0
+	for etype in GM.spawn_queue:
+		if etype == "war_titan":
+			titan_count += 1
+	_assert(titan_count >= 2, "Pact extra War Titans added to spawn queue")
+	_assert_eq(GM.pact_extra_enemies, 0, "pact_extra_enemies reset after wave start")
+
+	GM.reset_state()
+
+# ═══════════════════════════════════════════════════════
+# RELIC AOE SCALING TESTS
+# ═══════════════════════════════════════════════════════
+func _run_relic_aoe_scaling_tests() -> void:
+	print("[Relic AoE Scaling]")
+
+	_assert(Config.RELIC_AOE_BASE_DAMAGE > 0, "Relic base AoE damage is positive")
+	_assert(Config.RELIC_AOE_SCALE_PER_WAVE > 0, "Relic AoE scale per wave is positive")
+
+	# Wave 0 damage = base
+	var wave0_dmg: float = Config.RELIC_AOE_BASE_DAMAGE * (1.0 + Config.RELIC_AOE_SCALE_PER_WAVE * 0)
+	_assert_near(wave0_dmg, Config.RELIC_AOE_BASE_DAMAGE, 0.01, "Wave 0 relic dmg = base")
+
+	# Wave 10 damage should be higher
+	var wave10_dmg: float = Config.RELIC_AOE_BASE_DAMAGE * (1.0 + Config.RELIC_AOE_SCALE_PER_WAVE * 10)
+	_assert(wave10_dmg > wave0_dmg, "Wave 10 relic dmg > wave 0")
+
+	# Wave 20 damage
+	var wave20_dmg: float = Config.RELIC_AOE_BASE_DAMAGE * (1.0 + Config.RELIC_AOE_SCALE_PER_WAVE * 20)
+	_assert(wave20_dmg > wave10_dmg, "Wave 20 relic dmg > wave 10")
+	# At wave 20: 50 * (1 + 0.08 * 20) = 50 * 2.6 = 130
+	_assert_near(wave20_dmg, 130.0, 1.0, "Wave 20 relic dmg ≈ 130")
+
+# ═══════════════════════════════════════════════════════
+# SPEED BUFF TESTS
+# ═══════════════════════════════════════════════════════
+func _run_speed_buff_tests() -> void:
+	print("[Speed Buff]")
+	GM.reset_state()
+
+	# Initial state
+	_assert_near(GM.temp_speed_buff, 1.0, 0.01, "Temp speed buff starts at 1.0")
+	_assert_near(GM.speed_buff_timer, 0.0, 0.01, "Speed buff timer starts at 0")
+
+	# Apply speed buff
+	GM._apply_speed_buff(1.8, 15.0)
+	_assert_near(GM.temp_speed_buff, 1.8, 0.01, "Speed buff applied to 1.8")
+	_assert_near(GM.speed_buff_timer, 15.0, 0.01, "Speed buff timer set to 15s")
+	_assert_near(GM.speed_buff_factor, 1.8, 0.01, "Speed buff factor tracks applied value")
+
+	# Overwrite with negative buff (slow)
+	GM._apply_speed_buff(0.75, 10.0)
+	_assert_near(GM.temp_speed_buff, 0.75, 0.01, "Slow applied to 0.75")
+	_assert_near(GM.speed_buff_timer, 10.0, 0.01, "Slow timer set to 10s")
+
+	# Timer expiry resets buff
+	GM.speed_buff_timer = 0.01
+	GM.update_effects(0.02)  # exceed timer
+	_assert_near(GM.temp_speed_buff, 1.0, 0.01, "Buff resets to 1.0 after timer expires")
+	_assert_near(GM.speed_buff_factor, 1.0, 0.01, "Buff factor resets after timer")
+
+	GM.reset_state()
+
+# ═══════════════════════════════════════════════════════
+# DICE EDGE CASE TESTS
+# ═══════════════════════════════════════════════════════
+func _run_dice_edge_case_tests() -> void:
+	print("[Dice Edge Cases]")
+	GM.reset_state()
+
+	# Cannot roll when wave not active
+	GM.wave_active = false
+	GM.dice_uses_left = 2
+	var result := GM.roll_dice()
+	_assert(result.is_empty(), "Cannot roll dice when wave not active")
+	_assert_eq(GM.dice_uses_left, 2, "Dice not consumed when roll fails")
+
+	# Cannot roll with 0 uses
+	GM.wave_active = true
+	GM.dice_uses_left = 0
+	result = GM.roll_dice()
+	_assert(result.is_empty(), "Cannot roll dice with 0 uses")
+
+	# Successful roll
+	GM.wave_active = true
+	GM.dice_uses_left = 2
+	GM.wave = 1
+	result = GM.roll_dice()
+	_assert(not result.is_empty(), "Dice roll succeeds with uses and active wave")
+	_assert_eq(GM.dice_uses_left, 1, "Dice use consumed on roll")
+	_assert(result.has("d1"), "Result has d1")
+	_assert(result.has("total"), "Result has total")
+	_assert(result.has("outcome"), "Result has outcome")
+	_assert(result["d1"] >= 1 and result["d1"] <= 6, "Die value between 1-6")
+	_assert(GM.show_dice_result, "Dice result display enabled")
+	_assert(GM.dice_result_timer > 0, "Dice result timer set")
+
+	# Early game: all outcomes positive
+	var outcome: Dictionary = Config.get_dice_outcome(1, 1)
+	_assert(outcome["positive"], "Early game roll 1 is positive")
+	outcome = Config.get_dice_outcome(6, 1)
+	_assert(outcome["positive"], "Early game roll 6 is positive")
+
+	# Late game: low rolls are negative
+	outcome = Config.get_dice_outcome(1, 10)
+	_assert(not outcome["positive"], "Late game roll 1 is negative")
+	outcome = Config.get_dice_outcome(6, 10)
+	_assert(outcome["positive"], "Late game roll 6 is positive")
+
+	GM.reset_state()
+
+# ═══════════════════════════════════════════════════════
+# RELIC DROP RATE TESTS
+# ═══════════════════════════════════════════════════════
+func _run_relic_drop_rate_tests() -> void:
+	print("[Relic Drop Rates]")
+
+	# Grand Paladin always drops
+	_assert(GM.should_drop_relic("grand_paladin"), "Grand Paladin always drops relic")
+
+	# Verify drop rate function returns bool for all enemy types
+	for etype in Config.ENEMY_DATA:
+		var dropped := GM.should_drop_relic(etype)
+		_assert(dropped is bool, "should_drop_relic returns bool for " + etype)
+
+	# War Titan has higher drop rate than scouts (15% vs 3%)
+	# Statistical test: roll 1000 times and check range
+	var titan_drops := 0
+	var scout_drops := 0
+	for _i in range(1000):
+		if GM.should_drop_relic("war_titan"):
+			titan_drops += 1
+		if GM.should_drop_relic("seraph_scout"):
+			scout_drops += 1
+	_assert(titan_drops > scout_drops, "War Titan drops more often than scouts (" + str(titan_drops) + " vs " + str(scout_drops) + ")")
+	_assert(titan_drops > 50, "War Titan drops at least 50/1000 (got " + str(titan_drops) + ")")
+
+# ═══════════════════════════════════════════════════════
+# FALLEN HERO STAT TRACKING TESTS
+# ═══════════════════════════════════════════════════════
+func _run_fallen_hero_stat_tests() -> void:
+	print("[Fallen Hero Stats]")
+	GM.reset_state()
+
+	_assert(GM.stats.has("fallen_heroes"), "Stats has fallen_heroes key")
+	_assert_eq(GM.stats["fallen_heroes"], 0, "Fallen heroes starts at 0")
+	_assert(GM.stats.has("pacts_accepted"), "Stats has pacts_accepted key")
+	_assert_eq(GM.stats["pacts_accepted"], 0, "Pacts accepted starts at 0")
+
+	# Trigger hero spawn
+	GM.add_to_hero_pool(200)
+	_assert_eq(GM.stats["fallen_heroes"], 1, "Fallen hero tracked in stats after spawn")
+	_assert_eq(GM.fallen_heroes_spawned, 1, "Fallen heroes spawned matches")
+
+	GM.reset_state()
+
+# ═══════════════════════════════════════════════════════
+# PACT CONFIG TESTS
+# ═══════════════════════════════════════════════════════
+func _run_pact_config_tests() -> void:
+	print("[Pact Config]")
+
+	_assert_eq(Config.DEMONIC_PACTS.size(), 5, "5 demonic pacts defined")
+
+	# Each pact has all required fields
+	var required_fields := ["name", "benefit", "benefit_desc", "cost", "cost_desc", "b_val", "b_dur", "c_val"]
+	for pact in Config.DEMONIC_PACTS:
+		for field in required_fields:
+			_assert(pact.has(field), "Pact '" + pact.get("name", "?") + "' has field '" + field + "'")
+
+	# Verify valid benefit types
+	var valid_benefits := ["sin_boost", "tower_dmg_boost", "flat_sins", "core_heal", "double_dmg"]
+	for pact in Config.DEMONIC_PACTS:
+		_assert(valid_benefits.has(pact["benefit"]), "Pact '" + pact["name"] + "' has valid benefit type")
+
+	# Verify valid cost types
+	var valid_costs := ["core_dmg", "disable_random", "fast_enemies", "sin_tax", "extra_enemies"]
+	for pact in Config.DEMONIC_PACTS:
+		_assert(valid_costs.has(pact["cost"]), "Pact '" + pact["name"] + "' has valid cost type")
