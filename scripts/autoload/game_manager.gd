@@ -69,12 +69,13 @@ var time_warp_prev_speed: float = 1.0
 var pending_pandora_choice: bool = false
 var pending_pact: Dictionary = {}
 var pact_extra_enemies: int = 0  # extra War Titans to spawn next wave
+var tower_weaken_waves: int = 0  # Abyssal Gambit: -15% damage debuff duration
+var tower_weaken_mult: float = 1.0  # current weaken multiplier (applied in calc_damage)
 
 # Wave announcement banner — cinematic title card shown when a wave starts.
 # Counts down from its initial value; game_world reads it each frame to draw
 # the sliding "WAVE N" overlay. Zero = no banner visible.
 var wave_banner_timer: float = 0.0
-const WAVE_BANNER_DURATION: float = 2.6
 # Snapshot of the wave number + desc at banner spawn so a new wave can't
 # race the banner and rewrite the label partway through its fade.
 var wave_banner_num: int = 0
@@ -126,7 +127,7 @@ func reset_state() -> void:
 	fast_enemy_waves = 0
 	fallen_hero_pool = 0
 	fallen_heroes_spawned = 0
-	stats = {"enemies_killed": 0, "towers_placed": 0, "total_sins_earned": 0, "total_damage_dealt": 0.0, "pacts_accepted": 0, "fallen_heroes": 0}
+	stats = {"enemies_killed": 0, "towers_placed": 0, "total_sins_earned": 0, "total_damage_dealt": 0.0, "pacts_accepted": 0, "fallen_heroes": 0, "waves_survived": 0}
 	occupied_tiles.clear()
 	notifications.clear()
 	game_time = 0.0
@@ -142,6 +143,8 @@ func reset_state() -> void:
 	pending_pandora_choice = false
 	pending_pact = {}
 	pact_extra_enemies = 0
+	tower_weaken_waves = 0
+	tower_weaken_mult = 1.0
 	wave_banner_timer = 0.0
 	wave_banner_num = 0
 	wave_banner_desc = ""
@@ -443,6 +446,9 @@ func update_enemies(dt: float) -> void:
 	if nec_towers.size() > 0:
 		nec_aura_slow = Config.TOWER_DATA["soul_reaper"].get("aura_slow", 0.0)
 
+	# Cache burn DPS lookup outside the per-enemy loop
+	var _burn_dps_per_stack: float = Config.TOWER_DATA["inferno_warlock"]["burn_dps_per_stack"]
+
 	# Process Michael, Zeus, Raphael, and Temple Cleric abilities
 	for e in enemies:
 		if not e["alive"]:
@@ -519,7 +525,7 @@ func update_enemies(dt: float) -> void:
 			if e["burn_timer"] <= 0:
 				e["burn_stacks"] = 0
 			else:
-				var burn_dps: float = e["burn_stacks"] * Config.TOWER_DATA["inferno_warlock"]["burn_dps_per_stack"]
+				var burn_dps: float = e["burn_stacks"] * _burn_dps_per_stack
 				e["hp"] -= burn_dps * dt
 				if e["hp"] <= 0:
 					e["alive"] = false
@@ -701,6 +707,8 @@ func calc_damage(base_dmg: float, tower, enemy: Dictionary) -> float:
 	var dmg := base_dmg
 	if double_damage > 0:
 		dmg *= 2.0
+	if tower_weaken_mult < 1.0:
+		dmg *= tower_weaken_mult
 	if tower != null and tower is Dictionary:
 		dmg *= tower.get("damage_mult", 1.0)
 	if enemy.get("shield", 0.0) > 0:
@@ -862,17 +870,19 @@ func _lucifer_pulse(tower: Dictionary) -> void:
 			# REDESIGN: execute — kill any enemy surviving pulse below threshold HP
 			if e["alive"] and threshold > 0 and e["hp"] <= e["max_hp"] * threshold:
 				combat_kill(e, tower)
-			var dx: float = e["x"] - tx
-			var dy: float = e["y"] - ty
-			var delay: float = sqrt(dx * dx + dy * dy) / wave_speed
-			effects.append({
-				"type": "lucifer_hit",
-				"x": e["x"], "y": e["y"],
-				"radius": e.get("radius", 8.0),
-				"color": tower["color"],
-				"timer": 0.22,
-				"delay": delay,
-			})
+			# Only spawn hit flash for enemies still alive (dead ones already got death FX)
+			if e["alive"]:
+				var dx: float = e["x"] - tx
+				var dy: float = e["y"] - ty
+				var delay: float = sqrt(dx * dx + dy * dy) / wave_speed
+				effects.append({
+					"type": "lucifer_hit",
+					"x": e["x"], "y": e["y"],
+					"radius": e.get("radius", 8.0),
+					"color": tower["color"],
+					"timer": 0.22,
+					"delay": delay,
+				})
 	add_effect("lucifer_wave", tower["x"], tower["y"], 0, tower["color"])
 	Audio.play_sfx("lucifer_pulse", -6.0)
 
@@ -888,6 +898,8 @@ func _cocytus_cone(tower: Dictionary, dt: float) -> void:
 		cone_dps *= tower.get("buff_multiplier", 1.5)
 	if double_damage > 0:
 		cone_dps *= 2.0
+	if tower_weaken_mult < 1.0:
+		cone_dps *= tower_weaken_mult
 	cone_dps *= tower.get("damage_mult", 1.0)
 	var cl2: float = tower["range"] * tower["range"]
 	var half_angle: float = Config.TOWER_DATA[tower["type"]]["cone_half_angle"]
@@ -1059,7 +1071,7 @@ func start_wave() -> void:
 	# Cinematic wave announcement — snapshot the wave + desc so the banner
 	# draws a stable label even if mid-fade state mutates. Boss waves flag
 	# themselves for a red-tinted banner; the game_world renders the card.
-	wave_banner_timer = WAVE_BANNER_DURATION
+	wave_banner_timer = Config.WAVE_BANNER_DURATION
 	wave_banner_num = wave
 	wave_banner_desc = wave_desc
 	wave_banner_is_boss = false
@@ -1096,8 +1108,9 @@ func update_waves(dt: float) -> void:
 
 func complete_wave() -> void:
 	wave_active = false
+	stats["waves_survived"] = stats.get("waves_survived", 0) + 1
 	# Wave bonus: base linear + powHPG-scaled portion so it stays meaningful late game.
-	var wave_bonus: int = wave * 2 + roundi(30 * reward_scale())
+	var wave_bonus: int = wave * Config.WAVE_BONUS_BASE_PER_WAVE + roundi(Config.WAVE_BONUS_SCALED_BASE * reward_scale())
 	earn(wave_bonus)
 	notify(Locale.tf("wave_complete_notify", {"wave": wave, "bonus": wave_bonus}), Color(0.8, 0.267, 1.0))
 	Audio.play_sfx("wave_complete")
@@ -1110,6 +1123,10 @@ func complete_wave() -> void:
 			sin_multiplier = 1.0
 	if fast_enemy_waves > 0:
 		fast_enemy_waves -= 1
+	if tower_weaken_waves > 0:
+		tower_weaken_waves -= 1
+		if tower_weaken_waves <= 0:
+			tower_weaken_mult = 1.0
 
 	# Replenish 1 die per wave (capped at max)
 	if dice_uses_left < Config.DICE_MAX_USES:
@@ -1320,6 +1337,8 @@ func accept_pact() -> void:
 			core_hp = minf(core_hp + float(pact["b_val"]), core_max_hp)
 		"double_dmg":
 			double_damage = maxi(double_damage, int(pact["b_val"]))
+		"free_tower":
+			free_towers += int(pact["b_val"])
 
 	# Apply cost
 	match pact["cost"]:
@@ -1342,6 +1361,9 @@ func accept_pact() -> void:
 			sins -= lost
 		"extra_enemies":
 			pact_extra_enemies += int(pact["c_val"])
+		"tower_weaken":
+			tower_weaken_waves = int(pact["c_val"])
+			tower_weaken_mult = 0.85  # -15% damage
 
 	notify(Locale.t(pact["name"]) + " — " + Locale.t("Accepted!"), Color(0.8, 0.2, 0.6))
 	pending_pact = {}

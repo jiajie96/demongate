@@ -51,6 +51,14 @@ func _ready() -> void:
 	_run_relic_drop_rate_tests()
 	_run_fallen_hero_stat_tests()
 	_run_pact_config_tests()
+	_run_sell_tower_tests()
+	_run_buildable_tests()
+	_run_game_speed_tests()
+	_run_format_cost_tests()
+	_run_waves_survived_tests()
+	_run_tower_weaken_pact_tests()
+	_run_wave_bonus_constants_tests()
+	_run_banner_duration_tests()
 
 	print("")
 	print("=== Results: %d/%d passed ===" % [_passed, _total])
@@ -88,6 +96,24 @@ func _assert_eq(actual, expected, test_name: String) -> void:
 	else:
 		_failed += 1
 		print("  FAIL: " + test_name + " (expected " + str(expected) + ", got " + str(actual) + ")")
+
+func _assert_gt(actual: float, threshold: float, test_name: String) -> void:
+	_total += 1
+	if actual > threshold:
+		_passed += 1
+		print("  PASS: " + test_name)
+	else:
+		_failed += 1
+		print("  FAIL: " + test_name + " (expected > " + str(threshold) + ", got " + str(actual) + ")")
+
+func _assert_lt(actual: float, threshold: float, test_name: String) -> void:
+	_total += 1
+	if actual < threshold:
+		_passed += 1
+		print("  PASS: " + test_name)
+	else:
+		_failed += 1
+		print("  FAIL: " + test_name + " (expected < " + str(threshold) + ", got " + str(actual) + ")")
 
 # ═══════════════════════════════════════════════════════
 # CONFIG TESTS
@@ -1385,7 +1411,7 @@ func _run_fallen_hero_stat_tests() -> void:
 func _run_pact_config_tests() -> void:
 	print("[Pact Config]")
 
-	_assert_eq(Config.DEMONIC_PACTS.size(), 5, "5 demonic pacts defined")
+	_assert_eq(Config.DEMONIC_PACTS.size(), 6, "6 demonic pacts defined")
 
 	# Each pact has all required fields
 	var required_fields := ["name", "benefit", "benefit_desc", "cost", "cost_desc", "b_val", "b_dur", "c_val"]
@@ -1394,11 +1420,179 @@ func _run_pact_config_tests() -> void:
 			_assert(pact.has(field), "Pact '" + pact.get("name", "?") + "' has field '" + field + "'")
 
 	# Verify valid benefit types
-	var valid_benefits := ["sin_boost", "tower_dmg_boost", "flat_sins", "core_heal", "double_dmg"]
+	var valid_benefits := ["sin_boost", "tower_dmg_boost", "flat_sins", "core_heal", "double_dmg", "free_tower"]
 	for pact in Config.DEMONIC_PACTS:
 		_assert(valid_benefits.has(pact["benefit"]), "Pact '" + pact["name"] + "' has valid benefit type")
 
 	# Verify valid cost types
-	var valid_costs := ["core_dmg", "disable_random", "fast_enemies", "sin_tax", "extra_enemies"]
+	var valid_costs := ["core_dmg", "disable_random", "fast_enemies", "sin_tax", "extra_enemies", "tower_weaken"]
 	for pact in Config.DEMONIC_PACTS:
 		_assert(valid_costs.has(pact["cost"]), "Pact '" + pact["name"] + "' has valid cost type")
+
+# ═══════════════════════════════════════════════════════
+# SELL TOWER TESTS
+# ═══════════════════════════════════════════════════════
+func _run_sell_tower_tests() -> void:
+	print("[Sell Tower]")
+	GM.reset_state()
+
+	var tower := GM.create_tower("bone_marksman", 3, 3)
+	GM.towers.append(tower)
+	GM.occupied_tiles[Config.tile_key(3, 3)] = true
+	var initial_sins := GM.sins
+	var tower_id := tower["id"]
+
+	GM.sell_tower(tower)
+	_assert(not GM.occupied_tiles.has(Config.tile_key(3, 3)), "Tile freed after sell")
+	var expected_refund := roundi(Config.TOWER_DATA["bone_marksman"]["cost"] * Config.SELL_REFUND * 1)
+	_assert_gt(float(GM.sins), float(initial_sins), "Sins increased after sell")
+
+	# Verify tower removed from array
+	var found := false
+	for t in GM.towers:
+		if t["id"] == tower_id:
+			found = true
+	_assert(not found, "Tower removed from towers array after sell")
+
+	# Selling selected tower clears selection
+	var tower2 := GM.create_tower("bone_marksman", 5, 5)
+	GM.towers.append(tower2)
+	GM.selected_tower = tower2
+	GM.sell_tower(tower2)
+	_assert(GM.selected_tower == null, "Selected tower cleared after selling it")
+
+	GM.reset_state()
+
+# ═══════════════════════════════════════════════════════
+# BUILDABLE TESTS
+# ═══════════════════════════════════════════════════════
+func _run_buildable_tests() -> void:
+	print("[Buildable]")
+	GM.reset_state()
+
+	# Out of bounds
+	_assert(not GM.is_buildable(-1, 0), "Negative col not buildable")
+	_assert(not GM.is_buildable(0, -1), "Negative row not buildable")
+	_assert(not GM.is_buildable(Config.GRID_COLS, 0), "Col >= GRID_COLS not buildable")
+	_assert(not GM.is_buildable(0, Config.GRID_ROWS), "Row >= GRID_ROWS not buildable")
+
+	# Path tile not buildable
+	var first_path := Config.MAP_PATH[0]
+	_assert(not GM.is_buildable(first_path.x, first_path.y), "Path tile not buildable")
+
+	# Empty non-path tile is buildable
+	_assert(GM.is_buildable(0, 0), "Empty non-path tile is buildable")
+
+	# Occupied tile not buildable
+	GM.occupied_tiles[Config.tile_key(0, 0)] = true
+	_assert(not GM.is_buildable(0, 0), "Occupied tile not buildable")
+
+	GM.reset_state()
+
+# ═══════════════════════════════════════════════════════
+# GAME SPEED TESTS
+# ═══════════════════════════════════════════════════════
+func _run_game_speed_tests() -> void:
+	print("[Game Speed]")
+	GM.reset_state()
+
+	_assert_near(GM.game_speed, 1.0, 0.01, "Default game speed is 1.0")
+
+	GM.set_game_speed(2.0)
+	_assert_near(GM.game_speed, 2.0, 0.01, "Game speed set to 2.0")
+	_assert_near(Engine.time_scale, 2.0, 0.01, "Engine time_scale matches")
+
+	GM.set_game_speed(0.5)
+	_assert_near(GM.game_speed, 0.5, 0.01, "Game speed set to 0.5")
+
+	GM.reset_state()
+	_assert_near(GM.game_speed, 1.0, 0.01, "Game speed reset to 1.0")
+
+# ═══════════════════════════════════════════════════════
+# FORMAT COST TESTS
+# ═══════════════════════════════════════════════════════
+func _run_format_cost_tests() -> void:
+	print("[Format Cost]")
+
+	# format_cost should return a non-empty string
+	var result := GM.format_cost(100)
+	_assert(result.length() > 0, "format_cost returns non-empty string")
+
+	# Result should contain the number
+	_assert(result.contains("100"), "format_cost contains the cost value")
+
+# ═══════════════════════════════════════════════════════
+# WAVES SURVIVED STAT TESTS
+# ═══════════════════════════════════════════════════════
+func _run_waves_survived_tests() -> void:
+	print("[Waves Survived]")
+	GM.reset_state()
+
+	_assert(GM.stats.has("waves_survived"), "Stats has waves_survived key")
+	_assert_eq(GM.stats["waves_survived"], 0, "Waves survived starts at 0")
+
+	# Simulate completing a wave
+	GM.phase = "playing"
+	GM.wave = 1
+	GM.wave_active = true
+	GM.complete_wave()
+	_assert_eq(GM.stats["waves_survived"], 1, "Waves survived incremented after wave 1")
+
+	GM.wave = 2
+	GM.wave_active = true
+	GM.complete_wave()
+	_assert_eq(GM.stats["waves_survived"], 2, "Waves survived incremented after wave 2")
+
+	GM.reset_state()
+
+# ═══════════════════════════════════════════════════════
+# TOWER WEAKEN PACT TESTS
+# ═══════════════════════════════════════════════════════
+func _run_tower_weaken_pact_tests() -> void:
+	print("[Tower Weaken Pact]")
+	GM.reset_state()
+
+	# Find the Abyssal Gambit pact
+	var gambit_pact: Dictionary = {}
+	for pact in Config.DEMONIC_PACTS:
+		if pact["name"] == "Abyssal Gambit":
+			gambit_pact = pact.duplicate()
+			break
+	_assert(not gambit_pact.is_empty(), "Abyssal Gambit pact exists")
+
+	# Test weaken effect via calc_damage
+	GM.tower_weaken_mult = 0.85
+	GM.tower_weaken_waves = 3
+	var enemy := GM.create_enemy("seraph_scout")
+	var dmg_weakened := GM.calc_damage(10.0, null, enemy)
+	_assert_lt(dmg_weakened, 10.0, "Weakened damage is less than base")
+	_assert_near(dmg_weakened, 8.5, 0.5, "Weakened damage is ~85% of base")
+
+	# Reset clears weaken
+	GM.reset_state()
+	_assert_near(GM.tower_weaken_mult, 1.0, 0.01, "Weaken mult reset to 1.0")
+	_assert_eq(GM.tower_weaken_waves, 0, "Weaken waves reset to 0")
+
+# ═══════════════════════════════════════════════════════
+# WAVE BONUS CONSTANTS TESTS
+# ═══════════════════════════════════════════════════════
+func _run_wave_bonus_constants_tests() -> void:
+	print("[Wave Bonus Constants]")
+
+	_assert_eq(Config.WAVE_BONUS_BASE_PER_WAVE, 2, "Wave bonus base per wave is 2")
+	_assert_eq(Config.WAVE_BONUS_SCALED_BASE, 30, "Wave bonus scaled base is 30")
+
+	# Wave bonus calculation matches formula
+	var wave_num := 5
+	var expected: int = wave_num * Config.WAVE_BONUS_BASE_PER_WAVE + roundi(Config.WAVE_BONUS_SCALED_BASE * Config.reward_scale(wave_num))
+	_assert_gt(float(expected), 0.0, "Wave 5 bonus is positive")
+	_assert_gt(float(expected), float(wave_num * Config.WAVE_BONUS_BASE_PER_WAVE), "Wave bonus includes scaled portion")
+
+# ═══════════════════════════════════════════════════════
+# BANNER DURATION TESTS
+# ═══════════════════════════════════════════════════════
+func _run_banner_duration_tests() -> void:
+	print("[Banner Duration]")
+
+	_assert_near(Config.WAVE_BANNER_DURATION, 2.6, 0.01, "Banner duration is 2.6s")
+	_assert_gt(Config.WAVE_BANNER_DURATION, 0.0, "Banner duration is positive")

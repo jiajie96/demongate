@@ -1622,7 +1622,7 @@ func _draw_overview() -> void:
 func _draw_wave_banner() -> void:
 	if GM.wave_banner_timer <= 0.0 or GM.wave_banner_num <= 0:
 		return
-	var total: float = GM.WAVE_BANNER_DURATION
+	var total: float = Config.WAVE_BANNER_DURATION
 	var t_left: float = GM.wave_banner_timer
 	var elapsed: float = total - t_left
 	# Three-phase envelope: slide-in (0.35s), hold (~1.55s), fade-out (0.7s).

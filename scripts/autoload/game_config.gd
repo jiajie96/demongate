@@ -70,6 +70,13 @@ const PACT_OFFER_MIN_WAVE := 3           # pacts start appearing after this wave
 const RELIC_AOE_BASE_DAMAGE := 50.0
 const RELIC_AOE_SCALE_PER_WAVE := 0.08   # +8% per wave
 
+# Wave completion constants
+const WAVE_BONUS_BASE_PER_WAVE := 2      # linear portion: wave * N
+const WAVE_BONUS_SCALED_BASE := 30       # powHPG portion: N * reward_scale()
+
+# Wave banner
+const WAVE_BANNER_DURATION := 2.6        # seconds for wave title card
+
 
 # ═══════════════════════════════════════════════════════
 # COLORS
@@ -321,6 +328,7 @@ var DEMONIC_PACTS := [
 	{"name": "Soul Harvest", "benefit": "flat_sins", "benefit_desc": "Gain 120 Sins instantly", "cost": "fast_enemies", "cost_desc": "Enemies +30% speed for 2 waves", "b_val": 120, "b_dur": 0, "c_val": 2},
 	{"name": "Dark Resilience", "benefit": "core_heal", "benefit_desc": "Restore 20 Core HP", "cost": "sin_tax", "cost_desc": "Lose 25% of current Sins", "b_val": 20.0, "b_dur": 0, "c_val": 0.25},
 	{"name": "Chaos Pact", "benefit": "double_dmg", "benefit_desc": "Double damage for 1 wave", "cost": "extra_enemies", "cost_desc": "Next wave spawns 3 extra War Titans", "b_val": 1, "b_dur": 0, "c_val": 3},
+	{"name": "Abyssal Gambit", "benefit": "free_tower", "benefit_desc": "Next tower placement is free", "cost": "tower_weaken", "cost_desc": "All towers -15% damage for 3 waves", "b_val": 1, "b_dur": 0, "c_val": 3},
 ]
 
 # ═══════════════════════════════════════════════════════
