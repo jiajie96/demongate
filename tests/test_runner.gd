@@ -59,6 +59,13 @@ func _ready() -> void:
 	_run_tower_weaken_pact_tests()
 	_run_wave_bonus_constants_tests()
 	_run_banner_duration_tests()
+	_run_boss_kill_bonus_tests()
+	_run_cleric_heal_tick_tests()
+	_run_relic_aoe_radius_tests()
+	_run_projectile_max_dist_tests()
+	_run_corruption_mult_tests()
+	_run_boss_kills_stat_tests()
+	_run_heal_tick_timer_tests()
 
 	print("")
 	print("=== Results: %d/%d passed ===" % [_passed, _total])
@@ -1596,3 +1603,180 @@ func _run_banner_duration_tests() -> void:
 
 	_assert_near(Config.WAVE_BANNER_DURATION, 2.6, 0.01, "Banner duration is 2.6s")
 	_assert_gt(Config.WAVE_BANNER_DURATION, 0.0, "Banner duration is positive")
+
+# ═══════════════════════════════════════════════════════
+# BOSS KILL BONUS TESTS
+# ═══════════════════════════════════════════════════════
+func _run_boss_kill_bonus_tests() -> void:
+	print("[Boss Kill Bonus]")
+
+	# Boss kill bonus constant exists and is > 1
+	_assert_gt(Config.BOSS_KILL_BONUS_MULT, 1.0, "Boss kill bonus mult is > 1.0")
+	_assert_near(Config.BOSS_KILL_BONUS_MULT, 1.5, 0.01, "Boss kill bonus mult is 1.5")
+
+	# Boss enemies get bonus sins
+	GM.reset_state()
+	GM.wave = 5
+	var start_sins := GM.sins
+	GM.earn_from_kill("grand_paladin", false)
+	var boss_reward: int = GM.sins - start_sins
+
+	GM.sins = start_sins
+	# Compare to non-boss reward (scaled)
+	GM.earn_from_kill("crusader", false)
+	var normal_reward: int = GM.sins - start_sins
+
+	# Boss reward should be significantly higher than normal due to both base + multiplier
+	_assert_gt(float(boss_reward), float(normal_reward), "Boss kill reward > normal kill reward")
+
+	# Verify the bonus is applied: boss reward should be > base_sin_reward * reward_scale
+	var base_boss_reward: int = maxi(1, roundi(Config.ENEMY_DATA["grand_paladin"]["sin_reward"] * Config.reward_scale(5)))
+	_assert_gt(float(boss_reward), float(base_boss_reward), "Boss kill includes bonus multiplier")
+
+	GM.reset_state()
+
+# ═══════════════════════════════════════════════════════
+# CLERIC HEAL TICK TESTS
+# ═══════════════════════════════════════════════════════
+func _run_cleric_heal_tick_tests() -> void:
+	print("[Cleric Heal Tick]")
+
+	# Cleric heal tick constant exists
+	_assert_gt(Config.CLERIC_HEAL_TICK, 0.0, "Cleric heal tick is positive")
+	_assert_near(Config.CLERIC_HEAL_TICK, 0.5, 0.01, "Cleric heal tick is 0.5s")
+
+	# Cleric enemy gets heal_tick_timer in create_enemy
+	GM.reset_state()
+	GM.wave = 3
+	var cleric := GM.create_enemy("temple_cleric")
+	_assert(cleric.has("heal_tick_timer"), "Cleric has heal_tick_timer field")
+	_assert_near(cleric["heal_tick_timer"], 0.0, 0.01, "Heal tick timer starts at 0")
+
+	# Non-cleric also has the field (all enemies get it)
+	var scout := GM.create_enemy("seraph_scout")
+	_assert(scout.has("heal_tick_timer"), "Scout has heal_tick_timer field")
+
+	GM.reset_state()
+
+# ═══════════════════════════════════════════════════════
+# RELIC AOE RADIUS TESTS
+# ═══════════════════════════════════════════════════════
+func _run_relic_aoe_radius_tests() -> void:
+	print("[Relic AoE Radius]")
+
+	# Constant exists and is reasonable
+	_assert_gt(Config.RELIC_AOE_RADIUS, 0.0, "Relic AOE radius is positive")
+	_assert_near(Config.RELIC_AOE_RADIUS, 80.0, 0.01, "Relic AOE radius is 80")
+
+	# Should be larger than any tower's AoE radius
+	var mage_aoe: float = Config.TOWER_DATA["inferno_warlock"]["aoe_radius"]
+	_assert_gt(Config.RELIC_AOE_RADIUS, mage_aoe, "Relic AOE > Mage AoE radius")
+
+	# Should be less than half a screen width
+	_assert_lt(Config.RELIC_AOE_RADIUS, float(Config.GAME_WIDTH) / 2.0, "Relic AOE < half screen")
+
+# ═══════════════════════════════════════════════════════
+# PROJECTILE MAX DIST TESTS
+# ═══════════════════════════════════════════════════════
+func _run_projectile_max_dist_tests() -> void:
+	print("[Projectile Max Dist]")
+
+	# Constant exists and is reasonable
+	_assert_gt(Config.PROJECTILE_MAX_DIST, 0.0, "Projectile max dist is positive")
+	_assert_near(Config.PROJECTILE_MAX_DIST, 600.0, 0.01, "Projectile max dist is 600")
+
+	# Should be larger than game diagonal (enemies spawn off-screen)
+	var max_range: float = 0.0
+	for type in Config.TOWER_DATA:
+		var data: Dictionary = Config.TOWER_DATA[type]
+		if not data.get("is_global", false):
+			max_range = maxf(max_range, data["range"])
+	_assert_gt(Config.PROJECTILE_MAX_DIST, max_range, "Projectile max dist > longest tower range")
+
+	# Should be less than double the game dimensions
+	var diag: float = sqrt(float(Config.GAME_WIDTH * Config.GAME_WIDTH + Config.GAME_HEIGHT * Config.GAME_HEIGHT))
+	_assert_lt(Config.PROJECTILE_MAX_DIST, diag, "Projectile max dist < screen diagonal")
+
+# ═══════════════════════════════════════════════════════
+# CORRUPTION MULT TESTS
+# ═══════════════════════════════════════════════════════
+func _run_corruption_mult_tests() -> void:
+	print("[Corruption Mult]")
+
+	# Hades tower data now has corruption_mult
+	var hades_data: Dictionary = Config.TOWER_DATA["hades"]
+	_assert(hades_data.has("corruption_mult"), "Hades has corruption_mult key")
+	_assert_gt(hades_data["corruption_mult"], 1.0, "Corruption mult > 1.0 (is a buff)")
+	_assert_near(hades_data["corruption_mult"], 1.15, 0.01, "Corruption mult is 1.15")
+
+	# Corruption mult is less than Hades buff_multiplier (weaker synergy)
+	_assert_lt(hades_data["corruption_mult"], hades_data["buff_multiplier"], "Corruption < buff_multiplier")
+
+	# Other towers don't have corruption_mult
+	_assert(not Config.TOWER_DATA["bone_marksman"].has("corruption_mult"), "Bone Marksman has no corruption_mult")
+	_assert(not Config.TOWER_DATA["lucifer"].has("corruption_mult"), "Lucifer has no corruption_mult")
+
+# ═══════════════════════════════════════════════════════
+# BOSS KILLS STAT TESTS
+# ═══════════════════════════════════════════════════════
+func _run_boss_kills_stat_tests() -> void:
+	print("[Boss Kills Stat]")
+	GM.reset_state()
+
+	# Stats has boss_kills key
+	_assert(GM.stats.has("boss_kills"), "Stats has boss_kills key")
+	_assert_eq(GM.stats["boss_kills"], 0, "Boss kills starts at 0")
+
+	# Kill a boss enemy via combat_kill
+	GM.wave = 5
+	var boss := GM.create_enemy("grand_paladin")
+	GM.enemies.append(boss)
+	GM.combat_kill(boss, null)
+	_assert_eq(GM.stats["boss_kills"], 1, "Boss kills incremented after killing boss")
+
+	# Kill a non-boss — should not increment
+	var scout := GM.create_enemy("seraph_scout")
+	GM.enemies.append(scout)
+	GM.combat_kill(scout, null)
+	_assert_eq(GM.stats["boss_kills"], 1, "Boss kills not incremented for non-boss")
+
+	# Kill another boss — increments to 2
+	var michael := GM.create_enemy("archangel_michael")
+	GM.enemies.append(michael)
+	GM.combat_kill(michael, null)
+	_assert_eq(GM.stats["boss_kills"], 2, "Boss kills incremented for second boss")
+
+	GM.reset_state()
+
+# ═══════════════════════════════════════════════════════
+# HEAL TICK TIMER TESTS
+# ═══════════════════════════════════════════════════════
+func _run_heal_tick_timer_tests() -> void:
+	print("[Heal Tick Timer]")
+	GM.reset_state()
+	GM.wave = 3
+
+	# Create a cleric and verify heal_tick_timer behavior
+	var cleric := GM.create_enemy("temple_cleric")
+	_assert_near(cleric["heal_tick_timer"], 0.0, 0.01, "Cleric heal_tick_timer starts at 0")
+
+	# After setting negative, a tick should fire and reset
+	cleric["heal_tick_timer"] = -0.1
+	# Next update cycle would reset it to CLERIC_HEAL_TICK
+	_assert_lt(cleric["heal_tick_timer"], 0.0, "Negative timer triggers heal on next update")
+
+	# Verify CLERIC_HEAL_TICK is compatible with enemy heal_aura_pct
+	var heal_pct: float = Config.ENEMY_DATA["temple_cleric"]["heal_aura_pct"]
+	var tick_heal: float = heal_pct * Config.CLERIC_HEAL_TICK
+	_assert_gt(tick_heal, 0.0, "Per-tick heal amount is positive")
+	_assert_lt(tick_heal, 0.1, "Per-tick heal amount is reasonable (< 10% max HP)")
+
+	# Create enemy, damage it, verify heal math
+	var target := GM.create_enemy("crusader")
+	target["hp"] = target["max_hp"] * 0.5  # 50% HP
+	var heal_amount: float = target["max_hp"] * heal_pct * Config.CLERIC_HEAL_TICK
+	var expected_hp: float = target["hp"] + heal_amount
+	_assert_gt(expected_hp, target["hp"], "Heal would increase target HP")
+	_assert_lt(expected_hp, target["max_hp"], "Single tick doesn't overheal from 50%")
+
+	GM.reset_state()

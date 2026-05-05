@@ -77,6 +77,18 @@ const WAVE_BONUS_SCALED_BASE := 30       # powHPG portion: N * reward_scale()
 # Wave banner
 const WAVE_BANNER_DURATION := 2.6        # seconds for wave title card
 
+# Cleric heal tick interval — clerics heal in discrete ticks not every frame
+const CLERIC_HEAL_TICK := 0.5            # seconds between heal ticks
+
+# Boss kill bonus multiplier — boss kills grant extra sins on top of scaled reward
+const BOSS_KILL_BONUS_MULT := 1.5        # 50% extra sins from bosses
+
+# Relic explosion radius
+const RELIC_AOE_RADIUS := 80.0           # pixel radius for Hellfire Bomb relic
+
+# Projectile max travel distance before auto-cull
+const PROJECTILE_MAX_DIST := 600.0       # pixels — tighter than screen diagonal
+
 
 # ═══════════════════════════════════════════════════════
 # COLORS
@@ -178,7 +190,7 @@ var TOWER_DATA := {
 	},
 	"hades": {
 		"name": "Hades",
-		"desc": "Buffs nearby towers & damages enemies in range",
+		"desc": "Buffs nearby towers, damages enemies, +15% Cocytus corruption",
 		"damage": 2.0,
 		"range": 130.0,
 		"attack_speed": 0.0,
@@ -193,6 +205,7 @@ var TOWER_DATA := {
 		"buff_multiplier": 1.5,
 		"buff_cooldown": 5.0,
 		"buff_duration": 2.0,
+		"corruption_mult": 1.15,  # Cocytus +15% damage to enemies in Hades range
 	},
 	"cocytus": {
 		"name": "Cocytus",

@@ -127,7 +127,7 @@ func reset_state() -> void:
 	fast_enemy_waves = 0
 	fallen_hero_pool = 0
 	fallen_heroes_spawned = 0
-	stats = {"enemies_killed": 0, "towers_placed": 0, "total_sins_earned": 0, "total_damage_dealt": 0.0, "pacts_accepted": 0, "fallen_heroes": 0, "waves_survived": 0}
+	stats = {"enemies_killed": 0, "towers_placed": 0, "total_sins_earned": 0, "total_damage_dealt": 0.0, "pacts_accepted": 0, "fallen_heroes": 0, "waves_survived": 0, "boss_kills": 0}
 	occupied_tiles.clear()
 	notifications.clear()
 	game_time = 0.0
@@ -174,6 +174,9 @@ func earn_from_kill(enemy_type: String, was_aoe: bool) -> void:
 	if data.is_empty():
 		return
 	var scaled_reward: int = maxi(1, roundi(data["sin_reward"] * reward_scale()))
+	# Boss kills grant a bonus multiplier on top of base reward
+	if data.get("is_boss", false):
+		scaled_reward = roundi(scaled_reward * Config.BOSS_KILL_BONUS_MULT)
 	earn(scaled_reward)
 	if was_aoe:
 		earn(1)
@@ -360,6 +363,7 @@ func create_enemy(type: String) -> Dictionary:
 		"burn_stacks": 0,
 		"burn_timer": 0.0,
 		"frost_timer": 0.0,
+		"heal_tick_timer": 0.0,
 	}
 
 func _has_alive_type(etype: String) -> bool:
@@ -462,19 +466,23 @@ func update_enemies(dt: float) -> void:
 					_zeus_lightning(e)
 				elif e["type"] == "archangel_raphael":
 					_raphael_heal(e)
-		# Temple Cleric passive heal aura — heals nearby allies 2% max HP/s
+		# Temple Cleric passive heal aura — tick-based to reduce per-frame cost
 		elif e["type"] == "temple_cleric":
-			var cleric_data: Dictionary = Config.ENEMY_DATA["temple_cleric"]
-			var aura_r2: float = cleric_data["heal_aura_radius"] * cleric_data["heal_aura_radius"]
-			var heal_rate: float = cleric_data["heal_aura_pct"]
-			for ally in enemies:
-				if not ally["alive"] or ally == e:
-					continue
-				var adx: float = ally["x"] - e["x"]
-				var ady: float = ally["y"] - e["y"]
-				if adx * adx + ady * ady <= aura_r2:
-					var heal: float = ally["max_hp"] * heal_rate * dt
-					ally["hp"] = minf(ally["hp"] + heal, ally["max_hp"])
+			e["heal_tick_timer"] -= dt
+			if e["heal_tick_timer"] <= 0:
+				e["heal_tick_timer"] = Config.CLERIC_HEAL_TICK
+				var cleric_data: Dictionary = Config.ENEMY_DATA["temple_cleric"]
+				var aura_r2: float = cleric_data["heal_aura_radius"] * cleric_data["heal_aura_radius"]
+				var heal_rate: float = cleric_data["heal_aura_pct"]
+				var tick_heal_mult: float = Config.CLERIC_HEAL_TICK  # heal_rate is per-second
+				for ally in enemies:
+					if not ally["alive"] or ally == e:
+						continue
+					var adx: float = ally["x"] - e["x"]
+					var ady: float = ally["y"] - e["y"]
+					if adx * adx + ady * ady <= aura_r2:
+						var heal: float = ally["max_hp"] * heal_rate * tick_heal_mult
+						ally["hp"] = minf(ally["hp"] + heal, ally["max_hp"])
 
 	var i := enemies.size() - 1
 	while i >= 0:
@@ -641,7 +649,7 @@ func update_projectiles(dt: float) -> void:
 			p["x"] += (dx / dist) * move_dist
 			p["y"] += (dy / dist) * move_dist
 
-		if dist > 800:
+		if dist > Config.PROJECTILE_MAX_DIST:
 			p["alive"] = false
 
 		i -= 1
@@ -772,6 +780,8 @@ func combat_aoe(cx: float, cy: float, radius: float, base_dmg: float, tower) -> 
 func combat_kill(enemy: Dictionary, tower) -> void:
 	enemy["alive"] = false
 	stats["enemies_killed"] += 1
+	if enemy.get("is_boss", false):
+		stats["boss_kills"] = stats.get("boss_kills", 0) + 1
 	if tower != null and tower is Dictionary:
 		tower["kill_count"] = tower.get("kill_count", 0) + 1
 	earn_from_kill(enemy["type"], tower != null and tower is Dictionary and tower.get("is_aoe", false))
@@ -1228,8 +1238,8 @@ func drop_relic(rx: float, ry: float) -> void:
 	match loot["type"]:
 		"aoe":
 			var relic_dmg: float = Config.RELIC_AOE_BASE_DAMAGE * (1.0 + Config.RELIC_AOE_SCALE_PER_WAVE * wave)
-			combat_aoe(rx, ry, 80.0, relic_dmg, null)
-			add_effect("aoe", rx, ry, 80.0, Color(1.0, 0.47, 0.12, 0.25))
+			combat_aoe(rx, ry, Config.RELIC_AOE_RADIUS, relic_dmg, null)
+			add_effect("aoe", rx, ry, Config.RELIC_AOE_RADIUS, Color(1.0, 0.47, 0.12, 0.25))
 		"random_sins":
 			var amt: int = 50 + randi() % 100
 			earn(amt)

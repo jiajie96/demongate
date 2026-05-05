@@ -824,10 +824,11 @@ func _process(_dt: float) -> void:
 
 	# End screen stats
 	var _dmg_str := _format_large_number(GM.stats.get("total_damage_dealt", 0.0))
+	var _boss_kills: int = GM.stats.get("boss_kills", 0)
 	if GM.phase == "gameover":
-		go_stats_label.text = Locale.tf("gameover_stats", {"wave": GM.wave, "kills": GM.stats["enemies_killed"], "towers": GM.stats["towers_placed"], "sins": GM.stats["total_sins_earned"], "dmg": _dmg_str})
+		go_stats_label.text = Locale.tf("gameover_stats", {"wave": GM.wave, "kills": GM.stats["enemies_killed"], "towers": GM.stats["towers_placed"], "sins": GM.stats["total_sins_earned"], "dmg": _dmg_str, "bosses": _boss_kills})
 	elif GM.phase == "victory":
-		vic_stats_label.text = Locale.tf("victory_stats", {"kills": GM.stats["enemies_killed"], "towers": GM.stats["towers_placed"], "sins": GM.stats["total_sins_earned"], "dmg": _dmg_str})
+		vic_stats_label.text = Locale.tf("victory_stats", {"kills": GM.stats["enemies_killed"], "towers": GM.stats["towers_placed"], "sins": GM.stats["total_sins_earned"], "dmg": _dmg_str, "bosses": _boss_kills})
 
 	# Settings pause button text
 	if settings_overlay.visible:
@@ -980,10 +981,12 @@ func _format_large_number(value: float) -> String:
 func _build_wave_preview(wave_idx: int) -> String:
 	var wave_def: Dictionary = Config.WAVE_DATA[wave_idx]
 	var parts: PackedStringArray = []
+	var total_count: int = 0
 	for group in wave_def["enemies"]:
 		var ename: String = Config.ENEMY_DATA[group["type"]]["name"]
 		parts.append(str(group["count"]) + "x " + Locale.t(ename))
-	return Locale.t("Next:") + " " + ", ".join(parts)
+		total_count += int(group["count"])
+	return Locale.t("Next:") + " (" + str(total_count) + ") " + ", ".join(parts)
 
 func _make_separator() -> HSeparator:
 	var sep := HSeparator.new()
