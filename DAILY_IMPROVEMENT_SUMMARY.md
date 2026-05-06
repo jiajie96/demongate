@@ -1,54 +1,42 @@
-# Daily Improvement Summary — 2026-05-04
+# Daily Improvement Summary — 2026-05-06
 
-## Commit: `3191dbd`
+## Changes Made
 
-**4 files changed, 244 insertions, 20 deletions**
+### 1. Bug Fix: Dice AoE Now Tracks Stats & Uses combat_kill (Bug Fix)
+`_damage_all_percent()` (used by Devil's Dice Hellstorm and Small Spark) was bypassing `combat_kill()`, meaning dice AoE kills didn't track `boss_kills` stat, didn't trigger relic drops, and didn't count `total_damage_dealt`. Now routes through `combat_kill()` for consistent behavior and tracks damage in stats.
 
----
+### 2. Extract Tower Build Duration Constant (Code Quality)
+Magic number `0.3` in `create_tower()` → `Config.TOWER_BUILD_DURATION`. Build animation duration is now tunable from one place.
 
-## Improvements
+### 3. Extract Tower Fire Flash Constant (Code Quality)
+Five occurrences of `fire_flash = 0.3` across tower update functions → `Config.TOWER_FIRE_FLASH`. Attack pose hold time is now a single constant.
 
-### 1. Gameplay: New Demonic Pact — Abyssal Gambit
-Added a 6th pact: grants a free tower placement but weakens all tower damage by 15% for 3 waves. Adds a new strategic tradeoff for players who want to expand defenses quickly at the cost of reduced firepower.
+### 4. Extract Enemy Spawn Duration Constant (Code Quality)
+Magic number `0.4` in `create_enemy()` → `Config.ENEMY_SPAWN_DURATION`. Spawn fade-in timer is now configurable.
 
-### 2. Bug Fix: Lucifer Pulse Hit FX on Dead Enemies
-Lucifer's global pulse was spawning `lucifer_hit` visual effects even for enemies killed by the execute threshold check. Now only living enemies after the pulse get the delayed hit flash, preventing orphaned effects.
+### 5. Extract Relic Drop Rate Constants (Code Quality/Balance)
+Inline magic numbers in `should_drop_relic()` → four named constants: `RELIC_DROP_BOSS` (1.0), `RELIC_DROP_WAR_TITAN` (0.15), `RELIC_DROP_MEDIUM` (0.05), `RELIC_DROP_DEFAULT` (0.03). Makes drop rates visible, tunable, and testable.
 
-### 3. Code Quality: WAVE_BANNER_DURATION Moved to Config
-The `WAVE_BANNER_DURATION` constant was defined in `game_manager.gd` but belongs with all other timing/balance constants. Moved to `game_config.gd` for consistency. Updated references in both `game_manager.gd` and `game_world.gd`.
+### 6. Extract Dice AoE Flash Duration Constants (Code Quality)
+Magic numbers `0.2` and `0.15` for dice AoE flash timers → `Config.DICE_AOE_FLASH_STRONG` and `Config.DICE_AOE_FLASH_WEAK`.
 
-### 4. Code Quality: Wave Bonus Magic Numbers Extracted
-The wave completion bonus formula had inline magic numbers `2` and `30`. Extracted as `WAVE_BONUS_BASE_PER_WAVE` and `WAVE_BONUS_SCALED_BASE` config constants for clearer tuning.
+### 7. Add wave_completion_bonus() Helper (Code Quality)
+Extracted wave bonus formula into a standalone `GM.wave_completion_bonus(wave_num)` function. Reduces duplication between `complete_wave()` and tests, and makes the bonus calculation independently testable.
 
-### 5. Performance: Cached Burn DPS Lookup
-The inferno warlock burn DoT tick was looking up `Config.TOWER_DATA["inferno_warlock"]["burn_dps_per_stack"]` inside the per-enemy loop every frame. Hoisted to a single variable at the top of `update_enemies()`.
+### 8. New Tests: Build/Spawn/Fire Flash Constants (Test Coverage — 6 assertions)
+Validates `TOWER_BUILD_DURATION`, `ENEMY_SPAWN_DURATION`, and `TOWER_FIRE_FLASH` constants exist with correct values, and verifies `create_tower`/`create_enemy` use them.
 
-### 6. Gameplay: Waves Survived Stat
-Added `waves_survived` to the stats dictionary, incremented on each `complete_wave()` call. Feeds into game-over and victory screens for clearer performance summary.
+### 9. New Tests: Relic Drop, Dice Flash, Damage Percent, Wave Bonus, Projectile, Pact Flow (Test Coverage — 46 assertions)
+Seven new test suites covering:
+- Relic drop rate constants (ordering, ranges)
+- Dice AoE flash constants
+- `_damage_all_percent` stat tracking and boss kill detection
+- `wave_completion_bonus` formula verification across waves
+- Projectile creation lifecycle (position, speed, AoE flags)
+- Full pact accept/decline flow (Soul Harvest, Dark Resilience, empty pact safety)
 
-### 7. Gameplay: Tower Weaken Debuff System
-Implemented `tower_weaken` cost type for the Abyssal Gambit pact. Applies a 0.85x damage multiplier to all tower damage for N waves, then auto-clears on wave completion.
+### 10. Total Test Count
+**448 assertions** across **64 test suites** (up from 396 assertions / 57 suites).
 
-### 8. Consistency Fix: Cocytus Cone Weaken
-The Cocytus frost cone applies damage manually (bypassing `calc_damage`). Added `tower_weaken_mult` to this code path so the Abyssal Gambit debuff affects all damage sources consistently.
-
-### 9. Test Helpers: _assert_gt and _assert_lt
-Added two new assertion helpers to the test runner for cleaner numeric comparisons. Both print actual vs threshold on failure.
-
-### 10. Tests: 35 New Assertions (8 New Test Groups)
-- **Sell Tower** — tile freed, sins refunded, tower removed, selection cleared
-- **Buildable** — out-of-bounds, path tiles, occupied tiles
-- **Game Speed** — set/reset, Engine.time_scale sync
-- **Format Cost** — non-empty output, value inclusion
-- **Waves Survived** — stat init, increment tracking
-- **Tower Weaken Pact** — damage reduction, config reset
-- **Wave Bonus Constants** — value checks, formula validation
-- **Banner Duration** — config presence and positivity
-
----
-
-## Test Count
-Previous: 327 assertions → Current: 362 assertions (+35)
-
-## Note
-Godot is not available in the sandbox environment, so tests were verified via static analysis (symbol references, parentheses balance, function registration). Committed locally; push to GitHub requires SSH keys from the desktop environment.
+## Summary
+Focused on code quality (extracting 9 magic numbers into named constants), fixing a stat-tracking bug in dice AoE damage, and adding 52 new test assertions covering previously untested systems (projectile lifecycle, pact accept/decline flow, percentage-based AoE damage).

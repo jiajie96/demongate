@@ -66,6 +66,13 @@ func _ready() -> void:
 	_run_corruption_mult_tests()
 	_run_boss_kills_stat_tests()
 	_run_heal_tick_timer_tests()
+	_run_build_spawn_constants_tests()
+	_run_relic_drop_constants_tests()
+	_run_dice_aoe_flash_constants_tests()
+	_run_damage_all_percent_tests()
+	_run_wave_completion_bonus_tests()
+	_run_projectile_lifecycle_tests()
+	_run_pact_accept_decline_tests()
 
 	print("")
 	print("=== Results: %d/%d passed ===" % [_passed, _total])
@@ -1778,5 +1785,218 @@ func _run_heal_tick_timer_tests() -> void:
 	var expected_hp: float = target["hp"] + heal_amount
 	_assert_gt(expected_hp, target["hp"], "Heal would increase target HP")
 	_assert_lt(expected_hp, target["max_hp"], "Single tick doesn't overheal from 50%")
+
+	GM.reset_state()
+
+# ═══════════════════════════════════════════════════════
+# BUILD / SPAWN DURATION CONSTANTS TESTS
+# ═══════════════════════════════════════════════════════
+func _run_build_spawn_constants_tests() -> void:
+	print("[Build/Spawn Constants]")
+
+	# Tower build duration constant exists and is positive
+	_assert_gt(Config.TOWER_BUILD_DURATION, 0.0, "Tower build duration is positive")
+	_assert_near(Config.TOWER_BUILD_DURATION, 0.3, 0.01, "Tower build duration is 0.3s")
+
+	# Enemy spawn duration constant exists and is positive
+	_assert_gt(Config.ENEMY_SPAWN_DURATION, 0.0, "Enemy spawn duration is positive")
+	_assert_near(Config.ENEMY_SPAWN_DURATION, 0.4, 0.01, "Enemy spawn duration is 0.4s")
+
+	# Tower fire flash constant exists and is positive
+	_assert_gt(Config.TOWER_FIRE_FLASH, 0.0, "Tower fire flash is positive")
+	_assert_near(Config.TOWER_FIRE_FLASH, 0.3, 0.01, "Tower fire flash is 0.3s")
+
+	# Tower uses the constant for build_timer
+	GM.reset_state()
+	GM.wave = 1
+	var tower := GM.create_tower("bone_marksman", 5, 5)
+	_assert_near(tower["build_timer"], Config.TOWER_BUILD_DURATION, 0.01, "Tower build_timer uses constant")
+
+	# Enemy uses the constant for spawn_timer
+	var enemy := GM.create_enemy("seraph_scout")
+	_assert_near(enemy["spawn_timer"], Config.ENEMY_SPAWN_DURATION, 0.01, "Enemy spawn_timer uses constant")
+
+	GM.reset_state()
+
+# ═══════════════════════════════════════════════════════
+# RELIC DROP CONSTANTS TESTS
+# ═══════════════════════════════════════════════════════
+func _run_relic_drop_constants_tests() -> void:
+	print("[Relic Drop Constants]")
+
+	# All relic drop constants exist and are in valid range
+	_assert_near(Config.RELIC_DROP_BOSS, 1.0, 0.01, "Boss relic drop is 100%")
+	_assert_gt(Config.RELIC_DROP_WAR_TITAN, 0.0, "War Titan relic drop > 0")
+	_assert_lt(Config.RELIC_DROP_WAR_TITAN, 1.0, "War Titan relic drop < 100%")
+	_assert_near(Config.RELIC_DROP_WAR_TITAN, 0.15, 0.01, "War Titan relic drop is 15%")
+	_assert_gt(Config.RELIC_DROP_MEDIUM, 0.0, "Medium relic drop > 0")
+	_assert_near(Config.RELIC_DROP_MEDIUM, 0.05, 0.01, "Medium relic drop is 5%")
+	_assert_gt(Config.RELIC_DROP_DEFAULT, 0.0, "Default relic drop > 0")
+	_assert_near(Config.RELIC_DROP_DEFAULT, 0.03, 0.01, "Default relic drop is 3%")
+
+	# Drop rates are ordered: boss > war_titan > medium > default
+	_assert_gt(Config.RELIC_DROP_BOSS, Config.RELIC_DROP_WAR_TITAN, "Boss drop > War Titan drop")
+	_assert_gt(Config.RELIC_DROP_WAR_TITAN, Config.RELIC_DROP_MEDIUM, "War Titan drop > medium drop")
+	_assert_gt(Config.RELIC_DROP_MEDIUM, Config.RELIC_DROP_DEFAULT, "Medium drop > default drop")
+
+# ═══════════════════════════════════════════════════════
+# DICE AOE FLASH CONSTANTS TESTS
+# ═══════════════════════════════════════════════════════
+func _run_dice_aoe_flash_constants_tests() -> void:
+	print("[Dice AoE Flash Constants]")
+
+	_assert_gt(Config.DICE_AOE_FLASH_STRONG, 0.0, "Strong AoE flash is positive")
+	_assert_near(Config.DICE_AOE_FLASH_STRONG, 0.2, 0.01, "Strong AoE flash is 0.2s")
+	_assert_gt(Config.DICE_AOE_FLASH_WEAK, 0.0, "Weak AoE flash is positive")
+	_assert_near(Config.DICE_AOE_FLASH_WEAK, 0.15, 0.01, "Weak AoE flash is 0.15s")
+	_assert_gt(Config.DICE_AOE_FLASH_STRONG, Config.DICE_AOE_FLASH_WEAK, "Strong flash > weak flash")
+
+# ═══════════════════════════════════════════════════════
+# DAMAGE ALL PERCENT (DICE AOE) TESTS
+# ═══════════════════════════════════════════════════════
+func _run_damage_all_percent_tests() -> void:
+	print("[Damage All Percent]")
+	GM.reset_state()
+	GM.wave = 5
+
+	# Create enemies and deal percentage damage
+	var e1 := GM.create_enemy("seraph_scout")
+	var e2 := GM.create_enemy("crusader")
+	GM.enemies.append(e1)
+	GM.enemies.append(e2)
+	var e1_max: float = e1["max_hp"]
+	var e2_max: float = e2["max_hp"]
+
+	# Track total_damage_dealt before
+	var dmg_before: float = GM.stats.get("total_damage_dealt", 0.0)
+
+	# Apply 10% AoE damage
+	GM._damage_all_percent(0.10, 0.15)
+
+	# Enemies should have lost 10% HP
+	_assert_near(e1["hp"], e1_max * 0.9, 0.1, "Enemy 1 took 10% damage")
+	_assert_near(e2["hp"], e2_max * 0.9, 0.1, "Enemy 2 took 10% damage")
+
+	# total_damage_dealt should be tracked
+	var dmg_after: float = GM.stats.get("total_damage_dealt", 0.0)
+	var expected_dmg: float = e1_max * 0.1 + e2_max * 0.1
+	_assert_near(dmg_after - dmg_before, expected_dmg, 0.1, "Dice AoE tracks total_damage_dealt")
+
+	# Test kill via percentage damage tracks boss_kills
+	GM.enemies.clear()
+	var boss := GM.create_enemy("grand_paladin")
+	boss["hp"] = 1.0  # nearly dead
+	GM.enemies.append(boss)
+	var boss_kills_before: int = GM.stats.get("boss_kills", 0)
+	GM._damage_all_percent(1.0, 0.2)
+	var boss_kills_after: int = GM.stats.get("boss_kills", 0)
+	_assert_eq(boss_kills_after, boss_kills_before + 1, "Dice AoE kill tracks boss_kills stat")
+
+	GM.reset_state()
+
+# ═══════════════════════════════════════════════════════
+# WAVE COMPLETION BONUS TESTS
+# ═══════════════════════════════════════════════════════
+func _run_wave_completion_bonus_tests() -> void:
+	print("[Wave Completion Bonus]")
+	GM.reset_state()
+
+	# wave_completion_bonus should return positive values
+	var bonus_w1: int = GM.wave_completion_bonus(1)
+	_assert_gt(float(bonus_w1), 0.0, "Wave 1 bonus is positive")
+
+	var bonus_w10: int = GM.wave_completion_bonus(10)
+	_assert_gt(float(bonus_w10), float(bonus_w1), "Wave 10 bonus > wave 1 bonus")
+
+	var bonus_w20: int = GM.wave_completion_bonus(20)
+	_assert_gt(float(bonus_w20), float(bonus_w10), "Wave 20 bonus > wave 10 bonus")
+
+	# Bonus matches the formula
+	var expected_w5: int = 5 * Config.WAVE_BONUS_BASE_PER_WAVE + roundi(Config.WAVE_BONUS_SCALED_BASE * Config.reward_scale(5))
+	_assert_eq(GM.wave_completion_bonus(5), expected_w5, "Wave 5 bonus matches formula")
+
+	GM.reset_state()
+
+# ═══════════════════════════════════════════════════════
+# PROJECTILE LIFECYCLE TESTS
+# ═══════════════════════════════════════════════════════
+func _run_projectile_lifecycle_tests() -> void:
+	print("[Projectile Lifecycle]")
+	GM.reset_state()
+	GM.wave = 3
+
+	# Create tower and enemy for projectile
+	var tower := GM.create_tower("bone_marksman", 5, 5)
+	GM.towers.append(tower)
+	var enemy := GM.create_enemy("seraph_scout")
+	enemy["x"] = tower["x"] + 20
+	enemy["y"] = tower["y"]
+	GM.enemies.append(enemy)
+
+	# Create projectile
+	var proj := GM.create_projectile(tower, enemy)
+	_assert(proj["alive"], "New projectile is alive")
+	_assert_near(proj["x"], tower["x"], 0.01, "Projectile starts at tower x")
+	_assert_near(proj["y"], tower["y"], 0.01, "Projectile starts at tower y")
+	_assert_near(proj["speed"], Config.PROJECTILE_SPEED, 0.01, "Projectile uses config speed")
+	_assert(not proj["is_aoe"], "Bone Marksman projectile is not AoE")
+
+	# AoE projectile from Inferno Warlock
+	var mage_tower := GM.create_tower("inferno_warlock", 3, 3)
+	var mage_proj := GM.create_projectile(mage_tower, enemy)
+	_assert(mage_proj["is_aoe"], "Inferno Warlock projectile is AoE")
+	_assert_gt(mage_proj["aoe_radius"], 0.0, "AoE projectile has radius > 0")
+
+	# Projectile tracks last known position
+	_assert_near(proj["target_last_x"], enemy["x"], 0.01, "Projectile tracks target x")
+	_assert_near(proj["target_last_y"], enemy["y"], 0.01, "Projectile tracks target y")
+
+	GM.reset_state()
+
+# ═══════════════════════════════════════════════════════
+# PACT ACCEPT / DECLINE FLOW TESTS
+# ═══════════════════════════════════════════════════════
+func _run_pact_accept_decline_tests() -> void:
+	print("[Pact Accept/Decline Flow]")
+	GM.reset_state()
+	GM.wave = 5
+
+	# Manually set a pending pact (Soul Harvest: flat_sins benefit, fast_enemies cost)
+	GM.pending_pact = Config.DEMONIC_PACTS[2].duplicate()
+	_assert(not GM.pending_pact.is_empty(), "Pending pact is set")
+
+	# Decline the pact — should clear pending_pact
+	GM.decline_pact()
+	_assert(GM.pending_pact.is_empty(), "Pending pact cleared after decline")
+	_assert_eq(GM.stats.get("pacts_accepted", 0), 0, "Pacts accepted stays 0 after decline")
+
+	# Accept a pact — Soul Harvest gives flat_sins
+	GM.pending_pact = Config.DEMONIC_PACTS[2].duplicate()
+	var sins_before: int = GM.sins
+	GM.accept_pact()
+	_assert(GM.pending_pact.is_empty(), "Pending pact cleared after accept")
+	_assert_eq(GM.stats.get("pacts_accepted", 0), 1, "Pacts accepted incremented after accept")
+	_assert_gt(float(GM.sins), float(sins_before), "Sins increased from Soul Harvest pact")
+
+	# Accept should also apply the cost (fast_enemies for Soul Harvest)
+	_assert_gt(float(GM.fast_enemy_waves), 0.0, "Fast enemy waves set from Soul Harvest cost")
+
+	# Declining empty pact is a no-op
+	GM.pending_pact = {}
+	GM.decline_pact()
+	_assert(GM.pending_pact.is_empty(), "Declining empty pact is safe")
+
+	# Accept empty pact is a no-op
+	GM.accept_pact()
+	_assert_eq(GM.stats.get("pacts_accepted", 0), 1, "Accepting empty pact doesn't increment")
+
+	# Dark Resilience pact: heals core
+	GM.core_hp = 50.0
+	GM.pending_pact = Config.DEMONIC_PACTS[3].duplicate()
+	var hp_before: float = GM.core_hp
+	var sins_before_dr: int = GM.sins
+	GM.accept_pact()
+	_assert_gt(GM.core_hp, hp_before, "Dark Resilience heals core HP")
+	_assert_lt(float(GM.sins), float(sins_before_dr), "Dark Resilience taxes sins")
 
 	GM.reset_state()

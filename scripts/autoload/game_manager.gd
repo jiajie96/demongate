@@ -209,6 +209,9 @@ func hero_threshold() -> int:
 		return 500
 	return 1000 + (fallen_heroes_spawned - 2) * 500
 
+func wave_completion_bonus(wave_num: int) -> int:
+	return wave_num * Config.WAVE_BONUS_BASE_PER_WAVE + roundi(Config.WAVE_BONUS_SCALED_BASE * Config.reward_scale(wave_num))
+
 func format_cost(cost: int) -> String:
 	return Locale.tf("cost_format", {"cost": cost})
 
@@ -254,7 +257,7 @@ func create_tower(type: String, col: int, row: int) -> Dictionary:
 		"total_damage": 0.0,
 		"kill_count": 0,
 		"targeting_mode": "closest",
-		"build_timer": 0.3,
+		"build_timer": Config.TOWER_BUILD_DURATION,
 	}
 	if tower["is_support"]:
 		tower["buff_timer"] = tower["buff_cooldown"]
@@ -358,7 +361,7 @@ func create_enemy(type: String) -> Dictionary:
 		"shield_buff": false,
 		"shield_buff_timer": 0.0,
 		"flash_timer": 0.0,
-		"spawn_timer": 0.4,
+		"spawn_timer": Config.ENEMY_SPAWN_DURATION,
 		"ability_timer": 0.0,
 		"burn_stacks": 0,
 		"burn_timer": 0.0,
@@ -822,7 +825,7 @@ func update_towers(dt: float) -> void:
 			if t["buff_timer"] <= 0:
 				t["buff_timer"] = t["buff_cooldown"]
 				t["buff_active_timer"] = t["buff_duration"]
-				t["fire_flash"] = 0.3
+				t["fire_flash"] = Config.TOWER_FIRE_FLASH
 				_apply_hades_buff(t)
 				_hades_damage(t)
 				Audio.play_sfx("hades_buff", -18.0)
@@ -839,7 +842,7 @@ func update_towers(dt: float) -> void:
 			if enemies.size() == 0:
 				continue
 			t["cooldown"] = 1.0 / pulse_speed
-			t["fire_flash"] = 0.3
+			t["fire_flash"] = Config.TOWER_FIRE_FLASH
 			_lucifer_pulse(t)
 			continue
 
@@ -861,7 +864,7 @@ func update_towers(dt: float) -> void:
 			continue
 
 		t["cooldown"] = 1.0 / effective_speed
-		t["fire_flash"] = 0.3  # how long the attack pose holds after firing
+		t["fire_flash"] = Config.TOWER_FIRE_FLASH  # how long the attack pose holds after firing
 		projectiles.append(create_projectile(t, target))
 		Audio.play_shoot(t["type"])
 
@@ -900,7 +903,7 @@ func _cocytus_cone(tower: Dictionary, dt: float) -> void:
 	# Continuous damage every tick — bypasses calc_damage's 1.0 floor because
 	# per-tick damage is fractional (e.g. 0.2 at 60 FPS). Applies multipliers manually.
 	# Force casting pose always (fire_flash held high while cone is active).
-	tower["fire_flash"] = 0.3
+	tower["fire_flash"] = Config.TOWER_FIRE_FLASH
 	if enemies.size() == 0:
 		return
 	var cone_dps: float = tower["damage"] * tower["attack_speed"] * perm_speed_buff * temp_speed_buff
@@ -1120,7 +1123,7 @@ func complete_wave() -> void:
 	wave_active = false
 	stats["waves_survived"] = stats.get("waves_survived", 0) + 1
 	# Wave bonus: base linear + powHPG-scaled portion so it stays meaningful late game.
-	var wave_bonus: int = wave * Config.WAVE_BONUS_BASE_PER_WAVE + roundi(Config.WAVE_BONUS_SCALED_BASE * reward_scale())
+	var wave_bonus: int = wave_completion_bonus(wave)
 	earn(wave_bonus)
 	notify(Locale.tf("wave_complete_notify", {"wave": wave, "bonus": wave_bonus}), Color(0.8, 0.267, 1.0))
 	Audio.play_sfx("wave_complete")
@@ -1160,12 +1163,9 @@ func _damage_all_percent(pct: float, flash_time: float) -> void:
 			var dmg: float = e["max_hp"] * pct
 			e["hp"] -= dmg
 			e["flash_timer"] = flash_time
+			stats["total_damage_dealt"] = stats.get("total_damage_dealt", 0.0) + dmg
 			if e["hp"] <= 0:
-				e["alive"] = false
-				stats["enemies_killed"] += 1
-				earn_from_kill(e["type"], true)
-				add_effect("death", e["x"], e["y"], e["radius"], e["color"])
-				Audio.play_sfx("enemy_death")
+				combat_kill(e, null)
 
 # ═══════════════════════════════════════════════════════
 # GAMBLING — DEVIL'S DICE
@@ -1192,10 +1192,10 @@ func roll_dice() -> Dictionary:
 		"surge":
 			_apply_speed_buff(1.8, 15.0)
 		"aoe_25":
-			_damage_all_percent(0.25, 0.2)
+			_damage_all_percent(0.25, Config.DICE_AOE_FLASH_STRONG)
 			add_effect("screen_flash", 0, 0, 0, Color(1.0, 0.4, 0.0))
 		"aoe_10":
-			_damage_all_percent(0.10, 0.15)
+			_damage_all_percent(0.10, Config.DICE_AOE_FLASH_WEAK)
 			add_effect("screen_flash", 0, 0, 0, Color(1.0, 0.6, 0.2))
 		"speed_boost":
 			_apply_speed_buff(1.3, 10.0)
@@ -1223,12 +1223,12 @@ func roll_dice() -> Dictionary:
 func should_drop_relic(enemy_type: String) -> bool:
 	var roll := randf()
 	if enemy_type == "grand_paladin":
-		return true
+		return roll < Config.RELIC_DROP_BOSS
 	if enemy_type == "war_titan":
-		return roll < 0.15
+		return roll < Config.RELIC_DROP_WAR_TITAN
 	if enemy_type == "crusader" or enemy_type == "temple_cleric":
-		return roll < 0.05
-	return roll < 0.03
+		return roll < Config.RELIC_DROP_MEDIUM
+	return roll < Config.RELIC_DROP_DEFAULT
 
 func drop_relic(rx: float, ry: float) -> void:
 	var loot: Dictionary = _weighted_pick(Config.RELIC_LOOT)

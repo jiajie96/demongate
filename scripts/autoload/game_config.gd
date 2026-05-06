@@ -89,6 +89,25 @@ const RELIC_AOE_RADIUS := 80.0           # pixel radius for Hellfire Bomb relic
 # Projectile max travel distance before auto-cull
 const PROJECTILE_MAX_DIST := 600.0       # pixels — tighter than screen diagonal
 
+# Tower build animation duration — visual "rising from ground" effect
+const TOWER_BUILD_DURATION := 0.3        # seconds
+
+# Tower fire flash — how long the attack pose holds after shooting
+const TOWER_FIRE_FLASH := 0.3            # seconds
+
+# Enemy spawn fade-in duration — visual entrance effect
+const ENEMY_SPAWN_DURATION := 0.4        # seconds
+
+# Relic drop chances by enemy type — probability of dropping a Pandora's Relic
+const RELIC_DROP_BOSS := 1.0             # bosses always drop
+const RELIC_DROP_WAR_TITAN := 0.15       # 15% chance
+const RELIC_DROP_MEDIUM := 0.05          # crusaders, clerics
+const RELIC_DROP_DEFAULT := 0.03         # all other enemies
+
+# Dice AoE flash duration per tier
+const DICE_AOE_FLASH_STRONG := 0.2       # 25% AoE flash
+const DICE_AOE_FLASH_WEAK := 0.15        # 10% AoE flash
+
 
 # ═══════════════════════════════════════════════════════
 # COLORS
