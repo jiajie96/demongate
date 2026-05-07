@@ -1,42 +1,41 @@
-# Daily Improvement Summary — 2026-05-06
+# Daily Improvement Summary — 2026-05-07
 
 ## Changes Made
 
-### 1. Bug Fix: Dice AoE Now Tracks Stats & Uses combat_kill (Bug Fix)
-`_damage_all_percent()` (used by Devil's Dice Hellstorm and Small Spark) was bypassing `combat_kill()`, meaning dice AoE kills didn't track `boss_kills` stat, didn't trigger relic drops, and didn't count `total_damage_dealt`. Now routes through `combat_kill()` for consistent behavior and tracks damage in stats.
+### Bug Fixes (4)
 
-### 2. Extract Tower Build Duration Constant (Code Quality)
-Magic number `0.3` in `create_tower()` → `Config.TOWER_BUILD_DURATION`. Build animation duration is now tunable from one place.
+1. **Cocytus cone damage not tracked in global stats** — The Cocytus frost cone applies damage directly via `e["hp"] -= tick_dmg` bypassing `combat_hit`, so `stats["total_damage_dealt"]` was never incremented. Now adds `tick_dmg` to global stats each frame alongside the per-tower tracking.
 
-### 3. Extract Tower Fire Flash Constant (Code Quality)
-Five occurrences of `fire_flash = 0.3` across tower update functions → `Config.TOWER_FIRE_FLASH`. Attack pose hold time is now a single constant.
+2. **Burn DoT kills skip combat_kill path** — When burn damage killed an enemy in `update_enemies`, the inline kill logic only called `earn_from_kill` and incremented `enemies_killed`. It missed `boss_kills` stat tracking, relic drops (bosses always drop), and the kill_count on the originating tower. Now routes through `combat_kill(e, null)`.
 
-### 4. Extract Enemy Spawn Duration Constant (Code Quality)
-Magic number `0.4` in `create_enemy()` → `Config.ENEMY_SPAWN_DURATION`. Spawn fade-in timer is now configurable.
+3. **Safety kill path misses boss tracking** — The safety net that catches enemies with HP ≤ 0 at the start of `update_enemies` had the same problem as burn kills — inline logic instead of `combat_kill`. Fixed.
 
-### 5. Extract Relic Drop Rate Constants (Code Quality/Balance)
-Inline magic numbers in `should_drop_relic()` → four named constants: `RELIC_DROP_BOSS` (1.0), `RELIC_DROP_WAR_TITAN` (0.15), `RELIC_DROP_MEDIUM` (0.05), `RELIC_DROP_DEFAULT` (0.03). Makes drop rates visible, tunable, and testable.
+4. **Cheat skip (Ctrl+K) doesn't reset wave banner** — Skipping to wave 15 via the debug shortcut left `wave_banner_timer` running, causing a stale "WAVE N" banner to display over the new wave. Now resets `wave_banner_timer = 0.0`.
 
-### 6. Extract Dice AoE Flash Duration Constants (Code Quality)
-Magic numbers `0.2` and `0.15` for dice AoE flash timers → `Config.DICE_AOE_FLASH_STRONG` and `Config.DICE_AOE_FLASH_WEAK`.
+### Code Quality (6 constants extracted)
 
-### 7. Add wave_completion_bonus() Helper (Code Quality)
-Extracted wave bonus formula into a standalone `GM.wave_completion_bonus(wave_num)` function. Reduces duplication between `complete_wave()` and tests, and makes the bonus calculation independently testable.
+5. **WAVE_BANNER_SLIDE_IN / WAVE_BANNER_FADE_OUT** — Banner animation phase timings (0.35s slide-in, 0.7s fade-out) moved from inline magic numbers in `game_world._draw_wave_banner()` to `game_config`.
 
-### 8. New Tests: Build/Spawn/Fire Flash Constants (Test Coverage — 6 assertions)
-Validates `TOWER_BUILD_DURATION`, `ENEMY_SPAWN_DURATION`, and `TOWER_FIRE_FLASH` constants exist with correct values, and verifies `create_tower`/`create_enemy` use them.
+6. **OVERVIEW_PANEL_W / OVERVIEW_PANEL_H** — Tower stats panel dimensions (52×30 px) in the Tab overview extracted to config.
 
-### 9. New Tests: Relic Drop, Dice Flash, Damage Percent, Wave Bonus, Projectile, Pact Flow (Test Coverage — 46 assertions)
-Seven new test suites covering:
-- Relic drop rate constants (ordering, ranges)
-- Dice AoE flash constants
-- `_damage_all_percent` stat tracking and boss kill detection
-- `wave_completion_bonus` formula verification across waves
-- Projectile creation lifecycle (position, speed, AoE flags)
-- Full pact accept/decline flow (Soul Harvest, Dark Resilience, empty pact safety)
+7. **CHEAT_SINS_AMOUNT / CHEAT_SKIP_TO_WAVE** — Debug shortcut values (99999 sins, wave 15) extracted to config so they're documented and tunable.
 
-### 10. Total Test Count
-**448 assertions** across **64 test suites** (up from 396 assertions / 57 suites).
+### Test Coverage (26 new assertions)
 
-## Summary
-Focused on code quality (extracting 9 magic numbers into named constants), fixing a stat-tracking bug in dice AoE damage, and adding 52 new test assertions covering previously untested systems (projectile lifecycle, pact accept/decline flow, percentage-based AoE damage).
+8. **Cocytus global damage tracking** — Verifies `_cocytus_cone` increments both `tower.total_damage` and `stats.total_damage_dealt`.
+
+9. **Burn kill via combat_kill** — Verifies burn DoT kills track `boss_kills` for boss enemies, increment `enemies_killed`, and accumulate `total_damage_dealt`. Also tests the safety kill path with a pre-dead boss.
+
+10. **All 6 pact types** — Tests Blood Tithe (sin_boost + core_dmg), Infernal Forge (tower_dmg_boost + disable_random), Chaos Pact (double_dmg + extra_enemies), and Abyssal Gambit (free_tower + tower_weaken) accept flows. Prior tests already covered Soul Harvest and Dark Resilience.
+
+11. **Banner and cheat constants** — Validates animation timings sum correctly and cheat values are within game bounds.
+
+12. **Overview panel constants** — Validates panel dimensions are positive and wider than tall.
+
+## Test Count
+
+~469 assertions (up from ~443).
+
+## Commit
+
+`52a3230` on `main`. Push pending (SSH keys not available in sandbox).

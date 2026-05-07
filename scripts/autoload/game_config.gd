@@ -108,6 +108,18 @@ const RELIC_DROP_DEFAULT := 0.03         # all other enemies
 const DICE_AOE_FLASH_STRONG := 0.2       # 25% AoE flash
 const DICE_AOE_FLASH_WEAK := 0.15        # 10% AoE flash
 
+# Wave banner animation phase timings
+const WAVE_BANNER_SLIDE_IN := 0.35       # seconds to slide in from left
+const WAVE_BANNER_FADE_OUT := 0.7        # seconds to fade out to right
+
+# Overview panel dimensions
+const OVERVIEW_PANEL_W := 52.0           # pixel width of tower stats panel
+const OVERVIEW_PANEL_H := 30.0           # pixel height of tower stats panel
+
+# Cheat mode constants
+const CHEAT_SINS_AMOUNT := 99999         # Ctrl+J: sins granted
+const CHEAT_SKIP_TO_WAVE := 15           # Ctrl+K: wave to skip to
+
 
 # ═══════════════════════════════════════════════════════
 # COLORS

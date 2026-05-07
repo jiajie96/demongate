@@ -497,11 +497,7 @@ func update_enemies(dt: float) -> void:
 
 		# Safety: kill any enemy that has HP <= 0 but is still alive
 		if e["hp"] <= 0:
-			e["alive"] = false
-			stats["enemies_killed"] += 1
-			earn_from_kill(e["type"], false)
-			add_effect("death", e["x"], e["y"], e["radius"], e["color"])
-			Audio.play_sfx("enemy_death")
+			combat_kill(e, null)
 			enemies.remove_at(i)
 			i -= 1
 			continue
@@ -537,13 +533,11 @@ func update_enemies(dt: float) -> void:
 				e["burn_stacks"] = 0
 			else:
 				var burn_dps: float = e["burn_stacks"] * _burn_dps_per_stack
-				e["hp"] -= burn_dps * dt
+				var burn_tick_dmg: float = burn_dps * dt
+				e["hp"] -= burn_tick_dmg
+				stats["total_damage_dealt"] = stats.get("total_damage_dealt", 0.0) + burn_tick_dmg
 				if e["hp"] <= 0:
-					e["alive"] = false
-					stats["enemies_killed"] += 1
-					earn_from_kill(e["type"], true)
-					add_effect("death", e["x"], e["y"], e["radius"], e["color"])
-					Audio.play_sfx("enemy_death")
+					combat_kill(e, null)
 					enemies.remove_at(i)
 					i -= 1
 					continue
@@ -962,6 +956,7 @@ func _cocytus_cone(tower: Dictionary, dt: float) -> void:
 		# REDESIGN: frost state instead of white flash — snowflake icon + slow
 		e["frost_timer"] = 0.3
 		tower["total_damage"] = tower.get("total_damage", 0.0) + tick_dmg
+		stats["total_damage_dealt"] = stats.get("total_damage_dealt", 0.0) + tick_dmg
 		_hit_any = true
 		if e["hp"] <= 0:
 			combat_kill(e, tower)

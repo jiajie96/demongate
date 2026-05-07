@@ -73,6 +73,11 @@ func _ready() -> void:
 	_run_wave_completion_bonus_tests()
 	_run_projectile_lifecycle_tests()
 	_run_pact_accept_decline_tests()
+	_run_cocytus_global_damage_tracking_tests()
+	_run_burn_kill_combat_kill_tests()
+	_run_all_pact_types_tests()
+	_run_banner_and_cheat_constants_tests()
+	_run_overview_panel_constants_tests()
 
 	print("")
 	print("=== Results: %d/%d passed ===" % [_passed, _total])
@@ -2000,3 +2005,150 @@ func _run_pact_accept_decline_tests() -> void:
 	_assert_lt(float(GM.sins), float(sins_before_dr), "Dark Resilience taxes sins")
 
 	GM.reset_state()
+
+# ═══════════════════════════════════════════════════════
+# COCYTUS GLOBAL DAMAGE TRACKING TESTS
+# ═══════════════════════════════════════════════════════
+func _run_cocytus_global_damage_tracking_tests() -> void:
+	print("[Cocytus Global Damage Tracking]")
+	GM.reset_state()
+	GM.wave = 1
+
+	# Create a Cocytus tower and an enemy directly in front of it
+	var tower := GM.create_tower("cocytus", 5, 5)
+	GM.towers.append(tower)
+	var enemy := GM.create_enemy("seraph_scout")
+	# Place enemy directly in front of cone
+	var facing: float = tower["facing_angle"]
+	enemy["x"] = tower["x"] + cos(facing) * 50.0
+	enemy["y"] = tower["y"] + sin(facing) * 50.0
+	enemy["spawn_timer"] = 0.0
+	GM.enemies.append(enemy)
+
+	var dmg_before: float = GM.stats.get("total_damage_dealt", 0.0)
+	GM._cocytus_cone(tower, 0.1)
+	var dmg_after: float = GM.stats.get("total_damage_dealt", 0.0)
+	_assert_gt(dmg_after, dmg_before, "Cocytus cone damage tracked in global stats")
+
+	# Tower's local damage should also increase
+	_assert_gt(tower.get("total_damage", 0.0), 0.0, "Cocytus tower total_damage tracked")
+
+	GM.reset_state()
+
+# ═══════════════════════════════════════════════════════
+# BURN KILL VIA COMBAT_KILL TESTS
+# ═══════════════════════════════════════════════════════
+func _run_burn_kill_combat_kill_tests() -> void:
+	print("[Burn Kill Combat Kill Path]")
+	GM.reset_state()
+	GM.wave = 1
+
+	# Burn DoT kill should track boss_kills for bosses
+	var boss := GM.create_enemy("grand_paladin")
+	boss["hp"] = 0.5  # nearly dead
+	boss["burn_stacks"] = 4
+	boss["burn_timer"] = 3.0
+	boss["spawn_timer"] = 0.0
+	GM.enemies.append(boss)
+
+	var boss_kills_before: int = GM.stats.get("boss_kills", 0)
+	var kills_before: int = GM.stats.get("enemies_killed", 0)
+	GM.update_enemies(0.5)  # burn should finish off the boss
+	var boss_kills_after: int = GM.stats.get("boss_kills", 0)
+	var kills_after: int = GM.stats.get("enemies_killed", 0)
+	_assert_gt(float(boss_kills_after), float(boss_kills_before), "Burn DoT kill tracks boss_kills stat")
+	_assert_gt(float(kills_after), float(kills_before), "Burn DoT kill tracks enemies_killed stat")
+
+	# Burn damage should also accumulate in total_damage_dealt
+	_assert_gt(GM.stats.get("total_damage_dealt", 0.0), 0.0, "Burn DoT damage tracked in global stats")
+
+	# Safety kill path (hp <= 0 at start of update) also uses combat_kill
+	GM.reset_state()
+	GM.wave = 1
+	var dead_boss := GM.create_enemy("grand_paladin")
+	dead_boss["hp"] = -5.0  # already below zero
+	dead_boss["spawn_timer"] = 0.0
+	GM.enemies.append(dead_boss)
+	GM.update_enemies(0.016)
+	_assert_eq(GM.stats.get("boss_kills", 0), 1, "Safety kill tracks boss_kills for bosses")
+	_assert_eq(GM.stats.get("enemies_killed", 0), 1, "Safety kill tracks enemies_killed")
+
+	GM.reset_state()
+
+# ═══════════════════════════════════════════════════════
+# ALL 6 PACT TYPES TESTS
+# ═══════════════════════════════════════════════════════
+func _run_all_pact_types_tests() -> void:
+	print("[All Pact Types]")
+
+	# Pact 0: Blood Tithe — sin_boost benefit, core_dmg cost
+	GM.reset_state()
+	GM.wave = 5
+	GM.pending_pact = Config.DEMONIC_PACTS[0].duplicate()
+	var hp_bt: float = GM.core_hp
+	GM.accept_pact()
+	_assert_gt(GM.sin_multiplier, 1.0, "Blood Tithe: sin multiplier > 1.0")
+	_assert_gt(float(GM.sin_mult_waves), 0.0, "Blood Tithe: sin_mult_waves set")
+	_assert_lt(GM.core_hp, hp_bt, "Blood Tithe: core HP reduced")
+
+	# Pact 1: Infernal Forge — tower_dmg_boost benefit, disable_random cost
+	GM.reset_state()
+	GM.wave = 5
+	var t1 := GM.create_tower("bone_marksman", 3, 3)
+	var t2 := GM.create_tower("bone_marksman", 5, 5)
+	GM.towers.append(t1)
+	GM.towers.append(t2)
+	GM.occupied_tiles[Config.tile_key(3, 3)] = t1
+	GM.occupied_tiles[Config.tile_key(5, 5)] = t2
+	GM.pending_pact = Config.DEMONIC_PACTS[1].duplicate()
+	GM.accept_pact()
+	_assert_gt(t1.get("damage_mult", 1.0), 1.0, "Infernal Forge: tower damage_mult boosted")
+	# At least one tower should be disabled
+	var any_disabled: bool = t1["is_disabled"] or t2["is_disabled"]
+	_assert(any_disabled, "Infernal Forge: at least one tower disabled")
+
+	# Pact 4: Chaos Pact — double_dmg benefit, extra_enemies cost
+	GM.reset_state()
+	GM.wave = 5
+	GM.pending_pact = Config.DEMONIC_PACTS[4].duplicate()
+	GM.accept_pact()
+	_assert_gt(float(GM.double_damage), 0.0, "Chaos Pact: double_damage set")
+	_assert_gt(float(GM.pact_extra_enemies), 0.0, "Chaos Pact: pact_extra_enemies set")
+
+	# Pact 5: Abyssal Gambit — free_tower benefit, tower_weaken cost
+	GM.reset_state()
+	GM.wave = 5
+	GM.pending_pact = Config.DEMONIC_PACTS[5].duplicate()
+	GM.accept_pact()
+	_assert_gt(float(GM.free_towers), 0.0, "Abyssal Gambit: free_towers granted")
+	_assert_gt(float(GM.tower_weaken_waves), 0.0, "Abyssal Gambit: tower_weaken_waves set")
+	_assert_lt(GM.tower_weaken_mult, 1.0, "Abyssal Gambit: tower_weaken_mult < 1.0")
+
+	GM.reset_state()
+
+# ═══════════════════════════════════════════════════════
+# BANNER AND CHEAT CONSTANTS TESTS
+# ═══════════════════════════════════════════════════════
+func _run_banner_and_cheat_constants_tests() -> void:
+	print("[Banner and Cheat Constants]")
+
+	# Banner animation timings exist and are sensible
+	_assert_gt(Config.WAVE_BANNER_SLIDE_IN, 0.0, "Banner slide_in > 0")
+	_assert_gt(Config.WAVE_BANNER_FADE_OUT, 0.0, "Banner fade_out > 0")
+	_assert_lt(Config.WAVE_BANNER_SLIDE_IN + Config.WAVE_BANNER_FADE_OUT, Config.WAVE_BANNER_DURATION,
+		"Banner slide_in + fade_out < total duration (leaves hold time)")
+
+	# Cheat constants
+	_assert_gt(float(Config.CHEAT_SINS_AMOUNT), 0.0, "Cheat sins amount > 0")
+	_assert_gt(float(Config.CHEAT_SKIP_TO_WAVE), 1.0, "Cheat skip wave > 1")
+	_assert(Config.CHEAT_SKIP_TO_WAVE <= Config.MAX_WAVES, "Cheat skip wave <= max waves")
+
+# ═══════════════════════════════════════════════════════
+# OVERVIEW PANEL CONSTANTS TESTS
+# ═══════════════════════════════════════════════════════
+func _run_overview_panel_constants_tests() -> void:
+	print("[Overview Panel Constants]")
+
+	_assert_gt(Config.OVERVIEW_PANEL_W, 0.0, "Overview panel width > 0")
+	_assert_gt(Config.OVERVIEW_PANEL_H, 0.0, "Overview panel height > 0")
+	_assert_gt(Config.OVERVIEW_PANEL_W, Config.OVERVIEW_PANEL_H, "Overview panel wider than tall")
