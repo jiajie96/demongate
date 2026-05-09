@@ -257,7 +257,7 @@ func create_tower(type: String, col: int, row: int) -> Dictionary:
 		"total_damage": 0.0,
 		"kill_count": 0,
 		"targeting_mode": "closest",
-		"build_timer": Config.TOWER_BUILD_DURATION,
+		"build_timer": 0.3,
 	}
 	if tower["is_support"]:
 		tower["buff_timer"] = tower["buff_cooldown"]
@@ -361,7 +361,7 @@ func create_enemy(type: String) -> Dictionary:
 		"shield_buff": false,
 		"shield_buff_timer": 0.0,
 		"flash_timer": 0.0,
-		"spawn_timer": Config.ENEMY_SPAWN_DURATION,
+		"spawn_timer": 0.4,
 		"ability_timer": 0.0,
 		"burn_stacks": 0,
 		"burn_timer": 0.0,
@@ -819,7 +819,7 @@ func update_towers(dt: float) -> void:
 			if t["buff_timer"] <= 0:
 				t["buff_timer"] = t["buff_cooldown"]
 				t["buff_active_timer"] = t["buff_duration"]
-				t["fire_flash"] = Config.TOWER_FIRE_FLASH
+				t["fire_flash"] = 0.3
 				_apply_hades_buff(t)
 				_hades_damage(t)
 				Audio.play_sfx("hades_buff", -18.0)
@@ -836,7 +836,7 @@ func update_towers(dt: float) -> void:
 			if enemies.size() == 0:
 				continue
 			t["cooldown"] = 1.0 / pulse_speed
-			t["fire_flash"] = Config.TOWER_FIRE_FLASH
+			t["fire_flash"] = 0.3
 			_lucifer_pulse(t)
 			continue
 
@@ -858,7 +858,7 @@ func update_towers(dt: float) -> void:
 			continue
 
 		t["cooldown"] = 1.0 / effective_speed
-		t["fire_flash"] = Config.TOWER_FIRE_FLASH  # how long the attack pose holds after firing
+		t["fire_flash"] = 0.3  # how long the attack pose holds after firing
 		projectiles.append(create_projectile(t, target))
 		Audio.play_shoot(t["type"])
 
@@ -897,7 +897,7 @@ func _cocytus_cone(tower: Dictionary, dt: float) -> void:
 	# Continuous damage every tick — bypasses calc_damage's 1.0 floor because
 	# per-tick damage is fractional (e.g. 0.2 at 60 FPS). Applies multipliers manually.
 	# Force casting pose always (fire_flash held high while cone is active).
-	tower["fire_flash"] = Config.TOWER_FIRE_FLASH
+	tower["fire_flash"] = 0.3
 	if enemies.size() == 0:
 		return
 	var cone_dps: float = tower["damage"] * tower["attack_speed"] * perm_speed_buff * temp_speed_buff
@@ -1187,10 +1187,10 @@ func roll_dice() -> Dictionary:
 		"surge":
 			_apply_speed_buff(1.8, 15.0)
 		"aoe_25":
-			_damage_all_percent(0.25, Config.DICE_AOE_FLASH_STRONG)
+			_damage_all_percent(0.25, 0.2)
 			add_effect("screen_flash", 0, 0, 0, Color(1.0, 0.4, 0.0))
 		"aoe_10":
-			_damage_all_percent(0.10, Config.DICE_AOE_FLASH_WEAK)
+			_damage_all_percent(0.10, 0.15)
 			add_effect("screen_flash", 0, 0, 0, Color(1.0, 0.6, 0.2))
 		"speed_boost":
 			_apply_speed_buff(1.3, 10.0)
@@ -1218,12 +1218,12 @@ func roll_dice() -> Dictionary:
 func should_drop_relic(enemy_type: String) -> bool:
 	var roll := randf()
 	if enemy_type == "grand_paladin":
-		return roll < Config.RELIC_DROP_BOSS
+		return true
 	if enemy_type == "war_titan":
-		return roll < Config.RELIC_DROP_WAR_TITAN
+		return roll < 0.15
 	if enemy_type == "crusader" or enemy_type == "temple_cleric":
-		return roll < Config.RELIC_DROP_MEDIUM
-	return roll < Config.RELIC_DROP_DEFAULT
+		return roll < 0.05
+	return roll < 0.03
 
 func drop_relic(rx: float, ry: float) -> void:
 	var loot: Dictionary = _weighted_pick(Config.RELIC_LOOT)

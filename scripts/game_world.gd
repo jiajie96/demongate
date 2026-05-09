@@ -1588,8 +1588,8 @@ func _draw_overview() -> void:
 		var kills: int = t.get("kill_count", 0)
 
 		# Background panel behind text
-		var panel_w: float = Config.OVERVIEW_PANEL_W
-		var panel_h: float = Config.OVERVIEW_PANEL_H
+		var panel_w: float = 52.0
+		var panel_h: float = 30.0
 		var px: float = cx - panel_w / 2.0
 		var py: float = cy - 28
 		draw_rect(Rect2(px, py, panel_w, panel_h), Color(0, 0, 0, 0.7))
@@ -1626,8 +1626,8 @@ func _draw_wave_banner() -> void:
 	var t_left: float = GM.wave_banner_timer
 	var elapsed: float = total - t_left
 	# Three-phase envelope: slide-in, hold, fade-out.
-	var slide_in: float = Config.WAVE_BANNER_SLIDE_IN
-	var fade_out: float = Config.WAVE_BANNER_FADE_OUT
+	var slide_in: float = 0.35
+	var fade_out: float = 0.7
 	var hold_end: float = total - fade_out
 	var alpha: float = 1.0
 	var slide: float = 0.0  # 0 = fully on-screen, +/- pushes off-screen
@@ -2561,8 +2561,8 @@ func _unhandled_input(event: InputEvent) -> void:
 			get_viewport().set_input_as_handled()
 			return
 		if event.pressed and event.keycode == KEY_J and event.is_command_or_control_pressed():
-			GM.sins += Config.CHEAT_SINS_AMOUNT
-			GM.notify("Cheat: +%d Sins" % Config.CHEAT_SINS_AMOUNT, Color(1, 0.2, 0.8))
+			GM.sins += 99999
+			GM.notify("Cheat: +99999 Sins", Color(1, 0.2, 0.8))
 			get_viewport().set_input_as_handled()
 			return
 		if event.pressed and event.keycode == KEY_K and event.is_command_or_control_pressed():
@@ -2571,10 +2571,10 @@ func _unhandled_input(event: InputEvent) -> void:
 			GM.projectiles.clear()
 			GM.spawn_queue.clear()
 			GM.wave_active = false
-			GM.wave = Config.CHEAT_SKIP_TO_WAVE - 1
+			GM.wave = 14
 			GM.between_wave_timer = 1.0
 			GM.wave_banner_timer = 0.0
-			GM.notify("Cheat: Skipping to wave %d" % Config.CHEAT_SKIP_TO_WAVE, Color(1, 0.2, 0.8))
+			GM.notify("Cheat: Skipping to wave 15", Color(1, 0.2, 0.8))
 			get_viewport().set_input_as_handled()
 			return
 
