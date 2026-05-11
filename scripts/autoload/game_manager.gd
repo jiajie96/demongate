@@ -98,7 +98,7 @@ func reset_state() -> void:
 	core_hp = Config.CORE_MAX_HP
 	core_max_hp = Config.CORE_MAX_HP
 	wave = 0
-	sins = 50
+	sins = Config.STARTING_SINS
 	towers.clear()
 	enemies.clear()
 	projectiles.clear()
@@ -204,10 +204,10 @@ func add_to_hero_pool(amount: int) -> void:
 
 func hero_threshold() -> int:
 	if fallen_heroes_spawned == 0:
-		return 200
+		return Config.HERO_THRESHOLD_FIRST
 	if fallen_heroes_spawned == 1:
-		return 500
-	return 1000 + (fallen_heroes_spawned - 2) * 500
+		return Config.HERO_THRESHOLD_SECOND
+	return Config.HERO_THRESHOLD_BASE + (fallen_heroes_spawned - 2) * Config.HERO_THRESHOLD_STEP
 
 func wave_completion_bonus(wave_num: int) -> int:
 	return wave_num * Config.WAVE_BONUS_BASE_PER_WAVE + roundi(Config.WAVE_BONUS_SCALED_BASE * Config.reward_scale(wave_num))
@@ -293,13 +293,13 @@ func upgrade_tower(tower: Dictionary) -> bool:
 	if tower["level"] >= Config.MAX_TOWER_LEVEL:
 		return false
 	var data: Dictionary = Config.TOWER_DATA[tower["type"]]
-	var cost: int = roundi(data["upgrade_cost"] * pow(1.5, tower["level"] - 1))
+	var cost: int = roundi(data["upgrade_cost"] * pow(Config.UPGRADE_COST_SCALING, tower["level"] - 1))
 	if not spend(cost):
 		return false
 	tower["level"] += 1
 	tower["damage"] *= Config.UPGRADE_MULT
-	tower["range"] *= 1.1
-	tower["attack_speed"] *= 1.15
+	tower["range"] *= Config.UPGRADE_RANGE_MULT
+	tower["attack_speed"] *= Config.UPGRADE_SPEED_MULT
 	notify(Locale.tf("tower_upgraded", {"name": Locale.t(tower["name"]), "level": tower["level"]}), tower["color"])
 	return true
 
@@ -365,6 +365,7 @@ func create_enemy(type: String) -> Dictionary:
 		"ability_timer": 0.0,
 		"burn_stacks": 0,
 		"burn_timer": 0.0,
+		"burn_source": null,
 		"frost_timer": 0.0,
 		"heal_tick_timer": 0.0,
 	}
@@ -399,7 +400,7 @@ func _michael_shield(michael: Dictionary) -> void:
 			e["shield_buff"] = true
 			e["shield_buff_timer"] = Config.MICHAEL_SHIELD_DURATION
 	# Golden shield dome from Michael's position
-	effects.append({"type": "michael_shield", "x": michael["x"], "y": michael["y"], "radius": 0, "color": Color(1.0, 0.95, 0.6), "timer": 0.8})
+	effects.append({"type": "michael_shield", "x": michael["x"], "y": michael["y"], "radius": 0, "color": Color(1.0, 0.95, 0.6), "timer": Config.FX_MICHAEL_SHIELD_DURATION})
 	notify(Locale.t("Michael's divine shield protects all!"), Color(1.0, 0.95, 0.8))
 
 func _zeus_lightning(zeus: Dictionary) -> void:
@@ -420,7 +421,7 @@ func _zeus_lightning(zeus: Dictionary) -> void:
 		t["is_disabled"] = true
 		t["disable_timer"] = Config.ZEUS_DISABLE_DURATION
 		# Lightning bolt from Zeus to tower
-		effects.append({"type": "zeus_bolt", "x": zx, "y": zy, "x2": t["x"], "y2": t["y"], "radius": 0, "color": Color(0.8, 0.9, 1.0), "timer": 0.4})
+		effects.append({"type": "zeus_bolt", "x": zx, "y": zy, "x2": t["x"], "y2": t["y"], "radius": 0, "color": Color(0.8, 0.9, 1.0), "timer": Config.FX_ZEUS_BOLT_DURATION})
 	if count > 0:
 		Audio.play_sfx("core_hit")
 
@@ -438,7 +439,7 @@ func _raphael_heal(raphael: Dictionary) -> void:
 	if best != null and best_missing > 0:
 		var heal: float = best["max_hp"] * Config.RAPHAEL_HEAL_PERCENT
 		best["hp"] = minf(best["hp"] + heal, best["max_hp"])
-		effects.append({"type": "heal_beam", "x": raphael["x"], "y": raphael["y"], "x2": best["x"], "y2": best["y"], "radius": 0, "color": Color(0.4, 1.0, 0.5), "timer": 0.3})
+		effects.append({"type": "heal_beam", "x": raphael["x"], "y": raphael["y"], "x2": best["x"], "y2": best["y"], "radius": 0, "color": Color(0.4, 1.0, 0.5), "timer": Config.FX_HEAL_BEAM_DURATION})
 		add_effect("heal_pulse", best["x"], best["y"], best.get("radius", 8.0), Color(0.4, 1.0, 0.5))
 
 func update_enemies(dt: float) -> void:
@@ -531,13 +532,20 @@ func update_enemies(dt: float) -> void:
 			e["burn_timer"] -= dt
 			if e["burn_timer"] <= 0:
 				e["burn_stacks"] = 0
+				e["burn_source"] = null
 			else:
 				var burn_dps: float = e["burn_stacks"] * _burn_dps_per_stack
 				var burn_tick_dmg: float = burn_dps * dt
 				e["hp"] -= burn_tick_dmg
 				stats["total_damage_dealt"] = stats.get("total_damage_dealt", 0.0) + burn_tick_dmg
+				# Credit burn damage to the tower that applied it
+				var _bsrc = e.get("burn_source")
+				if _bsrc != null and _bsrc is Dictionary:
+					_bsrc["total_damage"] = _bsrc.get("total_damage", 0.0) + burn_tick_dmg
 				if e["hp"] <= 0:
-					combat_kill(e, null)
+					# Credit kill to burn source tower instead of null
+					var kill_src = e.get("burn_source") if Config.BURN_CREDITS_TOWER else null
+					combat_kill(e, kill_src)
 					enemies.remove_at(i)
 					i -= 1
 					continue
@@ -558,7 +566,7 @@ func update_enemies(dt: float) -> void:
 		if e["frost_timer"] > 0:
 			spd *= (1.0 - Config.COCYTUS_FROST_SLOW)
 		if fast_enemy_waves > 0:
-			spd *= 1.3
+			spd *= Config.FAST_ENEMY_SPEED_MULT
 		# Archangel Commander aura: speed buff to allies
 		if has_commander and e["type"] != "archangel_marshal":
 			spd *= Config.COMMANDER_SPEED_BUFF
@@ -571,11 +579,11 @@ func update_enemies(dt: float) -> void:
 			var insurance := roundi(e["core_dmg"] * Config.INSURANCE_MULT)
 			earn(insurance)
 			var last_pt: Vector2 = path_px[path_px.size() - 1]
-			add_effect("core_hit", last_pt.x, last_pt.y, 10.0, Color.RED)
+			add_effect("core_hit", last_pt.x, last_pt.y, Config.FX_CORE_HIT_RADIUS, Color.RED)
 			Audio.play_sfx("core_hit")
 			shake(4.0, 0.2)
 			if core_hp <= 0:
-				shake(8.0, 0.4)
+				shake(Config.GAMEOVER_SHAKE_INTENSITY, Config.GAMEOVER_SHAKE_DURATION)
 				phase = "gameover"
 				Audio.play_music_stinger("defeat")
 			i -= 1
@@ -604,6 +612,8 @@ func create_projectile(tower: Dictionary, target: Dictionary) -> Dictionary:
 	return {
 		"x": tower["x"],
 		"y": tower["y"],
+		"origin_x": tower["x"],
+		"origin_y": tower["y"],
 		"target": target,
 		"target_last_x": target["x"],
 		"target_last_y": target["y"],
@@ -646,7 +656,10 @@ func update_projectiles(dt: float) -> void:
 			p["x"] += (dx / dist) * move_dist
 			p["y"] += (dy / dist) * move_dist
 
-		if dist > Config.PROJECTILE_MAX_DIST:
+		# Cull projectiles that have traveled too far from their origin
+		var odx: float = p["x"] - p["origin_x"]
+		var ody: float = p["y"] - p["origin_y"]
+		if odx * odx + ody * ody > Config.PROJECTILE_MAX_DIST * Config.PROJECTILE_MAX_DIST:
 			p["alive"] = false
 
 		i -= 1
@@ -730,7 +743,7 @@ func combat_hit(enemy: Dictionary, base_dmg: float, tower) -> void:
 		return
 	# Holy Sentinel protection: enemies in first half of path are invulnerable
 	if _is_guardian_protected(enemy):
-		enemy["flash_timer"] = 0.05
+		enemy["flash_timer"] = Config.GUARDIAN_FLASH_DURATION
 		return
 	var dmg := calc_damage(base_dmg, tower, enemy)
 	enemy["hp"] -= dmg
@@ -758,16 +771,22 @@ func combat_hit(enemy: Dictionary, base_dmg: float, tower) -> void:
 	# Apply slow from towers with slow_power (legacy path; NEC uses aura now)
 	if tower != null and tower is Dictionary and tower.get("slow_power", 0.0) > 0:
 		enemy["slow_amount"] = tower["slow_power"]
-		enemy["slow_timer"] = 2.0
+		enemy["slow_timer"] = Config.SLOW_DEBUFF_DURATION
 
-	# REDESIGN: MAG burn stacks on hit
+	# REDESIGN: MAG burn stacks on hit — track source tower for kill credit
 	if tower != null and tower is Dictionary and tower.get("type", "") == "inferno_warlock":
-		var mdata: Dictionary = Config.TOWER_DATA["inferno_warlock"]
-		enemy["burn_stacks"] = mini(enemy["burn_stacks"] + int(mdata["burn_stacks_per_hit"]), int(mdata["burn_stack_cap"]))
-		enemy["burn_timer"] = float(mdata["burn_duration"])
+		_apply_burn(enemy, tower)
 
 	if enemy["hp"] <= 0:
 		combat_kill(enemy, tower)
+
+## Apply burn stacks from an Inferno Warlock hit.
+## Separated from combat_hit for readability and potential reuse.
+func _apply_burn(enemy: Dictionary, tower: Dictionary) -> void:
+	var mdata: Dictionary = Config.TOWER_DATA["inferno_warlock"]
+	enemy["burn_stacks"] = mini(enemy["burn_stacks"] + int(mdata["burn_stacks_per_hit"]), int(mdata["burn_stack_cap"]))
+	enemy["burn_timer"] = float(mdata["burn_duration"])
+	enemy["burn_source"] = tower
 
 func combat_aoe(cx: float, cy: float, radius: float, base_dmg: float, tower) -> void:
 	var targets := in_radius(cx, cy, radius)
@@ -819,7 +838,7 @@ func update_towers(dt: float) -> void:
 			if t["buff_timer"] <= 0:
 				t["buff_timer"] = t["buff_cooldown"]
 				t["buff_active_timer"] = t["buff_duration"]
-				t["fire_flash"] = 0.3
+				t["fire_flash"] = Config.TOWER_FIRE_FLASH
 				_apply_hades_buff(t)
 				_hades_damage(t)
 				Audio.play_sfx("hades_buff", -18.0)
@@ -836,7 +855,7 @@ func update_towers(dt: float) -> void:
 			if enemies.size() == 0:
 				continue
 			t["cooldown"] = 1.0 / pulse_speed
-			t["fire_flash"] = 0.3
+			t["fire_flash"] = Config.TOWER_FIRE_FLASH
 			_lucifer_pulse(t)
 			continue
 
@@ -847,7 +866,7 @@ func update_towers(dt: float) -> void:
 
 		var effective_speed: float = t["attack_speed"] * perm_speed_buff * temp_speed_buff
 		if t["hades_buffed"]:
-			effective_speed *= 1.5
+			effective_speed *= Config.HADES_BUFF_DEFAULT
 		t["cooldown"] -= dt
 		if t["cooldown"] > 0:
 			continue
@@ -858,7 +877,7 @@ func update_towers(dt: float) -> void:
 			continue
 
 		t["cooldown"] = 1.0 / effective_speed
-		t["fire_flash"] = 0.3  # how long the attack pose holds after firing
+		t["fire_flash"] = Config.TOWER_FIRE_FLASH
 		projectiles.append(create_projectile(t, target))
 		Audio.play_shoot(t["type"])
 
@@ -867,10 +886,9 @@ func _lucifer_pulse(tower: Dictionary) -> void:
 	var tx: float = tower["x"]
 	var ty: float = tower["y"]
 	var threshold: float = Config.TOWER_DATA["lucifer"].get("execute_threshold", 0.0)
-	# Wave ring: 1000 px radius over 1.2s → ~833 px/s. Must match game_world
-	# lucifer_wave draw (max_r + duration) so burst pops exactly when the ring
-	# crosses each enemy. Damage is applied instantly; the burst is visual.
-	var wave_speed: float = 1000.0 / 1.2
+	# Wave ring delay: burst pops when the expanding visual ring crosses each enemy.
+	# Damage is applied instantly; the burst is visual only.
+	var wave_speed: float = Config.LUCIFER_WAVE_SPEED
 	for e in enemies:
 		if e["alive"]:
 			combat_hit(e, base_dmg, tower)
@@ -887,7 +905,7 @@ func _lucifer_pulse(tower: Dictionary) -> void:
 					"x": e["x"], "y": e["y"],
 					"radius": e.get("radius", 8.0),
 					"color": tower["color"],
-					"timer": 0.22,
+					"timer": Config.FX_LUCIFER_HIT_TIMER,
 					"delay": delay,
 				})
 	add_effect("lucifer_wave", tower["x"], tower["y"], 0, tower["color"])
@@ -897,7 +915,7 @@ func _cocytus_cone(tower: Dictionary, dt: float) -> void:
 	# Continuous damage every tick — bypasses calc_damage's 1.0 floor because
 	# per-tick damage is fractional (e.g. 0.2 at 60 FPS). Applies multipliers manually.
 	# Force casting pose always (fire_flash held high while cone is active).
-	tower["fire_flash"] = 0.3
+	tower["fire_flash"] = Config.TOWER_FIRE_FLASH
 	if enemies.size() == 0:
 		return
 	var cone_dps: float = tower["damage"] * tower["attack_speed"] * perm_speed_buff * temp_speed_buff
@@ -918,6 +936,12 @@ func _cocytus_cone(tower: Dictionary, dt: float) -> void:
 	var fy: float = sin(eff_facing)
 	var has_cmd := _has_alive_type("archangel_marshal")
 	var corruption: float = Config.TOWER_DATA["hades"].get("corruption_mult", 1.0)
+	# Pre-cache active Hades towers to avoid inner-loop scan per enemy
+	var _hades_list: Array = []
+	if corruption > 1.0:
+		for h in towers:
+			if h["type"] == "hades" and not h["is_disabled"]:
+				_hades_list.append(h)
 	var _hit_any := false
 	for e in enemies:
 		if not e["alive"]:
@@ -933,7 +957,7 @@ func _cocytus_cone(tower: Dictionary, dt: float) -> void:
 		if dot * dot < cos_half * cos_half * d2:
 			continue
 		if _is_guardian_protected(e):
-			e["flash_timer"] = 0.05
+			e["flash_timer"] = Config.GUARDIAN_FLASH_DURATION
 			continue
 		# Apply raw damage — NO 1.0 floor (cone is fractional per tick)
 		var tick_dmg: float = cone_dps * dt
@@ -943,10 +967,8 @@ func _cocytus_cone(tower: Dictionary, dt: float) -> void:
 			tick_dmg *= Config.SHIELD_BUFF_REDUCTION
 		if has_cmd and e.get("type", "") != "archangel_marshal":
 			tick_dmg *= Config.COMMANDER_DAMAGE_REDUCTION
-		if corruption > 1.0:
-			for h in towers:
-				if h["type"] != "hades" or h["is_disabled"]:
-					continue
+		if _hades_list.size() > 0:
+			for h in _hades_list:
 				var dxh: float = e["x"] - h["x"]
 				var dyh: float = e["y"] - h["y"]
 				if dxh * dxh + dyh * dyh <= h["range"] * h["range"]:
@@ -954,7 +976,7 @@ func _cocytus_cone(tower: Dictionary, dt: float) -> void:
 					break
 		e["hp"] -= tick_dmg
 		# REDESIGN: frost state instead of white flash — snowflake icon + slow
-		e["frost_timer"] = 0.3
+		e["frost_timer"] = Config.COCYTUS_FROST_DURATION
 		tower["total_damage"] = tower.get("total_damage", 0.0) + tick_dmg
 		stats["total_damage_dealt"] = stats.get("total_damage_dealt", 0.0) + tick_dmg
 		_hit_any = true
@@ -963,7 +985,7 @@ func _cocytus_cone(tower: Dictionary, dt: float) -> void:
 	# Periodic frost spike emit inside cone for visual continuity
 	tower["cone_emit_timer"] -= dt
 	if tower["cone_emit_timer"] <= 0:
-		tower["cone_emit_timer"] = 0.12
+		tower["cone_emit_timer"] = Config.COCYTUS_EMIT_INTERVAL
 		var max_r: float = tower["range"]
 		var r_pt: float = max_r * (0.4 + randf() * 0.6)
 		var a_off: float = (randf() - 0.5) * 2.0 * half_angle
@@ -997,7 +1019,7 @@ func _apply_hades_buff(hades_tower: Dictionary) -> void:
 				"x": hades_tower["x"], "y": hades_tower["y"],
 				"x2": t["x"], "y2": t["y"],
 				"radius": 0, "color": Color(0.7, 0.5, 1.0),
-				"timer": 0.5,
+				"timer": Config.FX_HADES_BEAM_DURATION,
 			})
 
 func _hades_damage(hades_tower: Dictionary) -> void:
@@ -1017,7 +1039,7 @@ func _hades_damage(hades_tower: Dictionary) -> void:
 				"x": hades_tower["x"], "y": hades_tower["y"],
 				"x2": e["x"], "y2": e["y"],
 				"radius": 0, "color": Color(1.0, 0.3, 0.45),
-				"timer": 0.5,
+				"timer": Config.FX_HADES_CURSE_DURATION,
 			})
 
 # ═══════════════════════════════════════════════════════
@@ -1073,7 +1095,7 @@ func start_wave() -> void:
 		for _j in range(pact_extra_enemies):
 			spawn_queue.append("war_titan")
 		pact_extra_enemies = 0
-	spawn_timer = 0.5
+	spawn_timer = Config.WAVE_SPAWN_DELAY
 
 	notify(Locale.tf("wave_start_notify", {"wave": wave, "desc": Locale.t(wave_desc)}), Color(1.0, 0.8, 0.0))
 	# Cinematic wave announcement — snapshot the wave + desc so the banner
@@ -1136,9 +1158,9 @@ func complete_wave() -> void:
 		if tower_weaken_waves <= 0:
 			tower_weaken_mult = 1.0
 
-	# Replenish 1 die per wave (capped at max)
+	# Replenish dice per wave (capped at max)
 	if dice_uses_left < Config.DICE_MAX_USES:
-		dice_uses_left += 1
+		dice_uses_left = mini(dice_uses_left + Config.DICE_REPLENISH_PER_WAVE, Config.DICE_MAX_USES)
 		notify(Locale.tf("dice_replenish", {"count": dice_uses_left, "max": Config.DICE_MAX_USES}), Color(1.0, 0.6, 0.2))
 
 	if wave >= Config.MAX_WAVES:
@@ -1176,7 +1198,7 @@ func roll_dice() -> Dictionary:
 
 	show_dice_result = true
 	dice_result = {"d1": d1, "total": total, "outcome": outcome}
-	dice_result_timer = 5.0
+	dice_result_timer = Config.DICE_RESULT_DISPLAY
 	Audio.play_sfx("dice_roll")
 	shake(3.0, 0.15)
 
@@ -1185,29 +1207,29 @@ func roll_dice() -> Dictionary:
 
 	match outcome["effect"]:
 		"surge":
-			_apply_speed_buff(1.8, 15.0)
+			_apply_speed_buff(Config.DICE_SURGE_SPEED, Config.DICE_SURGE_DURATION)
 		"aoe_25":
-			_damage_all_percent(0.25, 0.2)
+			_damage_all_percent(0.25, Config.DICE_AOE_FLASH_25)
 			add_effect("screen_flash", 0, 0, 0, Color(1.0, 0.4, 0.0))
 		"aoe_10":
-			_damage_all_percent(0.10, 0.15)
+			_damage_all_percent(0.10, Config.DICE_AOE_FLASH_10)
 			add_effect("screen_flash", 0, 0, 0, Color(1.0, 0.6, 0.2))
 		"speed_boost":
-			_apply_speed_buff(1.3, 10.0)
+			_apply_speed_buff(Config.DICE_SPEED_BOOST, Config.DICE_SPEED_BOOST_DURATION)
 		"bonus_sins":
-			earn(25)
+			earn(Config.DICE_BONUS_MEDIUM)
 		"tithe":
-			earn(10)
+			earn(Config.DICE_BONUS_SMALL)
 		"tithe_big":
-			earn(50)
+			earn(Config.DICE_BONUS_LARGE)
 		"slow_towers":
-			_apply_speed_buff(0.75, 10.0)
+			_apply_speed_buff(Config.DICE_SLOW_FACTOR, Config.DICE_SLOW_DURATION)
 		"disable_3s":
 			for t in towers:
 				t["is_disabled"] = true
-				t["disable_timer"] = 3.0
+				t["disable_timer"] = Config.DICE_DISABLE_DURATION
 		"tax_sins":
-			var lost: int = roundi(sins * 0.10)
+			var lost: int = roundi(sins * Config.DICE_TAX_PERCENT)
 			sins -= lost
 
 	return dice_result
@@ -1217,13 +1239,18 @@ func roll_dice() -> Dictionary:
 # ═══════════════════════════════════════════════════════
 func should_drop_relic(enemy_type: String) -> bool:
 	var roll := randf()
-	if enemy_type == "grand_paladin":
-		return true
+	# Bosses (Grand Paladin, Archangel Michael) always drop
+	var edata: Dictionary = Config.ENEMY_DATA.get(enemy_type, {})
+	if edata.get("is_boss", false):
+		return roll < Config.RELIC_DROP_BOSS
 	if enemy_type == "war_titan":
-		return roll < 0.15
+		return roll < Config.RELIC_DROP_WAR_TITAN
+	# Special enemies: Zeus, Holy Sentinel, Marshal, Raphael — higher than default
+	if enemy_type in ["zeus", "holy_sentinel", "archangel_marshal", "archangel_raphael"]:
+		return roll < Config.RELIC_DROP_SPECIAL
 	if enemy_type == "crusader" or enemy_type == "temple_cleric":
-		return roll < 0.05
-	return roll < 0.03
+		return roll < Config.RELIC_DROP_MEDIUM
+	return roll < Config.RELIC_DROP_DEFAULT
 
 func drop_relic(rx: float, ry: float) -> void:
 	var loot: Dictionary = _weighted_pick(Config.RELIC_LOOT)
@@ -1262,30 +1289,16 @@ func drop_relic(rx: float, ry: float) -> void:
 		"mass_corrupt":
 			for e in enemies:
 				if e["alive"]:
-					e["slow_amount"] = 0.3
-					e["slow_timer"] = 5.0
+					e["slow_amount"] = Config.MASS_CORRUPT_SLOW
+					e["slow_timer"] = Config.MASS_CORRUPT_DURATION
 			notify(Locale.t("Corruption Wave! All enemies slowed!"), Color(0.6, 0.2, 0.8))
 		"rewind":
-			time_warp_timer = 5.0
+			time_warp_timer = Config.TIME_WARP_DURATION
 			time_warp_prev_speed = game_speed
-			set_game_speed(game_speed * 0.35)
+			set_game_speed(game_speed * Config.TIME_WARP_SLOW_FACTOR)
 			notify(Locale.t("Time Warp! Enemies crawl for 5 seconds!"), Color(0.3, 0.6, 1.0))
 		"legendary":
-			var best_tower = null
-			var best_val := -1.0
-			for t in towers:
-				if t["level"] < Config.MAX_TOWER_LEVEL:
-					var val: float = t["damage"] * t["damage_mult"] * t["attack_speed"]
-					if val > best_val:
-						best_val = val
-						best_tower = t
-			if best_tower != null:
-				best_tower["level"] += 1
-				best_tower["damage"] *= Config.UPGRADE_MULT
-				best_tower["range"] *= 1.1
-				best_tower["attack_speed"] *= 1.15
-				notify(Locale.tf("legendary_upgrade", {"name": Locale.t(best_tower["name"]), "level": best_tower["level"]}), Color(1.0, 0.85, 0.0))
-			else:
+			if not free_upgrade_best_tower():
 				earn(80)
 				notify(Locale.t("All towers maxed! +80 Sins instead"), Color(0.8, 0.267, 1.0))
 		"choice":
@@ -1295,6 +1308,26 @@ func drop_relic(rx: float, ry: float) -> void:
 			for _j in range(trap_count):
 				enemies.append(create_enemy("war_titan"))
 			notify(Locale.t("Trojan Relic! Elite enemies spawned!"), Color(0.8, 0.2, 0.2))
+
+## Free-upgrade the highest-DPS tower that isn't max level.
+## Returns true if a tower was upgraded, false if all are maxed.
+func free_upgrade_best_tower() -> bool:
+	var best_tower = null
+	var best_val := -1.0
+	for t in towers:
+		if t["level"] < Config.MAX_TOWER_LEVEL:
+			var val: float = t["damage"] * t["damage_mult"] * t["attack_speed"]
+			if val > best_val:
+				best_val = val
+				best_tower = t
+	if best_tower != null:
+		best_tower["level"] += 1
+		best_tower["damage"] *= Config.UPGRADE_MULT
+		best_tower["range"] *= Config.UPGRADE_RANGE_MULT
+		best_tower["attack_speed"] *= Config.UPGRADE_SPEED_MULT
+		notify(Locale.tf("legendary_upgrade", {"name": Locale.t(best_tower["name"]), "level": best_tower["level"]}), Color(1.0, 0.85, 0.0))
+		return true
+	return false
 
 func accept_pandora_choice(choice: int) -> void:
 	pending_pandora_choice = false
@@ -1368,7 +1401,7 @@ func accept_pact() -> void:
 			pact_extra_enemies += int(pact["c_val"])
 		"tower_weaken":
 			tower_weaken_waves = int(pact["c_val"])
-			tower_weaken_mult = 0.85  # -15% damage
+			tower_weaken_mult = Config.TOWER_WEAKEN_MULT
 
 	notify(Locale.t(pact["name"]) + " — " + Locale.t("Accepted!"), Color(0.8, 0.2, 0.6))
 	pending_pact = {}
@@ -1401,8 +1434,8 @@ func add_dmg_number(ex: float, ey: float, dmg: float, color: Color) -> void:
 	effects.append({"type": "dmg_number", "x": ex, "y": ey, "radius": 0, "color": color, "timer": Config.FX_DMG_NUMBER_DURATION, "value": dmg})
 
 func notify(text: String, color: Color = Color.WHITE) -> void:
-	notifications.append({"text": text, "color": color, "timer": 4.0})
-	if notifications.size() > 6:
+	notifications.append({"text": text, "color": color, "timer": Config.NOTIFICATION_DURATION})
+	if notifications.size() > Config.NOTIFICATION_MAX:
 		notifications.pop_front()
 	notification_added.emit(text, color)
 

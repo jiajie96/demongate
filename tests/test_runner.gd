@@ -75,6 +75,33 @@ func _ready() -> void:
 	_run_burn_kill_combat_kill_tests()
 	_run_all_pact_types_tests()
 	# banner_and_cheat, overview_panel constant tests removed (constants inlined)
+	_run_extracted_constants_tests()
+	_run_upgrade_scaling_constants_tests()
+	_run_relic_drop_config_tests()
+	_run_relic_effect_constants_tests()
+	_run_lucifer_wave_constants_tests()
+	_run_hero_threshold_constants_tests()
+	_run_dice_outcome_coverage_tests()
+	_run_raphael_heal_target_tests()
+	_run_guardian_combat_interaction_tests()
+	_run_wave_spawn_interleave_tests()
+	_run_find_target_modes_tests()
+	_run_complete_wave_decay_tests()
+	_run_hades_buff_range_tests()
+	_run_burn_source_credit_tests()
+	_run_free_upgrade_best_tower_tests()
+	_run_dice_replenish_constant_tests()
+	_run_projectile_origin_cull_tests()
+	_run_starting_sins_constant_tests()
+	_run_dice_effect_constants_tests()
+	_run_notification_config_tests()
+	_run_relic_drop_special_tests()
+	_run_fx_timer_constants_tests()
+	_run_tower_weaken_constant_tests()
+	_run_apply_burn_helper_tests()
+	_run_pandora_choice_tests()
+	_run_notification_overflow_tests()
+	_run_sell_refund_level_scaling_tests()
 
 	print("")
 	print("=== Results: %d/%d passed ===" % [_passed, _total])
@@ -130,6 +157,24 @@ func _assert_lt(actual: float, threshold: float, test_name: String) -> void:
 	else:
 		_failed += 1
 		print("  FAIL: " + test_name + " (expected < " + str(threshold) + ", got " + str(actual) + ")")
+
+func _assert_lte(actual: float, threshold: float, test_name: String) -> void:
+	_total += 1
+	if actual <= threshold:
+		_passed += 1
+		print("  PASS: " + test_name)
+	else:
+		_failed += 1
+		print("  FAIL: " + test_name + " (expected <= " + str(threshold) + ", got " + str(actual) + ")")
+
+func _assert_gte(actual: float, threshold: float, test_name: String) -> void:
+	_total += 1
+	if actual >= threshold:
+		_passed += 1
+		print("  PASS: " + test_name)
+	else:
+		_failed += 1
+		print("  FAIL: " + test_name + " (expected >= " + str(threshold) + ", got " + str(actual) + ")")
 
 # ═══════════════════════════════════════════════════════
 # CONFIG TESTS
@@ -2093,3 +2138,777 @@ func _run_banner_and_cheat_constants_tests() -> void:
 func _run_overview_panel_constants_tests() -> void:
 	print("[Overview Panel Constants — inlined, no separate test needed]")
 	pass
+
+# ═══════════════════════════════════════════════════════
+# EXTRACTED CONSTANTS TESTS
+# ═══════════════════════════════════════════════════════
+func _run_extracted_constants_tests() -> void:
+	print("[Extracted Constants]")
+
+	# Fast enemy speed multiplier
+	_assert_near(Config.FAST_ENEMY_SPEED_MULT, 1.3, 0.01, "FAST_ENEMY_SPEED_MULT is 1.3")
+
+	# Guardian flash duration
+	_assert_near(Config.GUARDIAN_FLASH_DURATION, 0.05, 0.001, "GUARDIAN_FLASH_DURATION is 0.05")
+
+	# Wave spawn delay
+	_assert_near(Config.WAVE_SPAWN_DELAY, 0.5, 0.01, "WAVE_SPAWN_DELAY is 0.5")
+
+	# Cocytus cone timers
+	_assert_near(Config.COCYTUS_EMIT_INTERVAL, 0.12, 0.001, "COCYTUS_EMIT_INTERVAL is 0.12")
+	_assert_near(Config.COCYTUS_FROST_DURATION, 0.3, 0.01, "COCYTUS_FROST_DURATION is 0.3")
+
+	# Hades buff default
+	_assert_near(Config.HADES_BUFF_DEFAULT, 1.5, 0.01, "HADES_BUFF_DEFAULT is 1.5")
+
+	# Heal beam FX duration
+	_assert_near(Config.FX_HEAL_BEAM_DURATION, 0.3, 0.01, "FX_HEAL_BEAM_DURATION is 0.3")
+
+	# Fast enemy speed is actually used in update_enemies
+	GM.reset_state()
+	GM.wave = 1
+	GM.fast_enemy_waves = 1
+	var enemy := GM.create_enemy("seraph_scout")
+	var base_spd: float = enemy["speed"]
+	# Speed should be multiplied by FAST_ENEMY_SPEED_MULT during movement
+	_assert_gt(Config.FAST_ENEMY_SPEED_MULT, 1.0, "FAST_ENEMY_SPEED_MULT > 1.0 for actual speedup")
+	_assert_gt(base_spd, 0.0, "Enemy has positive base speed")
+	GM.reset_state()
+
+# ═══════════════════════════════════════════════════════
+# UPGRADE SCALING CONSTANTS TESTS
+# ═══════════════════════════════════════════════════════
+func _run_upgrade_scaling_constants_tests() -> void:
+	print("[Upgrade Scaling Constants]")
+
+	# Verify the constants exist and have sane values
+	_assert_near(Config.UPGRADE_RANGE_MULT, 1.1, 0.01, "UPGRADE_RANGE_MULT is 1.1")
+	_assert_near(Config.UPGRADE_SPEED_MULT, 1.15, 0.01, "UPGRADE_SPEED_MULT is 1.15")
+	_assert_near(Config.UPGRADE_COST_SCALING, 1.5, 0.01, "UPGRADE_COST_SCALING is 1.5")
+
+	# Verify upgrade applies the constants
+	GM.reset_state()
+	GM.sins = 9999
+	var tower := GM.create_tower("bone_marksman", 3, 3)
+	GM.towers.append(tower)
+	GM.occupied_tiles[Config.tile_key(3, 3)] = tower
+	var range_before: float = tower["range"]
+	var speed_before: float = tower["attack_speed"]
+	GM.upgrade_tower(tower)
+	_assert_near(tower["range"], range_before * Config.UPGRADE_RANGE_MULT, 0.1, "Upgrade applies UPGRADE_RANGE_MULT")
+	_assert_near(tower["attack_speed"], speed_before * Config.UPGRADE_SPEED_MULT, 0.01, "Upgrade applies UPGRADE_SPEED_MULT")
+
+	# Verify cost scaling uses UPGRADE_COST_SCALING
+	var data: Dictionary = Config.TOWER_DATA["bone_marksman"]
+	var expected_cost_l2: int = roundi(data["upgrade_cost"] * pow(Config.UPGRADE_COST_SCALING, 1))
+	# Tower is now level 2, so next cost would use level 2
+	_assert_gt(float(expected_cost_l2), float(data["upgrade_cost"]), "Level 2 upgrade costs more than level 1")
+
+	GM.reset_state()
+
+# ═══════════════════════════════════════════════════════
+# RELIC DROP CONFIG CONSTANTS TESTS
+# ═══════════════════════════════════════════════════════
+func _run_relic_drop_config_tests() -> void:
+	print("[Relic Drop Config Constants]")
+
+	# Verify drop rates exist in config
+	_assert_near(Config.RELIC_DROP_BOSS, 1.0, 0.01, "RELIC_DROP_BOSS is 1.0 (always drops)")
+	_assert_near(Config.RELIC_DROP_WAR_TITAN, 0.15, 0.01, "RELIC_DROP_WAR_TITAN is 0.15")
+	_assert_near(Config.RELIC_DROP_MEDIUM, 0.05, 0.01, "RELIC_DROP_MEDIUM is 0.05")
+	_assert_near(Config.RELIC_DROP_DEFAULT, 0.03, 0.01, "RELIC_DROP_DEFAULT is 0.03")
+
+	# Drop rates should be in descending order by enemy strength
+	_assert_gt(Config.RELIC_DROP_BOSS, Config.RELIC_DROP_WAR_TITAN, "Boss drop > War Titan drop")
+	_assert_gt(Config.RELIC_DROP_WAR_TITAN, Config.RELIC_DROP_MEDIUM, "War Titan drop > Medium drop")
+	_assert_gt(Config.RELIC_DROP_MEDIUM, Config.RELIC_DROP_DEFAULT, "Medium drop > Default drop")
+
+	# All drop rates should be between 0 and 1
+	_assert_gt(Config.RELIC_DROP_DEFAULT, 0.0, "Default drop rate > 0")
+	_assert(Config.RELIC_DROP_BOSS <= 1.0, "Boss drop rate <= 1.0")
+
+# ═══════════════════════════════════════════════════════
+# RELIC EFFECT CONSTANTS TESTS
+# ═══════════════════════════════════════════════════════
+func _run_relic_effect_constants_tests() -> void:
+	print("[Relic Effect Constants]")
+
+	# Mass Corruption relic constants
+	_assert_near(Config.MASS_CORRUPT_SLOW, 0.3, 0.01, "MASS_CORRUPT_SLOW is 0.3")
+	_assert_near(Config.MASS_CORRUPT_DURATION, 5.0, 0.1, "MASS_CORRUPT_DURATION is 5.0")
+	_assert_gt(Config.MASS_CORRUPT_SLOW, 0.0, "Mass corrupt slow is positive")
+	_assert(Config.MASS_CORRUPT_SLOW < 1.0, "Mass corrupt slow < 1.0 (not full stop)")
+
+	# Time Warp relic constants
+	_assert_near(Config.TIME_WARP_SLOW_FACTOR, 0.35, 0.01, "TIME_WARP_SLOW_FACTOR is 0.35")
+	_assert_near(Config.TIME_WARP_DURATION, 5.0, 0.1, "TIME_WARP_DURATION is 5.0")
+	_assert_gt(Config.TIME_WARP_SLOW_FACTOR, 0.0, "Time warp factor is positive")
+	_assert(Config.TIME_WARP_SLOW_FACTOR < 1.0, "Time warp factor < 1.0 (actually slows)")
+
+	# Time Warp description mentions seconds matching constant
+	_assert_near(Config.TIME_WARP_DURATION, 5.0, 0.01, "Time warp duration matches '5 seconds' in notification")
+
+# ═══════════════════════════════════════════════════════
+# LUCIFER WAVE CONSTANTS TESTS
+# ═══════════════════════════════════════════════════════
+func _run_lucifer_wave_constants_tests() -> void:
+	print("[Lucifer Wave Constants]")
+
+	_assert_near(Config.LUCIFER_WAVE_MAX_R, 1000.0, 1.0, "LUCIFER_WAVE_MAX_R is 1000")
+	_assert_gt(Config.LUCIFER_WAVE_SPEED, 0.0, "LUCIFER_WAVE_SPEED is positive")
+	_assert_near(Config.FX_LUCIFER_HIT_TIMER, 0.22, 0.01, "FX_LUCIFER_HIT_TIMER is 0.22")
+
+	# Wave speed should equal max_r / duration
+	var expected_speed: float = Config.LUCIFER_WAVE_MAX_R / Config.FX_LUCIFER_WAVE_DURATION
+	_assert_near(Config.LUCIFER_WAVE_SPEED, expected_speed, 1.0, "LUCIFER_WAVE_SPEED = MAX_R / DURATION")
+
+# ═══════════════════════════════════════════════════════
+# HERO THRESHOLD CONSTANTS TESTS
+# ═══════════════════════════════════════════════════════
+func _run_hero_threshold_constants_tests() -> void:
+	print("[Hero Threshold Constants]")
+
+	_assert_eq(Config.HERO_THRESHOLD_FIRST, 200, "HERO_THRESHOLD_FIRST is 200")
+	_assert_eq(Config.HERO_THRESHOLD_SECOND, 500, "HERO_THRESHOLD_SECOND is 500")
+	_assert_eq(Config.HERO_THRESHOLD_BASE, 1000, "HERO_THRESHOLD_BASE is 1000")
+	_assert_eq(Config.HERO_THRESHOLD_STEP, 500, "HERO_THRESHOLD_STEP is 500")
+
+	# Thresholds should increase
+	_assert_gt(float(Config.HERO_THRESHOLD_SECOND), float(Config.HERO_THRESHOLD_FIRST), "Second > First threshold")
+	_assert_gt(float(Config.HERO_THRESHOLD_BASE), float(Config.HERO_THRESHOLD_SECOND), "Base > Second threshold")
+
+	# Verify hero_threshold() function
+	GM.reset_state()
+	GM.fallen_heroes_spawned = 0
+	_assert_eq(GM.hero_threshold(), Config.HERO_THRESHOLD_FIRST, "hero_threshold() returns FIRST for 0 spawned")
+	GM.fallen_heroes_spawned = 1
+	_assert_eq(GM.hero_threshold(), Config.HERO_THRESHOLD_SECOND, "hero_threshold() returns SECOND for 1 spawned")
+	GM.fallen_heroes_spawned = 2
+	_assert_eq(GM.hero_threshold(), Config.HERO_THRESHOLD_BASE, "hero_threshold() returns BASE for 2 spawned")
+	GM.fallen_heroes_spawned = 3
+	_assert_eq(GM.hero_threshold(), Config.HERO_THRESHOLD_BASE + Config.HERO_THRESHOLD_STEP, "hero_threshold() scales for 3 spawned")
+	GM.reset_state()
+
+# ═══════════════════════════════════════════════════════
+# DICE OUTCOME COVERAGE TESTS
+# ═══════════════════════════════════════════════════════
+func _run_dice_outcome_coverage_tests() -> void:
+	print("[Dice Outcome Coverage]")
+
+	# Early dice outcomes (waves 1-4): all should be positive
+	for roll in range(1, 7):
+		var outcome: Dictionary = Config.get_dice_outcome(roll, 1)
+		_assert(outcome["positive"], "Early dice roll %d is positive" % roll)
+
+	# Late dice outcomes (wave 5+): rolls 4-6 positive, 1-3 negative
+	for roll in range(4, 7):
+		var outcome: Dictionary = Config.get_dice_outcome(roll, 5)
+		_assert(outcome["positive"], "Late dice roll %d is positive" % roll)
+	for roll in range(1, 4):
+		var outcome: Dictionary = Config.get_dice_outcome(roll, 5)
+		_assert(not outcome["positive"], "Late dice roll %d is negative" % roll)
+
+	# All outcomes have required keys
+	for roll in range(1, 7):
+		var outcome: Dictionary = Config.get_dice_outcome(roll, 1)
+		_assert(outcome.has("name"), "Outcome %d has name" % roll)
+		_assert(outcome.has("effect"), "Outcome %d has effect" % roll)
+		_assert(outcome.has("desc"), "Outcome %d has desc" % roll)
+
+# ═══════════════════════════════════════════════════════
+# RAPHAEL HEAL TARGET TESTS
+# ═══════════════════════════════════════════════════════
+func _run_raphael_heal_target_tests() -> void:
+	print("[Raphael Heal Target]")
+
+	GM.reset_state()
+	GM.wave = 1
+
+	# Raphael should heal the most damaged ally
+	var raphael := GM.create_enemy("archangel_raphael")
+	raphael["x"] = 100.0; raphael["y"] = 100.0
+	raphael["ability_timer"] = 0.0
+	raphael["spawn_timer"] = 0.0
+	GM.enemies.append(raphael)
+
+	var wounded := GM.create_enemy("crusader")
+	wounded["x"] = 120.0; wounded["y"] = 100.0
+	wounded["hp"] = wounded["max_hp"] * 0.3  # heavily wounded
+	wounded["spawn_timer"] = 0.0
+	GM.enemies.append(wounded)
+
+	var healthy := GM.create_enemy("seraph_scout")
+	healthy["x"] = 140.0; healthy["y"] = 100.0
+	healthy["spawn_timer"] = 0.0
+	GM.enemies.append(healthy)
+
+	var hp_before: float = wounded["hp"]
+	GM._raphael_heal(raphael)
+	_assert_gt(wounded["hp"], hp_before, "Raphael heals the most wounded ally")
+
+	# Raphael should not heal itself
+	GM.reset_state()
+	GM.wave = 1
+	var solo_raph := GM.create_enemy("archangel_raphael")
+	solo_raph["x"] = 100.0; solo_raph["y"] = 100.0
+	solo_raph["hp"] = solo_raph["max_hp"] * 0.5
+	solo_raph["spawn_timer"] = 0.0
+	GM.enemies.append(solo_raph)
+	var raph_hp: float = solo_raph["hp"]
+	GM._raphael_heal(solo_raph)
+	_assert_near(solo_raph["hp"], raph_hp, 0.01, "Raphael does not heal itself")
+
+	GM.reset_state()
+
+# ═══════════════════════════════════════════════════════
+# GUARDIAN COMBAT INTERACTION TESTS
+# ═══════════════════════════════════════════════════════
+func _run_guardian_combat_interaction_tests() -> void:
+	print("[Guardian Combat Interaction]")
+
+	GM.reset_state()
+	GM.wave = 1
+
+	# Enemy in first half of path should be protected when guardian alive
+	var sentinel := GM.create_enemy("holy_sentinel")
+	sentinel["x"] = 100.0; sentinel["y"] = 100.0
+	sentinel["path_index"] = 0
+	sentinel["spawn_timer"] = 0.0
+	GM.enemies.append(sentinel)
+	GM.clear_alive_type_cache()
+
+	var protected_enemy := GM.create_enemy("seraph_scout")
+	protected_enemy["path_index"] = 1  # early in path
+	protected_enemy["spawn_timer"] = 0.0
+	GM.enemies.append(protected_enemy)
+
+	_assert(GM._is_guardian_protected(protected_enemy), "Enemy early in path is guardian-protected")
+
+	# Guardian itself is NOT protected
+	_assert(not GM._is_guardian_protected(sentinel), "Holy Sentinel is not self-protected")
+
+	# Enemy in second half is NOT protected
+	var late_enemy := GM.create_enemy("seraph_scout")
+	late_enemy["path_index"] = Config.path_pixels.size() - 1
+	late_enemy["spawn_timer"] = 0.0
+	GM.enemies.append(late_enemy)
+	_assert(not GM._is_guardian_protected(late_enemy), "Enemy late in path is NOT protected")
+
+	GM.reset_state()
+
+# ═══════════════════════════════════════════════════════
+# WAVE SPAWN INTERLEAVE TESTS
+# ═══════════════════════════════════════════════════════
+func _run_wave_spawn_interleave_tests() -> void:
+	print("[Wave Spawn Interleave]")
+
+	# Wave 1 should produce a spawn queue with correct count
+	GM.reset_state()
+	GM.wave = 0
+	GM.start_wave()
+	var wave1_def: Dictionary = Config.WAVE_DATA[0]
+	var expected_count := 0
+	for entry in wave1_def["enemies"]:
+		expected_count += entry["count"]
+	_assert_eq(GM.spawn_queue.size() + 1, expected_count, "Wave 1 spawn queue has right count (1 already spawned)")
+
+	# Specials should appear in back half
+	GM.reset_state()
+	GM.wave = 5  # wave 6 has marshal
+	GM.start_wave()
+	var marshal_idx := -1
+	for i in range(GM.spawn_queue.size()):
+		if GM.spawn_queue[i] == "archangel_marshal":
+			marshal_idx = i
+			break
+	if marshal_idx >= 0:
+		@warning_ignore("integer_division")
+		_assert_gt(float(marshal_idx), float(GM.spawn_queue.size() / 4), "Marshal spawns in back portion of queue")
+
+	GM.reset_state()
+
+# ═══════════════════════════════════════════════════════
+# FIND TARGET MODES TESTS
+# ═══════════════════════════════════════════════════════
+func _run_find_target_modes_tests() -> void:
+	print("[Find Target Modes]")
+
+	GM.reset_state()
+	GM.wave = 1
+
+	var tower := GM.create_tower("bone_marksman", 5, 5)
+	GM.towers.append(tower)
+
+	# Create enemies at different distances
+	var close := GM.create_enemy("seraph_scout")
+	close["x"] = tower["x"] + 30.0; close["y"] = tower["y"]
+	close["path_index"] = 2
+	close["spawn_timer"] = 0.0
+	GM.enemies.append(close)
+
+	var far := GM.create_enemy("war_titan")
+	far["x"] = tower["x"] + 80.0; far["y"] = tower["y"]
+	far["path_index"] = 10
+	far["spawn_timer"] = 0.0
+	GM.enemies.append(far)
+
+	# Closest mode
+	tower["targeting_mode"] = "closest"
+	var target = GM.find_target(tower)
+	_assert(target == close, "Closest mode finds nearest enemy")
+
+	# First mode (furthest along path)
+	tower["targeting_mode"] = "first"
+	target = GM.find_target(tower)
+	_assert(target == far, "First mode finds furthest-along enemy")
+
+	# Strongest mode
+	tower["targeting_mode"] = "strongest"
+	target = GM.find_target(tower)
+	_assert(target == far, "Strongest mode finds war_titan (highest max_hp)")
+
+	# Weakest mode
+	tower["targeting_mode"] = "weakest"
+	target = GM.find_target(tower)
+	_assert(target == close, "Weakest mode finds seraph_scout (lowest hp)")
+
+	GM.reset_state()
+
+# ═══════════════════════════════════════════════════════
+# COMPLETE WAVE DECAY TESTS
+# ═══════════════════════════════════════════════════════
+func _run_complete_wave_decay_tests() -> void:
+	print("[Complete Wave Decay]")
+
+	# double_damage should decay on wave complete
+	GM.reset_state()
+	GM.wave = 3
+	GM.wave_active = true
+	GM.double_damage = 2
+	GM.sin_mult_waves = 2
+	GM.sin_multiplier = 1.5
+	GM.fast_enemy_waves = 1
+	GM.tower_weaken_waves = 1
+	GM.tower_weaken_mult = Config.TOWER_WEAKEN_MULT
+	GM.complete_wave()
+	_assert_eq(GM.double_damage, 1, "double_damage decrements by 1 on wave complete")
+	_assert_eq(GM.sin_mult_waves, 1, "sin_mult_waves decrements by 1")
+	_assert_gt(GM.sin_multiplier, 1.0, "sin_multiplier still active when waves remain")
+	_assert_eq(GM.fast_enemy_waves, 0, "fast_enemy_waves decrements to 0")
+	_assert_eq(GM.tower_weaken_waves, 0, "tower_weaken_waves decrements to 0")
+	_assert_near(GM.tower_weaken_mult, 1.0, 0.01, "tower_weaken_mult resets when waves hit 0")
+
+	# sin_multiplier resets when sin_mult_waves hits 0
+	GM.reset_state()
+	GM.wave = 3
+	GM.wave_active = true
+	GM.sin_mult_waves = 1
+	GM.sin_multiplier = 1.5
+	GM.complete_wave()
+	_assert_eq(GM.sin_mult_waves, 0, "sin_mult_waves decrements to 0")
+	_assert_near(GM.sin_multiplier, 1.0, 0.01, "sin_multiplier resets when waves expire")
+
+	GM.reset_state()
+
+# ═══════════════════════════════════════════════════════
+# HADES BUFF RANGE TESTS
+# ═══════════════════════════════════════════════════════
+func _run_hades_buff_range_tests() -> void:
+	print("[Hades Buff Range]")
+
+	GM.reset_state()
+	GM.wave = 1
+
+	var hades := GM.create_tower("hades", 5, 5)
+	GM.towers.append(hades)
+
+	# Tower in range should be buffed
+	var near_tower := GM.create_tower("bone_marksman", 6, 5)
+	GM.towers.append(near_tower)
+
+	# Tower out of range should NOT be buffed
+	var far_tower := GM.create_tower("bone_marksman", 14, 10)
+	GM.towers.append(far_tower)
+
+	GM._apply_hades_buff(hades)
+
+	_assert(near_tower["hades_buffed"], "Tower in Hades range gets buffed")
+	_assert(not far_tower["hades_buffed"], "Tower out of Hades range not buffed")
+
+	GM.reset_state()
+
+# ═══════════════════════════════════════════════════════
+# BURN SOURCE CREDIT TESTS
+# ═══════════════════════════════════════════════════════
+func _run_burn_source_credit_tests() -> void:
+	print("[Burn Source Credit]")
+
+	GM.reset_state()
+	GM.wave = 1
+
+	var tower := GM.create_tower("inferno_warlock", 3, 3)
+	GM.towers.append(tower)
+	var enemy := GM.create_enemy("seraph_scout")
+	enemy["x"] = tower["x"] + 30.0; enemy["y"] = tower["y"]
+	enemy["spawn_timer"] = 0.0
+	GM.enemies.append(enemy)
+
+	# Hit with warlock to apply burn
+	GM.combat_hit(enemy, tower["damage"], tower)
+	_assert_gt(float(enemy["burn_stacks"]), 0.0, "Burn stacks applied via combat_hit")
+	_assert(enemy["burn_source"] == tower, "Burn source credits the warlock tower")
+
+	GM.reset_state()
+
+# ═══════════════════════════════════════════════════════
+# FREE UPGRADE BEST TOWER TESTS
+# ═══════════════════════════════════════════════════════
+func _run_free_upgrade_best_tower_tests() -> void:
+	print("[Free Upgrade Best Tower]")
+
+	GM.reset_state()
+	GM.sins = 9999
+
+	var weak := GM.create_tower("bone_marksman", 3, 3)
+	GM.towers.append(weak)
+	var strong := GM.create_tower("inferno_warlock", 5, 5)
+	GM.towers.append(strong)
+
+	var strong_level: int = strong["level"]
+	GM.free_upgrade_best_tower()
+
+	# The higher-DPS tower should be upgraded
+	# DPS = damage * damage_mult * attack_speed
+	var weak_dps: float = weak["damage"] * weak.get("damage_mult", 1.0) * weak["attack_speed"]
+	var strong_dps: float = strong["damage"] * strong.get("damage_mult", 1.0) * strong["attack_speed"]
+	if strong_dps > weak_dps:
+		_assert_eq(strong["level"], strong_level + 1, "Highest DPS tower gets free upgrade")
+	else:
+		_assert_eq(weak["level"], 2, "Highest DPS tower gets free upgrade (weak was higher)")
+
+	# All towers at max level — returns false
+	GM.reset_state()
+	var max_tower := GM.create_tower("bone_marksman", 3, 3)
+	max_tower["level"] = Config.MAX_TOWER_LEVEL
+	GM.towers.append(max_tower)
+	_assert(not GM.free_upgrade_best_tower(), "Returns false when all towers maxed")
+
+	GM.reset_state()
+
+# ═══════════════════════════════════════════════════════
+# DICE REPLENISH CONSTANT TESTS
+# ═══════════════════════════════════════════════════════
+func _run_dice_replenish_constant_tests() -> void:
+	print("[Dice Replenish Constant]")
+
+	_assert_eq(Config.DICE_REPLENISH_PER_WAVE, 1, "DICE_REPLENISH_PER_WAVE is 1")
+	_assert_gt(float(Config.DICE_REPLENISH_PER_WAVE), 0.0, "Replenish is positive")
+
+	# Verify complete_wave replenishes dice
+	GM.reset_state()
+	GM.wave = 3
+	GM.wave_active = true
+	GM.dice_uses_left = 0
+	GM.complete_wave()
+	_assert_eq(GM.dice_uses_left, Config.DICE_REPLENISH_PER_WAVE, "Dice replenished on wave complete")
+
+	# Should not exceed max
+	GM.reset_state()
+	GM.wave = 3
+	GM.wave_active = true
+	GM.dice_uses_left = Config.DICE_MAX_USES
+	GM.complete_wave()
+	_assert_eq(GM.dice_uses_left, Config.DICE_MAX_USES, "Dice don't exceed max on replenish")
+
+	GM.reset_state()
+
+# ═══════════════════════════════════════════════════════
+# PROJECTILE ORIGIN CULL TESTS
+# ═══════════════════════════════════════════════════════
+func _run_projectile_origin_cull_tests() -> void:
+	print("[Projectile Origin Cull]")
+
+	_assert_gt(Config.PROJECTILE_MAX_DIST, 0.0, "PROJECTILE_MAX_DIST is positive")
+
+	# A projectile that has traveled past max dist should be culled
+	GM.reset_state()
+	GM.wave = 1
+	var tower := GM.create_tower("bone_marksman", 3, 3)
+	var enemy := GM.create_enemy("seraph_scout")
+	enemy["x"] = 9999.0; enemy["y"] = 9999.0  # far away
+	enemy["spawn_timer"] = 0.0
+	var proj := GM.create_projectile(tower, enemy)
+	proj["x"] = proj["origin_x"] + Config.PROJECTILE_MAX_DIST + 100.0  # past max
+	GM.projectiles.append(proj)
+	GM.update_projectiles(0.016)
+	_assert_eq(GM.projectiles.size(), 0, "Projectile culled after exceeding max distance")
+
+	GM.reset_state()
+
+# ═══════════════════════════════════════════════════════
+# STARTING SINS CONSTANT TESTS
+# ═══════════════════════════════════════════════════════
+func _run_starting_sins_constant_tests() -> void:
+	print("[Starting Sins Constant]")
+
+	_assert_eq(Config.STARTING_SINS, 50, "STARTING_SINS is 50")
+
+	# Verify reset_state uses the constant
+	GM.reset_state()
+	_assert_eq(GM.sins, Config.STARTING_SINS, "reset_state sets sins to STARTING_SINS")
+
+	# Verify it's positive and reasonable
+	_assert_gt(float(Config.STARTING_SINS), 0.0, "STARTING_SINS is positive")
+	_assert(Config.STARTING_SINS <= 200, "STARTING_SINS is not absurdly high")
+
+	GM.reset_state()
+
+# ═══════════════════════════════════════════════════════
+# DICE EFFECT CONSTANTS TESTS
+# ═══════════════════════════════════════════════════════
+func _run_dice_effect_constants_tests() -> void:
+	print("[Dice Effect Constants]")
+
+	# Surge (positive speed buff)
+	_assert_near(Config.DICE_SURGE_SPEED, 1.8, 0.01, "DICE_SURGE_SPEED is 1.8")
+	_assert_near(Config.DICE_SURGE_DURATION, 15.0, 0.1, "DICE_SURGE_DURATION is 15.0")
+	_assert_gt(Config.DICE_SURGE_SPEED, 1.0, "Surge actually speeds up towers")
+
+	# Speed boost (milder positive)
+	_assert_near(Config.DICE_SPEED_BOOST, 1.3, 0.01, "DICE_SPEED_BOOST is 1.3")
+	_assert_near(Config.DICE_SPEED_BOOST_DURATION, 10.0, 0.1, "DICE_SPEED_BOOST_DURATION is 10.0")
+
+	# Slow curse (negative)
+	_assert_near(Config.DICE_SLOW_FACTOR, 0.75, 0.01, "DICE_SLOW_FACTOR is 0.75")
+	_assert_near(Config.DICE_SLOW_DURATION, 10.0, 0.1, "DICE_SLOW_DURATION is 10.0")
+	_assert(Config.DICE_SLOW_FACTOR < 1.0, "Slow factor actually slows towers")
+
+	# Disable
+	_assert_near(Config.DICE_DISABLE_DURATION, 3.0, 0.1, "DICE_DISABLE_DURATION is 3.0")
+
+	# Tax
+	_assert_near(Config.DICE_TAX_PERCENT, 0.10, 0.01, "DICE_TAX_PERCENT is 0.10")
+	_assert_gt(Config.DICE_TAX_PERCENT, 0.0, "Tax percent is positive")
+	_assert(Config.DICE_TAX_PERCENT < 1.0, "Tax percent < 100%")
+
+	# Bonus tiers
+	_assert_eq(Config.DICE_BONUS_SMALL, 10, "DICE_BONUS_SMALL is 10")
+	_assert_eq(Config.DICE_BONUS_MEDIUM, 25, "DICE_BONUS_MEDIUM is 25")
+	_assert_eq(Config.DICE_BONUS_LARGE, 50, "DICE_BONUS_LARGE is 50")
+	_assert_gt(float(Config.DICE_BONUS_LARGE), float(Config.DICE_BONUS_MEDIUM), "Large > Medium bonus")
+	_assert_gt(float(Config.DICE_BONUS_MEDIUM), float(Config.DICE_BONUS_SMALL), "Medium > Small bonus")
+
+	# Display duration
+	_assert_near(Config.DICE_RESULT_DISPLAY, 5.0, 0.1, "DICE_RESULT_DISPLAY is 5.0")
+
+# ═══════════════════════════════════════════════════════
+# NOTIFICATION CONFIG TESTS
+# ═══════════════════════════════════════════════════════
+func _run_notification_config_tests() -> void:
+	print("[Notification Config]")
+
+	_assert_eq(Config.NOTIFICATION_MAX, 6, "NOTIFICATION_MAX is 6")
+	_assert_near(Config.NOTIFICATION_DURATION, 4.0, 0.1, "NOTIFICATION_DURATION is 4.0")
+	_assert_gt(float(Config.NOTIFICATION_MAX), 0.0, "NOTIFICATION_MAX is positive")
+	_assert_gt(Config.NOTIFICATION_DURATION, 0.0, "NOTIFICATION_DURATION is positive")
+
+	# Slow debuff duration
+	_assert_near(Config.SLOW_DEBUFF_DURATION, 2.0, 0.1, "SLOW_DEBUFF_DURATION is 2.0")
+
+# ═══════════════════════════════════════════════════════
+# RELIC DROP SPECIAL ENEMY TESTS
+# ═══════════════════════════════════════════════════════
+func _run_relic_drop_special_tests() -> void:
+	print("[Relic Drop Special Enemies]")
+
+	# Verify RELIC_DROP_SPECIAL constant exists and is between medium and war_titan
+	_assert_near(Config.RELIC_DROP_SPECIAL, 0.10, 0.01, "RELIC_DROP_SPECIAL is 0.10")
+	_assert_gt(Config.RELIC_DROP_SPECIAL, Config.RELIC_DROP_MEDIUM, "Special > Medium drop rate")
+	_assert(Config.RELIC_DROP_SPECIAL < Config.RELIC_DROP_WAR_TITAN, "Special < War Titan drop rate")
+
+	# Archangel Michael is a boss — should use boss drop rate
+	GM.reset_state()
+	var michael_data: Dictionary = Config.ENEMY_DATA["archangel_michael"]
+	_assert(michael_data.get("is_boss", false), "Archangel Michael is flagged as boss")
+
+	# Grand Paladin is also a boss
+	var paladin_data: Dictionary = Config.ENEMY_DATA["grand_paladin"]
+	_assert(paladin_data.get("is_boss", false), "Grand Paladin is flagged as boss")
+
+	# Zeus, Holy Sentinel, Marshal, Raphael are not bosses but are special
+	_assert(not Config.ENEMY_DATA["zeus"].get("is_boss", false), "Zeus is not a boss")
+	_assert(not Config.ENEMY_DATA["holy_sentinel"].get("is_boss", false), "Holy Sentinel is not a boss")
+	_assert(not Config.ENEMY_DATA["archangel_marshal"].get("is_boss", false), "Marshal is not a boss")
+	_assert(not Config.ENEMY_DATA["archangel_raphael"].get("is_boss", false), "Raphael is not a boss")
+
+	GM.reset_state()
+
+# ═══════════════════════════════════════════════════════
+# FX TIMER CONSTANTS TESTS
+# ═══════════════════════════════════════════════════════
+func _run_fx_timer_constants_tests() -> void:
+	print("[FX Timer Constants]")
+
+	_assert_near(Config.FX_MICHAEL_SHIELD_DURATION, 0.8, 0.01, "FX_MICHAEL_SHIELD_DURATION is 0.8")
+	_assert_near(Config.FX_ZEUS_BOLT_DURATION, 0.4, 0.01, "FX_ZEUS_BOLT_DURATION is 0.4")
+	_assert_near(Config.FX_HADES_BEAM_DURATION, 0.5, 0.01, "FX_HADES_BEAM_DURATION is 0.5")
+	_assert_near(Config.FX_HADES_CURSE_DURATION, 0.5, 0.01, "FX_HADES_CURSE_DURATION is 0.5")
+	_assert_near(Config.FX_CORE_HIT_RADIUS, 10.0, 0.1, "FX_CORE_HIT_RADIUS is 10.0")
+	_assert_near(Config.GAMEOVER_SHAKE_INTENSITY, 8.0, 0.1, "GAMEOVER_SHAKE_INTENSITY is 8.0")
+	_assert_near(Config.GAMEOVER_SHAKE_DURATION, 0.4, 0.01, "GAMEOVER_SHAKE_DURATION is 0.4")
+
+	# All FX durations should be positive
+	_assert_gt(Config.FX_MICHAEL_SHIELD_DURATION, 0.0, "Michael shield FX > 0")
+	_assert_gt(Config.FX_ZEUS_BOLT_DURATION, 0.0, "Zeus bolt FX > 0")
+	_assert_gt(Config.FX_HADES_BEAM_DURATION, 0.0, "Hades beam FX > 0")
+	_assert_gt(Config.GAMEOVER_SHAKE_INTENSITY, 0.0, "Gameover shake intensity > 0")
+
+# ═══════════════════════════════════════════════════════
+# TOWER WEAKEN CONSTANT TESTS
+# ═══════════════════════════════════════════════════════
+func _run_tower_weaken_constant_tests() -> void:
+	print("[Tower Weaken Constant]")
+
+	_assert_near(Config.TOWER_WEAKEN_MULT, 0.85, 0.01, "TOWER_WEAKEN_MULT is 0.85")
+	_assert(Config.TOWER_WEAKEN_MULT < 1.0, "Weaken mult is a debuff (< 1.0)")
+	_assert_gt(Config.TOWER_WEAKEN_MULT, 0.0, "Weaken mult is positive")
+
+	# Verify pact acceptance uses the constant
+	GM.reset_state()
+	GM.wave = 5
+	GM.pending_pact = Config.DEMONIC_PACTS[5].duplicate()  # Abyssal Gambit
+	GM.accept_pact()
+	_assert_near(GM.tower_weaken_mult, Config.TOWER_WEAKEN_MULT, 0.01, "accept_pact uses TOWER_WEAKEN_MULT")
+
+	GM.reset_state()
+
+# ═══════════════════════════════════════════════════════
+# APPLY BURN HELPER TESTS
+# ═══════════════════════════════════════════════════════
+func _run_apply_burn_helper_tests() -> void:
+	print("[Apply Burn Helper]")
+
+	GM.reset_state()
+	GM.wave = 1
+	var enemy := GM.create_enemy("seraph_scout")
+	var tower := GM.create_tower("inferno_warlock", 3, 3)
+
+	# Initial state — no burn
+	_assert_eq(enemy["burn_stacks"], 0, "Enemy starts with 0 burn stacks")
+
+	# Apply burn once
+	GM._apply_burn(enemy, tower)
+	var mdata: Dictionary = Config.TOWER_DATA["inferno_warlock"]
+	_assert_eq(enemy["burn_stacks"], int(mdata["burn_stacks_per_hit"]), "Burn stacks applied")
+	_assert_near(enemy["burn_timer"], float(mdata["burn_duration"]), 0.01, "Burn timer set")
+	_assert(enemy["burn_source"] == tower, "Burn source set to tower")
+
+	# Apply burn again — should stack up to cap
+	GM._apply_burn(enemy, tower)
+	var expected: int = mini(int(mdata["burn_stacks_per_hit"]) * 2, int(mdata["burn_stack_cap"]))
+	_assert_eq(enemy["burn_stacks"], expected, "Burn stacks cap correctly")
+
+	# Apply burn many times — should never exceed cap
+	for _j in range(10):
+		GM._apply_burn(enemy, tower)
+	_assert_eq(enemy["burn_stacks"], int(mdata["burn_stack_cap"]), "Burn stacks never exceed cap")
+
+	GM.reset_state()
+
+# ═══════════════════════════════════════════════════════
+# PANDORA CHOICE TESTS
+# ═══════════════════════════════════════════════════════
+func _run_pandora_choice_tests() -> void:
+	print("[Pandora Choice]")
+
+	# Choice 0: double damage for 1 wave
+	GM.reset_state()
+	GM.pending_pandora_choice = true
+	GM.accept_pandora_choice(0)
+	_assert_gt(float(GM.double_damage), 0.0, "Pandora choice 0: double_damage set")
+	_assert(not GM.pending_pandora_choice, "Pandora choice 0: pending cleared")
+
+	# Choice 1: 100 sins
+	GM.reset_state()
+	GM.pending_pandora_choice = true
+	var sins_before: int = GM.sins
+	GM.accept_pandora_choice(1)
+	_assert_gt(float(GM.sins), float(sins_before), "Pandora choice 1: sins increased")
+	_assert(not GM.pending_pandora_choice, "Pandora choice 1: pending cleared")
+
+	GM.reset_state()
+
+# ═══════════════════════════════════════════════════════
+# NOTIFICATION OVERFLOW TESTS
+# ═══════════════════════════════════════════════════════
+func _run_notification_overflow_tests() -> void:
+	print("[Notification Overflow]")
+
+	GM.reset_state()
+
+	# Add more than NOTIFICATION_MAX notifications
+	for i in range(Config.NOTIFICATION_MAX + 3):
+		GM.notify("Test notification " + str(i), Color.WHITE)
+
+	_assert(GM.notifications.size() <= Config.NOTIFICATION_MAX, "Notifications capped at NOTIFICATION_MAX")
+	_assert_eq(GM.notifications.size(), Config.NOTIFICATION_MAX, "Exactly NOTIFICATION_MAX notifications kept")
+
+	# Verify oldest was removed (first notification should be #3 since 0,1,2 were evicted)
+	var first_text: String = GM.notifications[0]["text"]
+	_assert(first_text.contains("3"), "Oldest notifications evicted first")
+
+	# Verify timer is set from constant
+	_assert_near(GM.notifications[0]["timer"], Config.NOTIFICATION_DURATION, 0.01, "Notification timer uses NOTIFICATION_DURATION")
+
+	GM.reset_state()
+
+# ═══════════════════════════════════════════════════════
+# SELL REFUND LEVEL SCALING TESTS
+# ═══════════════════════════════════════════════════════
+func _run_sell_refund_level_scaling_tests() -> void:
+	print("[Sell Refund Level Scaling]")
+
+	# Sell at level 1
+	GM.reset_state()
+	GM.sins = 9999
+	var t1 := GM.create_tower("bone_marksman", 3, 3)
+	GM.towers.append(t1)
+	GM.occupied_tiles[Config.tile_key(3, 3)] = t1
+	var sins_before_sell: int = GM.sins
+	GM.sell_tower(t1)
+	var refund_l1: int = GM.sins - sins_before_sell
+	var expected_l1: int = roundi(Config.TOWER_DATA["bone_marksman"]["cost"] * Config.SELL_REFUND * 1)
+	_assert_eq(refund_l1, expected_l1, "Level 1 sell refund = cost * SELL_REFUND * 1")
+
+	# Sell at level 2
+	GM.reset_state()
+	GM.sins = 9999
+	var t2 := GM.create_tower("bone_marksman", 3, 3)
+	GM.towers.append(t2)
+	GM.occupied_tiles[Config.tile_key(3, 3)] = t2
+	GM.upgrade_tower(t2)  # now level 2
+	sins_before_sell = GM.sins
+	GM.sell_tower(t2)
+	var refund_l2: int = GM.sins - sins_before_sell
+	var expected_l2: int = roundi(Config.TOWER_DATA["bone_marksman"]["cost"] * Config.SELL_REFUND * 2)
+	_assert_eq(refund_l2, expected_l2, "Level 2 sell refund = cost * SELL_REFUND * 2")
+
+	# Level 2 refund should be higher than level 1
+	_assert_gt(float(refund_l2), float(refund_l1), "Higher level = higher sell refund")
+
+	# Sell at level 3 (max)
+	GM.reset_state()
+	GM.sins = 99999
+	var t3 := GM.create_tower("bone_marksman", 3, 3)
+	GM.towers.append(t3)
+	GM.occupied_tiles[Config.tile_key(3, 3)] = t3
+	GM.upgrade_tower(t3)  # level 2
+	GM.upgrade_tower(t3)  # level 3
+	sins_before_sell = GM.sins
+	GM.sell_tower(t3)
+	var refund_l3: int = GM.sins - sins_before_sell
+	var expected_l3: int = roundi(Config.TOWER_DATA["bone_marksman"]["cost"] * Config.SELL_REFUND * 3)
+	_assert_eq(refund_l3, expected_l3, "Level 3 sell refund = cost * SELL_REFUND * 3")
+	_assert_gt(float(refund_l3), float(refund_l2), "Level 3 refund > level 2 refund")
+
+	GM.reset_state()

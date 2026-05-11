@@ -98,11 +98,24 @@ const TOWER_FIRE_FLASH := 0.3            # seconds
 # Enemy spawn fade-in duration — visual entrance effect
 const ENEMY_SPAWN_DURATION := 0.4        # seconds
 
+# Starting economy — initial sins when a new game begins
+const STARTING_SINS := 50
+
+# Dice replenishment — how many dice are restored per completed wave
+const DICE_REPLENISH_PER_WAVE := 1       # gained each wave (capped at DICE_MAX_USES)
+
+# Pact variety — number of distinct pacts offered per random selection
+const PACT_POOL_SIZE := 6                # draw from all available pacts
+
+# Burn DoT kill credit — whether burn kills attribute to the tower that applied burn
+const BURN_CREDITS_TOWER := true         # track tower kill_count for burn deaths
+
 # Relic drop chances by enemy type — probability of dropping a Pandora's Relic
 const RELIC_DROP_BOSS := 1.0             # bosses always drop
 const RELIC_DROP_WAR_TITAN := 0.15       # 15% chance
 const RELIC_DROP_MEDIUM := 0.05          # crusaders, clerics
 const RELIC_DROP_DEFAULT := 0.03         # all other enemies
+const RELIC_DROP_SPECIAL := 0.10         # zeus, sentinel, marshal, raphael
 
 # Dice AoE flash duration per tier
 const DICE_AOE_FLASH_STRONG := 0.2       # 25% AoE flash
@@ -115,6 +128,94 @@ const WAVE_BANNER_FADE_OUT := 0.7        # seconds to fade out to right
 # Overview panel dimensions
 const OVERVIEW_PANEL_W := 52.0           # pixel width of tower stats panel
 const OVERVIEW_PANEL_H := 30.0           # pixel height of tower stats panel
+
+# Fast enemy speed multiplier (from Demonic Pacts or dice)
+const FAST_ENEMY_SPEED_MULT := 1.3       # +30% speed when fast_enemy_waves > 0
+
+# Guardian protection flash — brief flash when damage is blocked
+const GUARDIAN_FLASH_DURATION := 0.05    # seconds
+
+# Wave spawn delay — initial delay before first enemy of a wave
+const WAVE_SPAWN_DELAY := 0.5            # seconds
+
+# Cocytus cone visual timers
+const COCYTUS_EMIT_INTERVAL := 0.12      # seconds between frost spike particles
+const COCYTUS_FROST_DURATION := 0.3      # seconds frost state lasts on enemy
+
+# Mass Corruption relic effect
+const MASS_CORRUPT_SLOW := 0.3           # 30% slow from Corruption Wave relic
+const MASS_CORRUPT_DURATION := 5.0       # seconds slow lasts
+
+# Time Warp relic — slowdown factor for enemies
+const TIME_WARP_SLOW_FACTOR := 0.35      # game speed multiplied by this
+const TIME_WARP_DURATION := 5.0          # seconds
+
+# Tower upgrade scaling — multipliers applied per level-up
+const UPGRADE_RANGE_MULT := 1.1          # +10% range per level
+const UPGRADE_SPEED_MULT := 1.15         # +15% attack speed per level
+const UPGRADE_COST_SCALING := 1.5        # cost multiplier per existing level
+
+# Hades buff default — fallback buff multiplier for non-Hades tower speed
+const HADES_BUFF_DEFAULT := 1.5          # used when buff_multiplier not set
+
+# Raphael heal beam visual duration
+const FX_HEAL_BEAM_DURATION := 0.3       # seconds
+
+# Lucifer pulse wave — visual ring expands from tower to max_r over duration
+const LUCIFER_WAVE_MAX_R := 1000.0       # pixel radius of expanding ring
+const LUCIFER_WAVE_SPEED := LUCIFER_WAVE_MAX_R / FX_LUCIFER_WAVE_DURATION  # ~833 px/s
+const FX_LUCIFER_HIT_TIMER := 0.22       # per-enemy hit flash timer (inside wave)
+
+# Fallen Hero pool thresholds — kills fill the pool, threshold triggers a spawn
+const HERO_THRESHOLD_FIRST := 200        # kills needed for first Fallen Hero
+const HERO_THRESHOLD_SECOND := 500       # kills needed for second
+const HERO_THRESHOLD_BASE := 1000        # base for third+
+const HERO_THRESHOLD_STEP := 500         # increment per additional hero
+
+# Dice AoE flash durations per tier — how long enemies flash white
+const DICE_AOE_FLASH_25 := 0.2           # 25% AoE: stronger flash
+const DICE_AOE_FLASH_10 := 0.15          # 10% AoE: lighter flash
+
+# Dice effect parameters — extracted from roll_dice() for tuning
+const DICE_SURGE_SPEED := 1.8            # Demonic Surge: +80% attack speed
+const DICE_SURGE_DURATION := 15.0        # seconds Surge lasts
+const DICE_SPEED_BOOST := 1.3            # Quick Hands: +30% attack speed
+const DICE_SPEED_BOOST_DURATION := 10.0  # seconds Quick Hands lasts
+const DICE_SLOW_FACTOR := 0.75           # Slow Curse: -25% tower speed
+const DICE_SLOW_DURATION := 10.0         # seconds Slow Curse lasts
+const DICE_DISABLE_DURATION := 3.0       # seconds all towers disabled (Tremor)
+const DICE_TAX_PERCENT := 0.10           # Devil's Tax: lose 10% of sins
+const DICE_BONUS_SMALL := 10             # Tithe: small bonus sins
+const DICE_BONUS_MEDIUM := 25            # Minor Blessing: medium bonus sins
+const DICE_BONUS_LARGE := 50             # Late-game Tithe: large bonus sins
+const DICE_RESULT_DISPLAY := 5.0         # seconds dice result stays on screen
+
+# Notification system
+const NOTIFICATION_MAX := 6              # max simultaneous notifications
+const NOTIFICATION_DURATION := 4.0       # seconds each notification lasts
+
+# Tower slow from legacy slow_power towers
+const SLOW_DEBUFF_DURATION := 2.0        # seconds slow lasts on enemy
+
+# Tower weaken debuff from Abyssal Gambit pact
+const TOWER_WEAKEN_MULT := 0.85          # -15% damage during weaken
+
+# Michael shield dome visual duration
+const FX_MICHAEL_SHIELD_DURATION := 0.8  # golden dome expansion time
+
+# Zeus lightning bolt visual duration
+const FX_ZEUS_BOLT_DURATION := 0.4       # bolt flash time
+
+# Hades beam/curse visual durations
+const FX_HADES_BEAM_DURATION := 0.5      # buff beam visual
+const FX_HADES_CURSE_DURATION := 0.5     # damage curse visual
+
+# Core hit visual effect radius
+const FX_CORE_HIT_RADIUS := 10.0         # pixel radius of core damage burst
+
+# Game over shake parameters
+const GAMEOVER_SHAKE_INTENSITY := 8.0
+const GAMEOVER_SHAKE_DURATION := 0.4
 
 # Cheat mode constants
 const CHEAT_SINS_AMOUNT := 99999         # Ctrl+J: sins granted

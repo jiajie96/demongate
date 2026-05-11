@@ -1303,10 +1303,10 @@ func _draw_effects() -> void:
 			"lucifer_wave":
 				# Expanding pulse ring from Lucifer's position — cyan/electric to
 				# match the lightning-bolt strikes it triggers on crossing enemies.
-				# Map diagonal is ~960 px (768×576), so ring must reach 1000 px.
-				var wave_alpha: float = clampf(e["timer"] / 1.2, 0.0, 1.0)
+				# Map diagonal is ~960 px (768×576), so ring must reach edge.
+				var wave_alpha: float = clampf(e["timer"] / Config.FX_LUCIFER_WAVE_DURATION, 0.0, 1.0)
 				var progress: float = 1.0 - wave_alpha  # 0→1 as wave expands
-				var max_r: float = 1000.0
+				var max_r: float = Config.LUCIFER_WAVE_MAX_R
 				var wave_r: float = progress * max_r
 				# Leading edge ring — bright cyan
 				draw_arc(pos, wave_r, 0, TAU, 48, Color(0.6, 0.85, 1.0, wave_alpha * 0.38), 1.6)
