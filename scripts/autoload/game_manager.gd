@@ -127,7 +127,7 @@ func reset_state() -> void:
 	fast_enemy_waves = 0
 	fallen_hero_pool = 0
 	fallen_heroes_spawned = 0
-	stats = {"enemies_killed": 0, "towers_placed": 0, "total_sins_earned": 0, "total_damage_dealt": 0.0, "pacts_accepted": 0, "fallen_heroes": 0, "waves_survived": 0, "boss_kills": 0}
+	stats = {"enemies_killed": 0, "towers_placed": 0, "total_sins_earned": 0, "total_damage_dealt": 0.0, "pacts_accepted": 0, "fallen_heroes": 0, "waves_survived": 0, "boss_kills": 0, "total_core_damage": 0.0}
 	occupied_tiles.clear()
 	notifications.clear()
 	game_time = 0.0
@@ -257,7 +257,7 @@ func create_tower(type: String, col: int, row: int) -> Dictionary:
 		"total_damage": 0.0,
 		"kill_count": 0,
 		"targeting_mode": "closest",
-		"build_timer": 0.3,
+		"build_timer": Config.TOWER_BUILD_DURATION,
 	}
 	if tower["is_support"]:
 		tower["buff_timer"] = tower["buff_cooldown"]
@@ -361,7 +361,7 @@ func create_enemy(type: String) -> Dictionary:
 		"shield_buff": false,
 		"shield_buff_timer": 0.0,
 		"flash_timer": 0.0,
-		"spawn_timer": 0.4,
+		"spawn_timer": Config.ENEMY_SPAWN_DURATION,
 		"ability_timer": 0.0,
 		"burn_stacks": 0,
 		"burn_timer": 0.0,
@@ -575,6 +575,7 @@ func update_enemies(dt: float) -> void:
 			e["alive"] = false
 			e["reached_core"] = true
 			core_hp = maxf(0, core_hp - e["core_dmg"])
+			stats["total_core_damage"] = stats.get("total_core_damage", 0.0) + float(e["core_dmg"])
 			# Catch-up: insurance payout when enemies leak
 			var insurance := roundi(e["core_dmg"] * Config.INSURANCE_MULT)
 			earn(insurance)
@@ -1284,7 +1285,7 @@ func drop_relic(rx: float, ry: float) -> void:
 					if t["damage"] * t["damage_mult"] > strongest["damage"] * strongest["damage_mult"]:
 						strongest = t
 				strongest["is_disabled"] = true
-				strongest["disable_timer"] = 10.0
+				strongest["disable_timer"] = Config.DIVINE_CURSE_DURATION
 				notify(Locale.tf("tower_cursed", {"name": Locale.t(strongest["name"])}), Color(0.8, 0.2, 0.2))
 		"mass_corrupt":
 			for e in enemies:

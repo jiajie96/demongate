@@ -102,6 +102,13 @@ func _ready() -> void:
 	_run_pandora_choice_tests()
 	_run_notification_overflow_tests()
 	_run_sell_refund_level_scaling_tests()
+	_run_cheat_constants_tests()
+	_run_core_damage_stat_tests()
+	_run_divine_curse_constant_tests()
+	_run_lucifer_bolt_constant_tests()
+	_run_build_spawn_duration_tests()
+	_run_overview_panel_constant_tests()
+	_run_banner_animation_constant_tests()
 
 	print("")
 	print("=== Results: %d/%d passed ===" % [_passed, _total])
@@ -2912,3 +2919,117 @@ func _run_sell_refund_level_scaling_tests() -> void:
 	_assert_gt(float(refund_l3), float(refund_l2), "Level 3 refund > level 2 refund")
 
 	GM.reset_state()
+
+# ═══════════════════════════════════════════════════════
+# CHEAT CONSTANTS TESTS
+# ═══════════════════════════════════════════════════════
+func _run_cheat_constants_tests() -> void:
+	print("[Cheat Constants]")
+
+	# Verify cheat constants exist and have reasonable values
+	_assert_eq(Config.CHEAT_SINS_AMOUNT, 99999, "CHEAT_SINS_AMOUNT is 99999")
+	_assert_eq(Config.CHEAT_SKIP_TO_WAVE, 15, "CHEAT_SKIP_TO_WAVE is 15")
+	_assert_gt(float(Config.CHEAT_SINS_AMOUNT), 0.0, "Cheat sins amount is positive")
+	_assert_gt(float(Config.CHEAT_SKIP_TO_WAVE), 0.0, "Cheat skip wave is positive")
+	_assert(Config.CHEAT_SKIP_TO_WAVE <= Config.MAX_WAVES, "Cheat skip wave <= MAX_WAVES")
+
+# ═══════════════════════════════════════════════════════
+# CORE DAMAGE STAT TRACKING TESTS
+# ═══════════════════════════════════════════════════════
+func _run_core_damage_stat_tests() -> void:
+	print("[Core Damage Stat Tracking]")
+
+	# Stat exists in reset state
+	GM.reset_state()
+	_assert_near(GM.stats.get("total_core_damage", -1.0), 0.0, 0.01, "total_core_damage starts at 0")
+
+	# Create an enemy at end of path so it leaks
+	GM.wave = 1
+	var enemy := GM.create_enemy("seraph_scout")
+	var last_idx: int = Config.path_pixels.size()
+	enemy["path_index"] = last_idx  # past the end
+	GM.enemies.append(enemy)
+	var core_dmg_expected: float = float(enemy["core_dmg"])
+	var hp_before: float = GM.core_hp
+
+	GM.update_enemies(0.016)
+
+	_assert_near(GM.stats.get("total_core_damage", 0.0), core_dmg_expected, 0.01, "Core damage stat tracks leaked enemy damage")
+	_assert(GM.core_hp < hp_before, "Core HP decreased after leak")
+
+	GM.reset_state()
+
+# ═══════════════════════════════════════════════════════
+# DIVINE CURSE CONSTANT TESTS
+# ═══════════════════════════════════════════════════════
+func _run_divine_curse_constant_tests() -> void:
+	print("[Divine Curse Constant]")
+
+	_assert_near(Config.DIVINE_CURSE_DURATION, 10.0, 0.01, "DIVINE_CURSE_DURATION is 10.0")
+	_assert_gt(Config.DIVINE_CURSE_DURATION, 0.0, "Divine curse duration is positive")
+	# Should be longer than Zeus disable to feel more punishing
+	_assert_gt(Config.DIVINE_CURSE_DURATION, Config.ZEUS_DISABLE_DURATION, "Divine curse > Zeus disable")
+
+# ═══════════════════════════════════════════════════════
+# LUCIFER BOLT CONSTANT TESTS
+# ═══════════════════════════════════════════════════════
+func _run_lucifer_bolt_constant_tests() -> void:
+	print("[Lucifer Bolt Constant]")
+
+	_assert_near(Config.LUCIFER_BOLT_HEIGHT, 160.0, 0.01, "LUCIFER_BOLT_HEIGHT is 160.0")
+	_assert_gt(Config.LUCIFER_BOLT_HEIGHT, 0.0, "Lucifer bolt height is positive")
+	# Should be taller than a few tiles so bolts are visually dramatic
+	_assert_gt(Config.LUCIFER_BOLT_HEIGHT, float(Config.TILE_SIZE * 2), "Bolt height > 2 tiles")
+
+# ═══════════════════════════════════════════════════════
+# BUILD / SPAWN DURATION TESTS
+# ═══════════════════════════════════════════════════════
+func _run_build_spawn_duration_tests() -> void:
+	print("[Build/Spawn Duration Constants]")
+
+	# Tower build_timer should use TOWER_BUILD_DURATION
+	GM.reset_state()
+	var tower := GM.create_tower("bone_marksman", 3, 3)
+	_assert_near(tower["build_timer"], Config.TOWER_BUILD_DURATION, 0.01, "Tower build_timer uses TOWER_BUILD_DURATION")
+
+	# Enemy spawn_timer should use ENEMY_SPAWN_DURATION
+	GM.wave = 1
+	var enemy := GM.create_enemy("seraph_scout")
+	_assert_near(enemy["spawn_timer"], Config.ENEMY_SPAWN_DURATION, 0.01, "Enemy spawn_timer uses ENEMY_SPAWN_DURATION")
+
+	# Both durations should be positive and short
+	_assert_gt(Config.TOWER_BUILD_DURATION, 0.0, "Build duration > 0")
+	_assert_gt(Config.ENEMY_SPAWN_DURATION, 0.0, "Spawn duration > 0")
+	_assert(Config.TOWER_BUILD_DURATION < 2.0, "Build duration < 2s (responsive)")
+	_assert(Config.ENEMY_SPAWN_DURATION < 2.0, "Spawn duration < 2s (responsive)")
+
+	GM.reset_state()
+
+# ═══════════════════════════════════════════════════════
+# OVERVIEW PANEL CONSTANT TESTS
+# ═══════════════════════════════════════════════════════
+func _run_overview_panel_constant_tests() -> void:
+	print("[Overview Panel Constants]")
+
+	_assert_near(Config.OVERVIEW_PANEL_W, 52.0, 0.01, "OVERVIEW_PANEL_W is 52.0")
+	_assert_near(Config.OVERVIEW_PANEL_H, 30.0, 0.01, "OVERVIEW_PANEL_H is 30.0")
+	_assert_gt(Config.OVERVIEW_PANEL_W, 0.0, "Panel width is positive")
+	_assert_gt(Config.OVERVIEW_PANEL_H, 0.0, "Panel height is positive")
+	# Panel should fit within a single tile
+	_assert(Config.OVERVIEW_PANEL_W <= float(Config.TILE_SIZE * 2), "Panel width fits in 2 tiles")
+	_assert(Config.OVERVIEW_PANEL_H <= float(Config.TILE_SIZE), "Panel height fits in 1 tile")
+
+# ═══════════════════════════════════════════════════════
+# BANNER ANIMATION CONSTANT TESTS
+# ═══════════════════════════════════════════════════════
+func _run_banner_animation_constant_tests() -> void:
+	print("[Banner Animation Constants]")
+
+	_assert_near(Config.WAVE_BANNER_SLIDE_IN, 0.35, 0.01, "WAVE_BANNER_SLIDE_IN is 0.35")
+	_assert_near(Config.WAVE_BANNER_FADE_OUT, 0.7, 0.01, "WAVE_BANNER_FADE_OUT is 0.7")
+	_assert_gt(Config.WAVE_BANNER_SLIDE_IN, 0.0, "Slide-in duration > 0")
+	_assert_gt(Config.WAVE_BANNER_FADE_OUT, 0.0, "Fade-out duration > 0")
+	# Slide-in + fade-out should not exceed the total banner duration
+	_assert(Config.WAVE_BANNER_SLIDE_IN + Config.WAVE_BANNER_FADE_OUT <= Config.WAVE_BANNER_DURATION, "Slide + fade <= total banner duration")
+	# Fade out should be longer than slide in for smooth exit
+	_assert_gt(Config.WAVE_BANNER_FADE_OUT, Config.WAVE_BANNER_SLIDE_IN, "Fade-out > slide-in")

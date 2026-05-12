@@ -98,6 +98,12 @@ const TOWER_FIRE_FLASH := 0.3            # seconds
 # Enemy spawn fade-in duration — visual entrance effect
 const ENEMY_SPAWN_DURATION := 0.4        # seconds
 
+# Lucifer pulse hit bolt — visual lightning bolt height above enemy
+const LUCIFER_BOLT_HEIGHT := 160.0       # pixels above enemy for bolt origin
+
+# Divine Curse relic — disables the strongest tower for this many seconds
+const DIVINE_CURSE_DURATION := 10.0      # seconds
+
 # Starting economy — initial sins when a new game begins
 const STARTING_SINS := 50
 
