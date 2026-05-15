@@ -775,10 +775,10 @@ func _process(_dt: float) -> void:
 		ti_role.text = role_text
 		var effective_dmg: float = tw["damage"] * tw["damage_mult"]
 		if GM.double_damage > 0:
-			effective_dmg *= 2.0
+			effective_dmg *= Config.DOUBLE_DAMAGE_MULT
 		var effective_spd: float = tw["attack_speed"] * GM.perm_speed_buff
 		if tw["hades_buffed"]:
-			effective_spd *= 1.5
+			effective_spd *= Config.HADES_BUFF_DEFAULT
 		var dps: float = effective_dmg * effective_spd
 		# Support towers deal damage on buff cycle, not via attack_speed
 		if tw["is_support"] and tw["damage"] > 0 and tw["buff_cooldown"] > 0:
@@ -794,7 +794,7 @@ func _process(_dt: float) -> void:
 			btn_upgrade.text = Locale.t("MAX LEVEL")
 			btn_upgrade.disabled = true
 		else:
-			var cost: int = roundi(data["upgrade_cost"] * pow(1.5, tw["level"] - 1))
+			var cost: int = roundi(data["upgrade_cost"] * pow(Config.UPGRADE_COST_SCALING, tw["level"] - 1))
 			btn_upgrade.text = Locale.tf("upgrade_cost", {"cost": GM.format_cost(cost)})
 			btn_upgrade.disabled = not GM.can_afford(cost)
 

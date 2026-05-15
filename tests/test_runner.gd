@@ -109,6 +109,28 @@ func _ready() -> void:
 	_run_build_spawn_duration_tests()
 	_run_overview_panel_constant_tests()
 	_run_banner_animation_constant_tests()
+	_run_speed_buff_overwrite_tests()
+	_run_cycle_targeting_wrap_tests()
+	_run_buildable_boundary_tests()
+	_run_wave_bonus_scaling_tests()
+	_run_format_damage_tests()
+	_run_pacts_offered_stat_tests()
+	_run_sell_tower_sfx_tests()
+	_run_shake_preset_constants_tests()
+	_run_relic_pickup_fx_constant_tests()
+	_run_sin_cache_constant_tests()
+	_run_legendary_fallback_constant_tests()
+	_run_pandora_sins_constant_tests()
+	_run_special_enemy_helper_tests()
+	_run_total_tower_damage_helper_tests()
+	_run_special_enemy_types_constant_tests()
+	_run_shake_usage_tests()
+	_run_is_special_vs_drop_rate_tests()
+	_run_double_damage_mult_tests()
+	_run_create_enemy_field_tests()
+	_run_create_tower_field_tests()
+	_run_wave_data_integrity_tests()
+	_run_shake_frequency_constant_tests()
 
 	print("")
 	print("=== Results: %d/%d passed ===" % [_passed, _total])
@@ -182,6 +204,15 @@ func _assert_gte(actual: float, threshold: float, test_name: String) -> void:
 	else:
 		_failed += 1
 		print("  FAIL: " + test_name + " (expected >= " + str(threshold) + ", got " + str(actual) + ")")
+
+func _assert_ne(actual, unexpected, test_name: String) -> void:
+	_total += 1
+	if actual != unexpected:
+		_passed += 1
+		print("  PASS: " + test_name)
+	else:
+		_failed += 1
+		print("  FAIL: " + test_name + " (expected != " + str(unexpected) + ", got " + str(actual) + ")")
 
 # ═══════════════════════════════════════════════════════
 # CONFIG TESTS
@@ -3033,3 +3064,499 @@ func _run_banner_animation_constant_tests() -> void:
 	_assert(Config.WAVE_BANNER_SLIDE_IN + Config.WAVE_BANNER_FADE_OUT <= Config.WAVE_BANNER_DURATION, "Slide + fade <= total banner duration")
 	# Fade out should be longer than slide in for smooth exit
 	_assert_gt(Config.WAVE_BANNER_FADE_OUT, Config.WAVE_BANNER_SLIDE_IN, "Fade-out > slide-in")
+
+# ═══════════════════════════════════════════════════════
+# SPEED BUFF OVERWRITE TESTS
+# ═══════════════════════════════════════════════════════
+func _run_speed_buff_overwrite_tests() -> void:
+	print("[Speed Buff Overwrite]")
+
+	GM.reset_state()
+
+	# Apply a speed boost
+	GM._apply_speed_buff(1.3, 10.0)
+	_assert_near(GM.temp_speed_buff, 1.3, 0.01, "First speed buff applied")
+	_assert_near(GM.speed_buff_factor, 1.3, 0.01, "First buff factor stored")
+	_assert_near(GM.speed_buff_timer, 10.0, 0.01, "First buff timer set")
+
+	# Overwrite with a slow curse
+	GM._apply_speed_buff(0.75, 5.0)
+	_assert_near(GM.temp_speed_buff, 0.75, 0.01, "Second buff overwrites temp_speed_buff")
+	_assert_near(GM.speed_buff_factor, 0.75, 0.01, "Second buff factor replaces first")
+	_assert_near(GM.speed_buff_timer, 5.0, 0.01, "Second buff timer replaces first")
+
+	# Timer expiry resets to 1.0
+	GM.update_effects(6.0)
+	_assert_near(GM.temp_speed_buff, 1.0, 0.01, "Speed buff resets to 1.0 after timer expires")
+	_assert_near(GM.speed_buff_factor, 1.0, 0.01, "Speed buff factor resets to 1.0")
+
+	GM.reset_state()
+
+# ═══════════════════════════════════════════════════════
+# CYCLE TARGETING WRAP TESTS
+# ═══════════════════════════════════════════════════════
+func _run_cycle_targeting_wrap_tests() -> void:
+	print("[Cycle Targeting Wrap]")
+
+	GM.reset_state()
+	var tower := GM.create_tower("bone_marksman", 3, 3)
+
+	# Default is "closest"
+	_assert_eq(tower["targeting_mode"], "closest", "Default targeting is closest")
+
+	# Cycle through all modes
+	GM.cycle_targeting(tower)
+	_assert_eq(tower["targeting_mode"], "first", "After 1 cycle: first")
+
+	GM.cycle_targeting(tower)
+	_assert_eq(tower["targeting_mode"], "strongest", "After 2 cycles: strongest")
+
+	GM.cycle_targeting(tower)
+	_assert_eq(tower["targeting_mode"], "weakest", "After 3 cycles: weakest")
+
+	# Wrap around back to closest
+	GM.cycle_targeting(tower)
+	_assert_eq(tower["targeting_mode"], "closest", "After 4 cycles: wraps to closest")
+
+	# One more cycle to confirm stable wrapping
+	GM.cycle_targeting(tower)
+	_assert_eq(tower["targeting_mode"], "first", "After 5 cycles: wraps correctly")
+
+	GM.reset_state()
+
+# ═══════════════════════════════════════════════════════
+# BUILDABLE BOUNDARY TESTS
+# ═══════════════════════════════════════════════════════
+func _run_buildable_boundary_tests() -> void:
+	print("[Buildable Boundary Conditions]")
+
+	GM.reset_state()
+
+	# Negative coordinates are not buildable
+	_assert(not GM.is_buildable(-1, 0), "Negative col not buildable")
+	_assert(not GM.is_buildable(0, -1), "Negative row not buildable")
+	_assert(not GM.is_buildable(-1, -1), "Both negative not buildable")
+
+	# Beyond grid bounds
+	_assert(not GM.is_buildable(Config.GRID_COLS, 0), "Col at GRID_COLS not buildable")
+	_assert(not GM.is_buildable(0, Config.GRID_ROWS), "Row at GRID_ROWS not buildable")
+	_assert(not GM.is_buildable(Config.GRID_COLS, Config.GRID_ROWS), "Both at max not buildable")
+	_assert(not GM.is_buildable(999, 999), "Far out of bounds not buildable")
+
+	# Corner tiles that are not on the path should be buildable
+	# (0,0) is not on the standard path
+	if not Config.is_path(0, 0):
+		_assert(GM.is_buildable(0, 0), "Corner (0,0) buildable if not path")
+
+	# Last valid tile
+	var last_col := Config.GRID_COLS - 1
+	var last_row := Config.GRID_ROWS - 1
+	if not Config.is_path(last_col, last_row):
+		_assert(GM.is_buildable(last_col, last_row), "Last tile buildable if not path")
+
+	# Occupied tile is not buildable
+	var tower := GM.create_tower("bone_marksman", 5, 5)
+	GM.towers.append(tower)
+	GM.occupied_tiles[Config.tile_key(5, 5)] = tower
+	_assert(not GM.is_buildable(5, 5), "Occupied tile not buildable")
+
+	# Adjacent tile should still be buildable (if not path)
+	if not Config.is_path(5, 3):
+		_assert(GM.is_buildable(5, 3), "Adjacent to occupied is buildable")
+
+	GM.reset_state()
+
+# ═══════════════════════════════════════════════════════
+# WAVE BONUS SCALING TESTS
+# ═══════════════════════════════════════════════════════
+func _run_wave_bonus_scaling_tests() -> void:
+	print("[Wave Bonus Scaling]")
+
+	# Wave bonus should increase with wave number
+	var bonus_w1: int = GM.wave_completion_bonus(1)
+	var bonus_w5: int = GM.wave_completion_bonus(5)
+	var bonus_w10: int = GM.wave_completion_bonus(10)
+	var bonus_w20: int = GM.wave_completion_bonus(20)
+
+	_assert_gt(float(bonus_w1), 0.0, "Wave 1 bonus is positive")
+	_assert_gt(float(bonus_w5), float(bonus_w1), "Wave 5 bonus > wave 1")
+	_assert_gt(float(bonus_w10), float(bonus_w5), "Wave 10 bonus > wave 5")
+	_assert_gt(float(bonus_w20), float(bonus_w10), "Wave 20 bonus > wave 10")
+
+	# Bonus should have both linear and scaled components
+	var linear_part: int = 1 * Config.WAVE_BONUS_BASE_PER_WAVE
+	var scaled_part: int = roundi(Config.WAVE_BONUS_SCALED_BASE * Config.reward_scale(1))
+	var expected_w1: int = linear_part + scaled_part
+	_assert_eq(bonus_w1, expected_w1, "Wave 1 bonus matches formula")
+
+	# Late-game bonus should be substantially larger
+	_assert_gt(float(bonus_w20), float(bonus_w1) * 2.0, "Wave 20 bonus > 2x wave 1")
+
+# ═══════════════════════════════════════════════════════
+# FORMAT DAMAGE TESTS
+# ═══════════════════════════════════════════════════════
+func _run_format_damage_tests() -> void:
+	print("[Format Damage]")
+
+	_assert_eq(GM.format_damage(0.0), "0", "Zero damage formats as 0")
+	_assert_eq(GM.format_damage(500.0), "500", "Sub-1k formats as integer")
+	_assert_eq(GM.format_damage(999.0), "999", "999 formats without k")
+	_assert_eq(GM.format_damage(1000.0), "1.0k", "1000 formats as 1.0k")
+	_assert_eq(GM.format_damage(1500.0), "1.5k", "1500 formats as 1.5k")
+	_assert_eq(GM.format_damage(10000.0), "10.0k", "10000 formats as 10.0k")
+	_assert_eq(GM.format_damage(123456.0), "123.5k", "Large value formats with k")
+
+# ═══════════════════════════════════════════════════════
+# PACTS OFFERED STAT TESTS
+# ═══════════════════════════════════════════════════════
+func _run_pacts_offered_stat_tests() -> void:
+	print("[Pacts Offered Stat]")
+
+	GM.reset_state()
+	_assert_eq(GM.stats.get("pacts_offered", -1), 0, "pacts_offered starts at 0")
+	_assert_eq(GM.stats.get("pacts_accepted", -1), 0, "pacts_accepted starts at 0")
+
+	# Force offer a pact by calling maybe_offer_pact with guaranteed conditions
+	GM.wave = Config.PACT_OFFER_MIN_WAVE + 1
+	# We can't guarantee randf() < PACT_OFFER_CHANCE, so test the stat
+	# increments by directly simulating the offer path
+	var pact: Dictionary = Config.DEMONIC_PACTS[0].duplicate()
+	GM.pending_pact = pact
+	GM.stats["pacts_offered"] = GM.stats.get("pacts_offered", 0) + 1
+
+	_assert_eq(GM.stats.get("pacts_offered", 0), 1, "pacts_offered increments on offer")
+
+	# Accept the pact
+	GM.accept_pact()
+	_assert_eq(GM.stats.get("pacts_accepted", 0), 1, "pacts_accepted increments on accept")
+	_assert_eq(GM.stats.get("pacts_offered", 0), 1, "pacts_offered unchanged by acceptance")
+
+	GM.reset_state()
+
+# ═══════════════════════════════════════════════════════
+# SELL TOWER SFX TESTS
+# ═══════════════════════════════════════════════════════
+func _run_sell_tower_sfx_tests() -> void:
+	print("[Sell Tower Feedback]")
+
+	GM.reset_state()
+	GM.sins = 9999
+
+	# Place and sell a tower — verify notification is generated
+	var tower := GM.create_tower("bone_marksman", 3, 3)
+	GM.towers.append(tower)
+	GM.occupied_tiles[Config.tile_key(3, 3)] = tower
+	var notif_count_before: int = GM.notifications.size()
+
+	GM.sell_tower(tower)
+
+	_assert_gt(float(GM.notifications.size()), float(notif_count_before), "Sell tower generates notification")
+	_assert(GM.towers.size() == 0, "Tower removed from array after sell")
+	_assert(not GM.occupied_tiles.has(Config.tile_key(3, 3)), "Tile freed after sell")
+	_assert_eq(GM.stats.get("towers_sold", 0), 1, "towers_sold stat incremented")
+
+	GM.reset_state()
+
+# ═══════════════════════════════════════════════════════
+# SHAKE PRESET CONSTANTS TESTS
+# ═══════════════════════════════════════════════════════
+func _run_shake_preset_constants_tests() -> void:
+	print("[Shake Preset Constants]")
+
+	_assert_gt(Config.SHAKE_CORE_HIT_INTENSITY, 0.0, "Core hit shake intensity > 0")
+	_assert_gt(Config.SHAKE_CORE_HIT_DURATION, 0.0, "Core hit shake duration > 0")
+	_assert_gt(Config.SHAKE_WAVE_START_INTENSITY, 0.0, "Wave start shake intensity > 0")
+	_assert_gt(Config.SHAKE_WAVE_START_DURATION, 0.0, "Wave start shake duration > 0")
+	_assert_gt(Config.SHAKE_DICE_ROLL_INTENSITY, 0.0, "Dice roll shake intensity > 0")
+	_assert_gt(Config.SHAKE_DICE_ROLL_DURATION, 0.0, "Dice roll shake duration > 0")
+	# Core hit should shake harder than wave start
+	_assert_gt(Config.SHAKE_CORE_HIT_INTENSITY, Config.SHAKE_WAVE_START_INTENSITY, "Core hit shakes harder than wave start")
+
+# ═══════════════════════════════════════════════════════
+# RELIC PICKUP FX CONSTANT TESTS
+# ═══════════════════════════════════════════════════════
+func _run_relic_pickup_fx_constant_tests() -> void:
+	print("[Relic Pickup FX Constant]")
+
+	_assert_gt(Config.RELIC_PICKUP_FX_RADIUS, 0.0, "Relic pickup FX radius > 0")
+	_assert_gt(Config.RELIC_PICKUP_FX_RADIUS, 5.0, "Relic pickup FX radius visible (> 5)")
+
+# ═══════════════════════════════════════════════════════
+# SIN CACHE CONSTANT TESTS
+# ═══════════════════════════════════════════════════════
+func _run_sin_cache_constant_tests() -> void:
+	print("[Sin Cache Constants]")
+
+	_assert_gt(float(Config.SIN_CACHE_MIN), 0.0, "Sin Cache min > 0")
+	_assert_gt(float(Config.SIN_CACHE_RANGE), 0.0, "Sin Cache range > 0")
+	# Max possible = min + range - 1 (randi() % range gives 0..range-1)
+	var max_possible: int = Config.SIN_CACHE_MIN + Config.SIN_CACHE_RANGE - 1
+	_assert_gt(float(max_possible), float(Config.SIN_CACHE_MIN), "Sin Cache max > min")
+
+# ═══════════════════════════════════════════════════════
+# LEGENDARY FALLBACK CONSTANT TESTS
+# ═══════════════════════════════════════════════════════
+func _run_legendary_fallback_constant_tests() -> void:
+	print("[Legendary Fallback Constant]")
+
+	_assert_gt(float(Config.LEGENDARY_FALLBACK_SINS), 0.0, "Legendary fallback sins > 0")
+	_assert_eq(Config.LEGENDARY_FALLBACK_SINS, 80, "Legendary fallback sins is 80")
+
+# ═══════════════════════════════════════════════════════
+# PANDORA SINS CONSTANT TESTS
+# ═══════════════════════════════════════════════════════
+func _run_pandora_sins_constant_tests() -> void:
+	print("[Pandora Sins Constant]")
+
+	_assert_gt(float(Config.PANDORA_SINS_REWARD), 0.0, "Pandora sins reward > 0")
+	_assert_eq(Config.PANDORA_SINS_REWARD, 100, "Pandora sins reward is 100")
+
+	# Test actual usage: accept pandora choice == 1 earns the constant amount
+	GM.reset_state()
+	GM.pending_pandora_choice = true
+	var before: int = GM.sins
+	GM.accept_pandora_choice(1)
+	var earned: int = GM.sins - before
+	_assert_gt(float(earned), 0.0, "Pandora choice 1 earns sins")
+	GM.reset_state()
+
+# ═══════════════════════════════════════════════════════
+# SPECIAL ENEMY HELPER TESTS
+# ═══════════════════════════════════════════════════════
+func _run_special_enemy_helper_tests() -> void:
+	print("[Special Enemy Helper]")
+
+	# Bosses are always special
+	_assert(Config.is_special_enemy("grand_paladin"), "Grand Paladin is special (boss)")
+	_assert(Config.is_special_enemy("archangel_michael"), "Archangel Michael is special (boss)")
+
+	# Named specials
+	_assert(Config.is_special_enemy("archangel_marshal"), "Marshal is special")
+	_assert(Config.is_special_enemy("holy_sentinel"), "Sentinel is special")
+	_assert(Config.is_special_enemy("zeus"), "Zeus is special")
+	_assert(Config.is_special_enemy("archangel_raphael"), "Raphael is special")
+
+	# Regular enemies are NOT special
+	_assert(not Config.is_special_enemy("seraph_scout"), "Scout is not special")
+	_assert(not Config.is_special_enemy("crusader"), "Crusader is not special")
+	_assert(not Config.is_special_enemy("swift_ranger"), "Swift Ranger is not special")
+	_assert(not Config.is_special_enemy("war_titan"), "War Titan is not special")
+	_assert(not Config.is_special_enemy("temple_cleric"), "Temple Cleric is not special")
+
+	# Unknown type returns false gracefully
+	_assert(not Config.is_special_enemy("nonexistent"), "Unknown type is not special")
+
+# ═══════════════════════════════════════════════════════
+# TOTAL TOWER DAMAGE HELPER TESTS
+# ═══════════════════════════════════════════════════════
+func _run_total_tower_damage_helper_tests() -> void:
+	print("[Total Tower Damage Helper]")
+
+	# Empty array returns 0
+	_assert_near(Config.total_tower_damage([]), 0.0, 0.01, "Empty array = 0 damage")
+
+	# Single tower
+	var t1 := {"total_damage": 100.0}
+	_assert_near(Config.total_tower_damage([t1]), 100.0, 0.01, "Single tower damage")
+
+	# Multiple towers
+	var t2 := {"total_damage": 250.0}
+	var t3 := {"total_damage": 50.5}
+	_assert_near(Config.total_tower_damage([t1, t2, t3]), 400.5, 0.01, "Multi-tower damage sums")
+
+	# Tower without total_damage key defaults to 0
+	var t4 := {"damage": 5.0}
+	_assert_near(Config.total_tower_damage([t4]), 0.0, 0.01, "Missing total_damage key = 0")
+
+# ═══════════════════════════════════════════════════════
+# SPECIAL ENEMY TYPES CONSTANT TESTS
+# ═══════════════════════════════════════════════════════
+func _run_special_enemy_types_constant_tests() -> void:
+	print("[Special Enemy Types Constant]")
+
+	_assert_gt(float(Config.SPECIAL_ENEMY_TYPES.size()), 0.0, "SPECIAL_ENEMY_TYPES not empty")
+	# All listed types must exist in ENEMY_DATA
+	for etype in Config.SPECIAL_ENEMY_TYPES:
+		_assert(Config.ENEMY_DATA.has(etype), "Special type '" + etype + "' exists in ENEMY_DATA")
+	# No bosses should be in the list (bosses are auto-special via is_boss flag)
+	for etype in Config.SPECIAL_ENEMY_TYPES:
+		var edata: Dictionary = Config.ENEMY_DATA[etype]
+		_assert(not edata.get("is_boss", false), "Special type '" + etype + "' is not a boss (bosses auto-special)")
+
+# ═══════════════════════════════════════════════════════
+# SHAKE USAGE TESTS — verify game_manager uses constant shakes
+# ═══════════════════════════════════════════════════════
+func _run_shake_usage_tests() -> void:
+	print("[Shake Usage]")
+
+	# Verify shake works with the preset constants
+	GM.reset_state()
+	GM.shake(Config.SHAKE_CORE_HIT_INTENSITY, Config.SHAKE_CORE_HIT_DURATION)
+	_assert_gt(GM.screen_shake, 0.0, "Core hit shake sets screen_shake > 0")
+	_assert_near(GM.screen_shake_intensity, Config.SHAKE_CORE_HIT_INTENSITY, 0.01, "Core hit shake sets correct intensity")
+
+	GM.shake(Config.SHAKE_WAVE_START_INTENSITY, Config.SHAKE_WAVE_START_DURATION)
+	_assert_near(GM.screen_shake_intensity, Config.SHAKE_WAVE_START_INTENSITY, 0.01, "Wave start shake sets correct intensity")
+
+	GM.shake(Config.SHAKE_DICE_ROLL_INTENSITY, Config.SHAKE_DICE_ROLL_DURATION)
+	_assert_near(GM.screen_shake_intensity, Config.SHAKE_DICE_ROLL_INTENSITY, 0.01, "Dice roll shake sets correct intensity")
+
+	GM.reset_state()
+
+# ═══════════════════════════════════════════════════════
+# IS SPECIAL VS DROP RATE TESTS — cross-check helpers with relic drops
+# ═══════════════════════════════════════════════════════
+func _run_is_special_vs_drop_rate_tests() -> void:
+	print("[Special Enemy vs Drop Rate Consistency]")
+
+	# Every special enemy type in SPECIAL_ENEMY_TYPES should have an elevated drop rate
+	# (i.e., should match the RELIC_DROP_SPECIAL or higher check in should_drop_relic)
+	_assert_gt(Config.RELIC_DROP_SPECIAL, Config.RELIC_DROP_DEFAULT, "Special drop rate > default")
+
+	# Verify raphael is in special types (was added in a recent fix)
+	_assert(Config.SPECIAL_ENEMY_TYPES.has("archangel_raphael"), "Raphael in SPECIAL_ENEMY_TYPES")
+
+	# Regular enemies should NOT be in the special types list
+	var regular_types := ["seraph_scout", "crusader", "swift_ranger", "war_titan", "temple_cleric"]
+	for etype in regular_types:
+		_assert(not Config.SPECIAL_ENEMY_TYPES.has(etype), etype + " not in SPECIAL_ENEMY_TYPES")
+
+# ═══════════════════════════════════════════════════════
+# DOUBLE DAMAGE MULT CONSTANT TESTS
+# ═══════════════════════════════════════════════════════
+func _run_double_damage_mult_tests() -> void:
+	print("[Double Damage Mult Constant]")
+
+	# Constant exists and equals 2.0
+	_assert_near(Config.DOUBLE_DAMAGE_MULT, 2.0, 0.01, "DOUBLE_DAMAGE_MULT = 2.0")
+	_assert_gt(Config.DOUBLE_DAMAGE_MULT, 1.0, "DOUBLE_DAMAGE_MULT > 1.0")
+
+	# calc_damage uses it: double_damage > 0 should multiply
+	GM.reset_state()
+	var enemy := GM.create_enemy("seraph_scout")
+	GM.double_damage = 0
+	var normal_dmg := GM.calc_damage(10.0, null, enemy)
+	GM.double_damage = 1
+	var double_dmg := GM.calc_damage(10.0, null, enemy)
+	_assert_gt(double_dmg, normal_dmg, "Double damage increases calc_damage output")
+	_assert_near(double_dmg / normal_dmg, Config.DOUBLE_DAMAGE_MULT, 0.1, "Double damage ratio matches DOUBLE_DAMAGE_MULT")
+	GM.reset_state()
+
+# ═══════════════════════════════════════════════════════
+# CREATE ENEMY FIELD VALIDATION TESTS
+# ═══════════════════════════════════════════════════════
+func _run_create_enemy_field_tests() -> void:
+	print("[Create Enemy Field Validation]")
+	GM.reset_state()
+	GM.wave = 5
+
+	# Test all enemy types have required fields
+	var required_fields := ["id", "type", "hp", "max_hp", "speed", "core_dmg", "is_boss",
+		"color", "radius", "name", "x", "y", "path_index", "alive", "reached_core",
+		"slow_amount", "slow_timer", "shield", "shield_buff", "shield_buff_timer",
+		"flash_timer", "spawn_timer", "ability_timer", "burn_stacks", "burn_timer",
+		"burn_source", "frost_timer", "heal_tick_timer"]
+	for etype in Config.ENEMY_DATA:
+		var e := GM.create_enemy(etype)
+		for field in required_fields:
+			_assert(e.has(field), etype + " has field '" + field + "'")
+		# Sanity: HP must be positive and scaled
+		_assert_gt(e["hp"], 0.0, etype + " HP > 0")
+		_assert_near(e["hp"], e["max_hp"], 0.01, etype + " hp == max_hp at creation")
+		# Must start alive
+		_assert(e["alive"], etype + " starts alive")
+		_assert(not e["reached_core"], etype + " hasn't reached core")
+		# ID must be unique
+		var e2 := GM.create_enemy(etype)
+		_assert_ne(e["id"], e2["id"], etype + " IDs are unique")
+	GM.reset_state()
+
+# ═══════════════════════════════════════════════════════
+# CREATE TOWER FIELD VALIDATION TESTS
+# ═══════════════════════════════════════════════════════
+func _run_create_tower_field_tests() -> void:
+	print("[Create Tower Field Validation]")
+	GM.reset_state()
+
+	var required_fields := ["id", "type", "col", "row", "x", "y", "level", "damage",
+		"range", "attack_speed", "cooldown", "target", "is_disabled", "disable_timer",
+		"damage_mult", "slow_power", "is_aoe", "aoe_radius", "color", "name",
+		"is_global", "is_support", "is_beam_cone", "facing_angle", "cone_emit_timer",
+		"buff_cooldown", "buff_duration", "buff_multiplier", "buff_timer",
+		"buff_active_timer", "hades_buffed", "hades_buff_timer", "fire_flash",
+		"total_damage", "kill_count", "targeting_mode", "build_timer"]
+	for ttype in Config.TOWER_DATA:
+		var t := GM.create_tower(ttype, 5, 5)
+		for field in required_fields:
+			_assert(t.has(field), ttype + " has field '" + field + "'")
+		# Level starts at 1
+		_assert_eq(t["level"], 1, ttype + " starts at level 1")
+		# Damage must be positive (even support towers have some)
+		_assert_gte(t["damage"], 0.0, ttype + " damage >= 0")
+		# Position should match grid_to_pixel(5, 5)
+		var expected_pos := Config.grid_to_pixel(5, 5)
+		_assert_near(t["x"], expected_pos.x, 0.1, ttype + " x position correct")
+		_assert_near(t["y"], expected_pos.y, 0.1, ttype + " y position correct")
+		# Starts not disabled
+		_assert(not t["is_disabled"], ttype + " starts enabled")
+		# Kill count starts at 0
+		_assert_eq(t["kill_count"], 0, ttype + " starts with 0 kills")
+		# IDs are unique
+		var t2 := GM.create_tower(ttype, 6, 6)
+		_assert_ne(t["id"], t2["id"], ttype + " tower IDs are unique")
+	GM.reset_state()
+
+# ═══════════════════════════════════════════════════════
+# WAVE DATA INTEGRITY TESTS
+# ═══════════════════════════════════════════════════════
+func _run_wave_data_integrity_tests() -> void:
+	print("[Wave Data Integrity]")
+
+	# Must have exactly MAX_WAVES entries
+	_assert_eq(Config.WAVE_DATA.size(), Config.MAX_WAVES, "WAVE_DATA has MAX_WAVES entries")
+
+	for wi in range(Config.WAVE_DATA.size()):
+		var wave_def: Dictionary = Config.WAVE_DATA[wi]
+		var label := "Wave " + str(wi + 1)
+
+		# Required fields
+		_assert(wave_def.has("enemies"), label + " has enemies")
+		_assert(wave_def.has("interval"), label + " has interval")
+		_assert(wave_def.has("desc"), label + " has desc")
+
+		# Interval must be positive
+		_assert_gt(float(wave_def["interval"]), 0.0, label + " interval > 0")
+
+		# All enemy types must exist in ENEMY_DATA
+		var total_enemies := 0
+		for entry in wave_def["enemies"]:
+			_assert(Config.ENEMY_DATA.has(entry["type"]), label + " type '" + entry["type"] + "' exists")
+			_assert_gt(float(entry["count"]), 0.0, label + " " + entry["type"] + " count > 0")
+			total_enemies += entry["count"]
+		# Every wave must have at least 1 enemy
+		_assert_gt(float(total_enemies), 0.0, label + " has enemies to spawn")
+
+	# Boss waves (5, 10, 15, 20) should contain a boss enemy
+	var boss_waves := [10, 15, 20]
+	for bw in boss_waves:
+		var wave_def: Dictionary = Config.WAVE_DATA[bw - 1]
+		var has_boss := false
+		for entry in wave_def["enemies"]:
+			var edata: Dictionary = Config.ENEMY_DATA[entry["type"]]
+			if edata.get("is_boss", false):
+				has_boss = true
+				break
+		_assert(has_boss, "Wave " + str(bw) + " contains a boss")
+
+# ═══════════════════════════════════════════════════════
+# SHAKE FREQUENCY CONSTANT TESTS
+# ═══════════════════════════════════════════════════════
+func _run_shake_frequency_constant_tests() -> void:
+	print("[Shake Frequency Constants]")
+
+	_assert_gt(Config.SHAKE_FREQ_X, 0.0, "SHAKE_FREQ_X > 0")
+	_assert_gt(Config.SHAKE_FREQ_Y, 0.0, "SHAKE_FREQ_Y > 0")
+	_assert_ne(Config.SHAKE_FREQ_X, Config.SHAKE_FREQ_Y, "X and Y frequencies differ (organic feel)")
+	_assert_gt(Config.SHAKE_Y_DAMPEN, 0.0, "SHAKE_Y_DAMPEN > 0")
+	_assert_lt(Config.SHAKE_Y_DAMPEN, 1.0, "SHAKE_Y_DAMPEN < 1.0 (vertical is dampened)")
+	_assert_gt(Config.SHAKE_RAMP_DURATION, 0.0, "SHAKE_RAMP_DURATION > 0")

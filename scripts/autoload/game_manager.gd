@@ -127,7 +127,7 @@ func reset_state() -> void:
 	fast_enemy_waves = 0
 	fallen_hero_pool = 0
 	fallen_heroes_spawned = 0
-	stats = {"enemies_killed": 0, "towers_placed": 0, "total_sins_earned": 0, "total_damage_dealt": 0.0, "pacts_accepted": 0, "fallen_heroes": 0, "waves_survived": 0, "boss_kills": 0, "total_core_damage": 0.0}
+	stats = {"enemies_killed": 0, "towers_placed": 0, "towers_sold": 0, "total_sins_earned": 0, "total_damage_dealt": 0.0, "pacts_accepted": 0, "pacts_offered": 0, "fallen_heroes": 0, "waves_survived": 0, "boss_kills": 0, "total_core_damage": 0.0}
 	occupied_tiles.clear()
 	notifications.clear()
 	game_time = 0.0
@@ -314,7 +314,9 @@ func sell_tower(tower: Dictionary) -> void:
 	occupied_tiles.erase(Config.tile_key(tower["col"], tower["row"]))
 	if selected_tower != null and selected_tower["id"] == tower["id"]:
 		selected_tower = null
+	stats["towers_sold"] = stats.get("towers_sold", 0) + 1
 	notify(Locale.tf("sold_tower", {"name": Locale.t(tower["name"])}), Color(0.667, 0.667, 0.667))
+	Audio.play_sfx("ui_click")
 
 func has_tower_type(type: String) -> bool:
 	for t in towers:
@@ -582,7 +584,7 @@ func update_enemies(dt: float) -> void:
 			var last_pt: Vector2 = path_px[path_px.size() - 1]
 			add_effect("core_hit", last_pt.x, last_pt.y, Config.FX_CORE_HIT_RADIUS, Color.RED)
 			Audio.play_sfx("core_hit")
-			shake(4.0, 0.2)
+			shake(Config.SHAKE_CORE_HIT_INTENSITY, Config.SHAKE_CORE_HIT_DURATION)
 			if core_hp <= 0:
 				shake(Config.GAMEOVER_SHAKE_INTENSITY, Config.GAMEOVER_SHAKE_DURATION)
 				phase = "gameover"
@@ -725,7 +727,7 @@ func in_radius(cx: float, cy: float, radius: float) -> Array:
 func calc_damage(base_dmg: float, tower, enemy: Dictionary) -> float:
 	var dmg := base_dmg
 	if double_damage > 0:
-		dmg *= 2.0
+		dmg *= Config.DOUBLE_DAMAGE_MULT
 	if tower_weaken_mult < 1.0:
 		dmg *= tower_weaken_mult
 	if tower != null and tower is Dictionary:
@@ -923,7 +925,7 @@ func _cocytus_cone(tower: Dictionary, dt: float) -> void:
 	if tower["hades_buffed"]:
 		cone_dps *= tower.get("buff_multiplier", 1.5)
 	if double_damage > 0:
-		cone_dps *= 2.0
+		cone_dps *= Config.DOUBLE_DAMAGE_MULT
 	if tower_weaken_mult < 1.0:
 		cone_dps *= tower_weaken_mult
 	cone_dps *= tower.get("damage_mult", 1.0)
@@ -1063,8 +1065,7 @@ func start_wave() -> void:
 	var specials: Array = [] # appended at end in small groups
 	for entry in wave_def["enemies"]:
 		var etype: String = entry["type"]
-		var edata: Dictionary = Config.ENEMY_DATA.get(etype, {})
-		var is_special: bool = edata.get("is_boss", false) or etype in ["archangel_marshal", "holy_sentinel", "archangel_michael", "zeus"]
+		var is_special: bool = Config.is_special_enemy(etype)
 		for j in range(entry["count"]):
 			if is_special:
 				specials.append(etype)
@@ -1113,7 +1114,7 @@ func start_wave() -> void:
 			wave_banner_is_boss = true
 			break
 	Audio.play_sfx("wave_start")
-	shake(2.0, 0.15)
+	shake(Config.SHAKE_WAVE_START_INTENSITY, Config.SHAKE_WAVE_START_DURATION)
 
 func update_waves(dt: float) -> void:
 	if time_warp_timer > 0:
@@ -1201,7 +1202,7 @@ func roll_dice() -> Dictionary:
 	dice_result = {"d1": d1, "total": total, "outcome": outcome}
 	dice_result_timer = Config.DICE_RESULT_DISPLAY
 	Audio.play_sfx("dice_roll")
-	shake(3.0, 0.15)
+	shake(Config.SHAKE_DICE_ROLL_INTENSITY, Config.SHAKE_DICE_ROLL_DURATION)
 
 	var msg_color := Color(0.267, 1.0, 0.267) if outcome["positive"] else Color(1.0, 0.267, 0.267)
 	notify(Locale.t(outcome["name"]) + " (" + str(d1) + ")", msg_color)
@@ -1256,7 +1257,7 @@ func should_drop_relic(enemy_type: String) -> bool:
 func drop_relic(rx: float, ry: float) -> void:
 	var loot: Dictionary = _weighted_pick(Config.RELIC_LOOT)
 	notify(Locale.tf("relic_drop", {"name": Locale.t(loot["name"])}), Color(1.0, 0.8, 0.0))
-	add_effect("relic", rx, ry, 15.0, Color(1.0, 0.8, 0.0))
+	add_effect("relic", rx, ry, Config.RELIC_PICKUP_FX_RADIUS, Color(1.0, 0.8, 0.0))
 
 	match loot["type"]:
 		"aoe":
@@ -1264,7 +1265,7 @@ func drop_relic(rx: float, ry: float) -> void:
 			combat_aoe(rx, ry, Config.RELIC_AOE_RADIUS, relic_dmg, null)
 			add_effect("aoe", rx, ry, Config.RELIC_AOE_RADIUS, Color(1.0, 0.47, 0.12, 0.25))
 		"random_sins":
-			var amt: int = 50 + randi() % 100
+			var amt: int = Config.SIN_CACHE_MIN + randi() % Config.SIN_CACHE_RANGE
 			earn(amt)
 			notify(Locale.tf("sins_gained", {"amount": amt}), Color(0.8, 0.267, 1.0))
 		"tower_buff":
@@ -1300,8 +1301,8 @@ func drop_relic(rx: float, ry: float) -> void:
 			notify(Locale.t("Time Warp! Enemies crawl for 5 seconds!"), Color(0.3, 0.6, 1.0))
 		"legendary":
 			if not free_upgrade_best_tower():
-				earn(80)
-				notify(Locale.t("All towers maxed! +80 Sins instead"), Color(0.8, 0.267, 1.0))
+				earn(Config.LEGENDARY_FALLBACK_SINS)
+				notify(Locale.tf("legendary_fallback", {"amount": Config.LEGENDARY_FALLBACK_SINS}), Color(0.8, 0.267, 1.0))
 		"choice":
 			pending_pandora_choice = true
 		"trap":
@@ -1337,8 +1338,8 @@ func accept_pandora_choice(choice: int) -> void:
 		double_damage = maxi(double_damage, 1)
 		notify(Locale.t("Pandora grants 2x damage for 1 wave!"), Color(1.0, 0.85, 0.0))
 	else:
-		earn(100)
-		notify(Locale.t("Pandora grants 100 Sins!"), Color(0.8, 0.267, 1.0))
+		earn(Config.PANDORA_SINS_REWARD)
+		notify(Locale.tf("pandora_sins", {"amount": Config.PANDORA_SINS_REWARD}), Color(0.8, 0.267, 1.0))
 
 
 # ═══════════════════════════════════════════════════════
@@ -1353,6 +1354,7 @@ func maybe_offer_pact() -> void:
 		return
 	var pact: Dictionary = Config.DEMONIC_PACTS[randi() % Config.DEMONIC_PACTS.size()]
 	pending_pact = pact.duplicate()
+	stats["pacts_offered"] = stats.get("pacts_offered", 0) + 1
 	notify(Locale.t("A Demonic Pact is offered..."), Color(0.8, 0.2, 0.6))
 
 func accept_pact() -> void:
@@ -1488,9 +1490,17 @@ func shake(intensity: float, duration: float) -> void:
 	screen_shake_intensity = intensity
 
 func _apply_speed_buff(factor: float, duration: float) -> void:
+	# Reset the previous buff before applying the new one so stacking
+	# doesn't leave a stale multiplier baked into temp_speed_buff.
 	temp_speed_buff = factor
 	speed_buff_factor = factor
 	speed_buff_timer = duration
+
+## Format large damage values with "k" suffix for compact display.
+func format_damage(value: float) -> String:
+	if value >= 1000.0:
+		return str(snappedf(value / 1000.0, 0.1)) + "k"
+	return str(roundi(value))
 
 # ═══════════════════════════════════════════════════════
 # UTILITY

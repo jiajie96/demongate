@@ -151,6 +151,14 @@ var _templates: Dictionary = {
 		"en": "Legendary! {name} upgraded to Lv.{level}!",
 		"zh": "传说！{name} 升级到等级{level}！",
 	},
+	"legendary_fallback": {
+		"en": "All towers maxed! +{amount} Sins instead",
+		"zh": "所有塔已满级！获得{amount}罪恶值",
+	},
+	"pandora_sins": {
+		"en": "Pandora grants {amount} Sins!",
+		"zh": "潘多拉赐予{amount}罪恶值！",
+	},
 }
 
 # ═══════════════════════════════════════════════════════

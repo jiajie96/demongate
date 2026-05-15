@@ -227,6 +227,41 @@ const GAMEOVER_SHAKE_DURATION := 0.4
 const CHEAT_SINS_AMOUNT := 99999         # Ctrl+J: sins granted
 const CHEAT_SKIP_TO_WAVE := 15           # Ctrl+K: wave to skip to
 
+# Double damage multiplier — applied when Chaos Pact or Pandora 2x is active
+const DOUBLE_DAMAGE_MULT := 2.0
+
+# Screen shake ramp — envelope fade time for shake intensity
+const SHAKE_RAMP_DURATION := 0.3        # seconds over which shake intensity ramps down
+
+# Screen shake frequency — Hz values for the sinusoidal camera shake pattern
+const SHAKE_FREQ_X := 60.0              # horizontal oscillation rate
+const SHAKE_FREQ_Y := 47.0              # vertical oscillation rate (offset for organic feel)
+const SHAKE_Y_DAMPEN := 0.7             # vertical shake amplitude relative to horizontal
+
+# Screen shake presets — intensity and duration for common game events
+const SHAKE_CORE_HIT_INTENSITY := 4.0    # enemy reaches core
+const SHAKE_CORE_HIT_DURATION := 0.2
+const SHAKE_WAVE_START_INTENSITY := 2.0  # new wave begins
+const SHAKE_WAVE_START_DURATION := 0.15
+const SHAKE_DICE_ROLL_INTENSITY := 3.0   # dice rolled
+const SHAKE_DICE_ROLL_DURATION := 0.15
+
+# Relic pickup visual — radius of the golden burst effect
+const RELIC_PICKUP_FX_RADIUS := 15.0     # pixels
+
+# Sin Cache relic — random sins range (uniform between min and max)
+const SIN_CACHE_MIN := 50               # minimum sins from Sin Cache relic
+const SIN_CACHE_RANGE := 100            # random range added to min (0..99)
+
+# Legendary Blueprint fallback — sins granted when all towers are maxed
+const LEGENDARY_FALLBACK_SINS := 80     # consolation prize
+
+# Pandora's True Gift — sins option reward
+const PANDORA_SINS_REWARD := 100        # "Pandora grants N Sins!"
+
+# Special enemy types — used for spawn ordering and relic drop rates
+const SPECIAL_ENEMY_TYPES := ["archangel_marshal", "holy_sentinel", "archangel_michael", "zeus", "archangel_raphael"]
+
 
 # ═══════════════════════════════════════════════════════
 # COLORS
@@ -549,3 +584,19 @@ func spd_scale(current_wave: int) -> float:
 # but slower than HP so economy never outruns difficulty.
 func reward_scale(current_wave: int) -> float:
 	return pow(hp_scale(current_wave), REWARD_POW_HPG)
+
+## Returns true if this enemy type gets special spawn ordering (back-half of wave)
+## and an elevated relic drop rate. Bosses are always special; this covers the
+## non-boss elites that still deserve special treatment.
+func is_special_enemy(enemy_type: String) -> bool:
+	var edata: Dictionary = ENEMY_DATA.get(enemy_type, {})
+	if edata.get("is_boss", false):
+		return true
+	return enemy_type in SPECIAL_ENEMY_TYPES
+
+## Sum total damage dealt across all towers (useful for stats display).
+func total_tower_damage(tower_list: Array) -> float:
+	var total := 0.0
+	for t in tower_list:
+		total += t.get("total_damage", 0.0)
+	return total

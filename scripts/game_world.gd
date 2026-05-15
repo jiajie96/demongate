@@ -17,11 +17,11 @@ func _ready() -> void:
 func _process(dt: float) -> void:
 	# Screen shake — always update position even when paused/menu
 	if GM.screen_shake > 0 and GM.phase == "playing" and not GM.paused:
-		var shake_t: float = clampf(GM.screen_shake / 0.3, 0.0, 1.0)
+		var shake_t: float = clampf(GM.screen_shake / Config.SHAKE_RAMP_DURATION, 0.0, 1.0)
 		var intensity: float = GM.screen_shake_intensity * shake_t
 		position = _base_position + Vector2(
-			sin(GM.game_time * 60.0) * intensity,
-			cos(GM.game_time * 47.0) * intensity * 0.7
+			sin(GM.game_time * Config.SHAKE_FREQ_X) * intensity,
+			cos(GM.game_time * Config.SHAKE_FREQ_Y) * intensity * Config.SHAKE_Y_DAMPEN
 		)
 	elif position != _base_position:
 		position = _base_position
@@ -654,7 +654,7 @@ func _draw_towers() -> void:
 
 		# Muzzle flash when firing — tower-specific
 		if t["fire_flash"] > 0:
-			var flash_a: float = t["fire_flash"] / 0.15
+			var flash_a: float = t["fire_flash"] / Config.TOWER_FIRE_FLASH
 			var tp := Vector2(t["x"], t["y"])
 			var fc: Color = t["color"]
 			# Direction toward current target (for directional flash streaks)
@@ -1596,11 +1596,7 @@ func _draw_overview() -> void:
 		draw_rect(Rect2(px, py, panel_w, panel_h), Color(t["color"].r, t["color"].g, t["color"].b, 0.4), false, 1.0)
 
 		# Damage text
-		var dmg_str: String
-		if total_dmg >= 1000:
-			dmg_str = str(snappedf(total_dmg / 1000.0, 0.1)) + "k"
-		else:
-			dmg_str = str(roundi(total_dmg))
+		var dmg_str: String = GM.format_damage(total_dmg)
 		draw_string(font, Vector2(px + 2, py + 12), dmg_str, HORIZONTAL_ALIGNMENT_LEFT, 48, 11, Color(1, 0.8, 0.3))
 
 		# Kills text
@@ -2591,7 +2587,6 @@ func _unhandled_input(event: InputEvent) -> void:
 					GM.preview_cone_manual = true
 					get_viewport().set_input_as_handled()
 					return
-			var tower_keys := Config.TOWER_DATA.keys()
 			match event.keycode:
 				KEY_ESCAPE:
 					GM.selected_tower_type = ""
@@ -2621,30 +2616,21 @@ func _unhandled_input(event: InputEvent) -> void:
 					GM.set_game_speed(1.0)
 				KEY_3:
 					GM.set_game_speed(2.0)
-				KEY_4:
-					if tower_keys.size() > 0:
-						GM.selected_tower_type = tower_keys[0]
-						GM.selected_tower = null
-				KEY_5:
-					if tower_keys.size() > 1:
-						GM.selected_tower_type = tower_keys[1]
-						GM.selected_tower = null
-				KEY_6:
-					if tower_keys.size() > 2:
-						GM.selected_tower_type = tower_keys[2]
-						GM.selected_tower = null
-				KEY_7:
-					if tower_keys.size() > 3:
-						GM.selected_tower_type = tower_keys[3]
-						GM.selected_tower = null
-				KEY_8:
-					if tower_keys.size() > 4:
-						GM.selected_tower_type = tower_keys[4]
-						GM.selected_tower = null
-				KEY_9:
-					if tower_keys.size() > 5:
-						GM.selected_tower_type = tower_keys[5]
-						GM.selected_tower = null
+				_:
+					# Tower selection: keys 4-9 map to tower types by index
+					_try_select_tower_by_key(event.keycode)
+
+## Map number keys 4-9 to tower type selection by index in TOWER_DATA.
+const _TOWER_HOTKEYS := [KEY_4, KEY_5, KEY_6, KEY_7, KEY_8, KEY_9]
+
+func _try_select_tower_by_key(keycode: int) -> void:
+	var idx := _TOWER_HOTKEYS.find(keycode)
+	if idx < 0:
+		return
+	var tower_keys := Config.TOWER_DATA.keys()
+	if idx < tower_keys.size():
+		GM.selected_tower_type = tower_keys[idx]
+		GM.selected_tower = null
 
 func _handle_left_click(pos: Vector2) -> void:
 	var grid := Config.pixel_to_grid(pos.x, pos.y)
