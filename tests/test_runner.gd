@@ -131,6 +131,12 @@ func _ready() -> void:
 	_run_create_tower_field_tests()
 	_run_wave_data_integrity_tests()
 	_run_shake_frequency_constant_tests()
+	_run_notify_color_constant_tests()
+	_run_relic_drop_data_driven_tests()
+	_run_tower_blessing_constant_tests()
+	_run_pact_accept_decline_logic_tests()
+	_run_relics_collected_stat_tests()
+	_run_wave_completion_bonus_math_tests()
 
 	print("")
 	print("=== Results: %d/%d passed ===" % [_passed, _total])
@@ -3560,3 +3566,118 @@ func _run_shake_frequency_constant_tests() -> void:
 	_assert_gt(Config.SHAKE_Y_DAMPEN, 0.0, "SHAKE_Y_DAMPEN > 0")
 	_assert_lt(Config.SHAKE_Y_DAMPEN, 1.0, "SHAKE_Y_DAMPEN < 1.0 (vertical is dampened)")
 	_assert_gt(Config.SHAKE_RAMP_DURATION, 0.0, "SHAKE_RAMP_DURATION > 0")
+
+# ═══════════════════════════════════════════════════════
+# NOTIFICATION COLOR CONSTANT TESTS
+# ═══════════════════════════════════════════════════════
+func _run_notify_color_constant_tests() -> void:
+	print("[Notification Color Constants]")
+
+	# All notification colors must be valid (non-transparent) Color values
+	_assert_gt(Config.COLOR_NOTIFY_GOLD.r + Config.COLOR_NOTIFY_GOLD.g + Config.COLOR_NOTIFY_GOLD.b, 0.0, "COLOR_NOTIFY_GOLD is non-black")
+	_assert_gt(Config.COLOR_NOTIFY_SINS.r + Config.COLOR_NOTIFY_SINS.g + Config.COLOR_NOTIFY_SINS.b, 0.0, "COLOR_NOTIFY_SINS is non-black")
+	_assert_gt(Config.COLOR_NOTIFY_POSITIVE.r + Config.COLOR_NOTIFY_POSITIVE.g + Config.COLOR_NOTIFY_POSITIVE.b, 0.0, "COLOR_NOTIFY_POSITIVE is non-black")
+	_assert_gt(Config.COLOR_NOTIFY_NEGATIVE.r + Config.COLOR_NOTIFY_NEGATIVE.g + Config.COLOR_NOTIFY_NEGATIVE.b, 0.0, "COLOR_NOTIFY_NEGATIVE is non-black")
+	_assert_gt(Config.COLOR_NOTIFY_PACT.r + Config.COLOR_NOTIFY_PACT.g + Config.COLOR_NOTIFY_PACT.b, 0.0, "COLOR_NOTIFY_PACT is non-black")
+	_assert_gt(Config.COLOR_NOTIFY_NEUTRAL.r + Config.COLOR_NOTIFY_NEUTRAL.g + Config.COLOR_NOTIFY_NEUTRAL.b, 0.0, "COLOR_NOTIFY_NEUTRAL is non-black")
+	_assert_gt(Config.COLOR_NOTIFY_LEGENDARY.r + Config.COLOR_NOTIFY_LEGENDARY.g + Config.COLOR_NOTIFY_LEGENDARY.b, 0.0, "COLOR_NOTIFY_LEGENDARY is non-black")
+	_assert_gt(Config.COLOR_NOTIFY_DANGER.r + Config.COLOR_NOTIFY_DANGER.g + Config.COLOR_NOTIFY_DANGER.b, 0.0, "COLOR_NOTIFY_DANGER is non-black")
+	# Positive and negative should be distinguishable
+	_assert_ne(Config.COLOR_NOTIFY_POSITIVE.r, Config.COLOR_NOTIFY_NEGATIVE.r, "Positive/negative have different red channels")
+
+# ═══════════════════════════════════════════════════════
+# RELIC DROP DATA-DRIVEN TESTS
+# ═══════════════════════════════════════════════════════
+func _run_relic_drop_data_driven_tests() -> void:
+	print("[Relic Drop Data-Driven]")
+
+	# Every enemy type should have a relic_drop field
+	for etype in Config.ENEMY_DATA:
+		var edata: Dictionary = Config.ENEMY_DATA[etype]
+		_assert(edata.has("relic_drop"), etype + " has relic_drop field")
+		var drop: float = edata.get("relic_drop", -1.0)
+		_assert_gt(drop, 0.0, etype + " relic_drop > 0")
+		_assert_lte(drop, 1.0, etype + " relic_drop <= 1.0")
+	# Bosses should have 100% drop rate
+	_assert_eq(Config.ENEMY_DATA["grand_paladin"]["relic_drop"], Config.RELIC_DROP_BOSS, "Grand Paladin has boss drop rate")
+	_assert_eq(Config.ENEMY_DATA["archangel_michael"]["relic_drop"], Config.RELIC_DROP_BOSS, "Michael has boss drop rate")
+	# War Titan should be higher than default
+	_assert_gt(Config.ENEMY_DATA["war_titan"]["relic_drop"], Config.RELIC_DROP_DEFAULT, "War Titan drop > default")
+
+# ═══════════════════════════════════════════════════════
+# TOWER BLESSING CONSTANT TESTS
+# ═══════════════════════════════════════════════════════
+func _run_tower_blessing_constant_tests() -> void:
+	print("[Tower Blessing Constant]")
+
+	_assert_gt(Config.TOWER_BLESSING_BUFF, 0.0, "TOWER_BLESSING_BUFF > 0")
+	_assert_lt(Config.TOWER_BLESSING_BUFF, 1.0, "TOWER_BLESSING_BUFF < 1.0 (reasonable increment)")
+	_assert_eq(Config.TOWER_BLESSING_BUFF, 0.25, "TOWER_BLESSING_BUFF is 0.25 (+25%)")
+
+# ═══════════════════════════════════════════════════════
+# PACT ACCEPT/DECLINE LOGIC TESTS
+# ═══════════════════════════════════════════════════════
+func _run_pact_accept_decline_logic_tests() -> void:
+	print("[Pact Accept/Decline Logic]")
+
+	# Setup: reset state and simulate a pact offer
+	GM.reset_state()
+	_assert(GM.pending_pact.is_empty(), "No pending pact after reset")
+
+	# Simulate accepting Blood Tithe
+	var blood_tithe: Dictionary = Config.DEMONIC_PACTS[0].duplicate()
+	GM.pending_pact = blood_tithe
+	_assert(not GM.pending_pact.is_empty(), "Pact is pending after assignment")
+
+	var old_pacts_accepted: int = GM.stats.get("pacts_accepted", 0)
+	GM.accept_pact()
+	_assert(GM.pending_pact.is_empty(), "Pact cleared after accept")
+	_assert_eq(float(GM.stats.get("pacts_accepted", 0)), float(old_pacts_accepted + 1), "pacts_accepted incremented")
+
+	# Simulate declining a pact
+	GM.pending_pact = Config.DEMONIC_PACTS[1].duplicate()
+	GM.decline_pact()
+	_assert(GM.pending_pact.is_empty(), "Pact cleared after decline")
+
+	# Accept on empty pact should be a no-op
+	GM.pending_pact = {}
+	GM.accept_pact()
+	_assert(GM.pending_pact.is_empty(), "Accept no-ops on empty pact")
+	GM.decline_pact()
+	_assert(GM.pending_pact.is_empty(), "Decline no-ops on empty pact")
+
+# ═══════════════════════════════════════════════════════
+# RELICS COLLECTED STAT TESTS
+# ═══════════════════════════════════════════════════════
+func _run_relics_collected_stat_tests() -> void:
+	print("[Relics Collected Stat]")
+
+	GM.reset_state()
+	_assert_eq(float(GM.stats.get("relics_collected", -1)), 0.0, "relics_collected starts at 0")
+
+	# Simulate a relic drop — stats should increment
+	var old_count: int = GM.stats.get("relics_collected", 0)
+	GM.drop_relic(100.0, 100.0)
+	_assert_eq(float(GM.stats.get("relics_collected", 0)), float(old_count + 1), "relics_collected increments on drop")
+
+# ═══════════════════════════════════════════════════════
+# WAVE COMPLETION BONUS MATH TESTS
+# ═══════════════════════════════════════════════════════
+func _run_wave_completion_bonus_math_tests() -> void:
+	print("[Wave Completion Bonus Math]")
+
+	# Wave 1 bonus should be positive
+	var bonus_w1: int = GM.wave_completion_bonus(1)
+	_assert_gt(float(bonus_w1), 0.0, "Wave 1 bonus > 0")
+
+	# Bonus should increase with wave number
+	var bonus_w5: int = GM.wave_completion_bonus(5)
+	var bonus_w10: int = GM.wave_completion_bonus(10)
+	var bonus_w20: int = GM.wave_completion_bonus(20)
+	_assert_gt(float(bonus_w5), float(bonus_w1), "Wave 5 bonus > Wave 1")
+	_assert_gt(float(bonus_w10), float(bonus_w5), "Wave 10 bonus > Wave 5")
+	_assert_gt(float(bonus_w20), float(bonus_w10), "Wave 20 bonus > Wave 10")
+
+	# Verify formula: wave * BASE_PER_WAVE + round(SCALED_BASE * reward_scale(wave))
+	var expected_w1: int = 1 * Config.WAVE_BONUS_BASE_PER_WAVE + roundi(Config.WAVE_BONUS_SCALED_BASE * Config.reward_scale(1))
+	_assert_eq(float(bonus_w1), float(expected_w1), "Wave 1 bonus matches formula")

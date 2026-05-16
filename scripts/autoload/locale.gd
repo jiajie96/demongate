@@ -177,7 +177,7 @@ var _zh: Dictionary = {
 	"TOWERS": "塔防",
 	"SEND NEXT WAVE": "发送下一波",
 	"MAX LEVEL": "最高等级",
-	"4-9: Towers | U: Upgrade | X: Sell | T: Target | P: Pause\nSpace: Skip | Tab: Overview | D: Dice | Esc: Cancel": "4-9：选塔 | U：升级 | X：出售 | T：目标 | P：暂停\n空格：跳过 | Tab：总览 | D：骰子 | Esc：取消",
+	"4-9: Towers | U: Upgrade | X: Sell | T: Target | P: Pause\nSpace: Skip | Tab: Overview | D: Dice | Y/N: Pacts | Esc: Cancel": "4-9：选塔 | U：升级 | X：出售 | T：目标 | P：暂停\n空格：跳过 | Tab：总览 | D：骰子 | Y/N：契约 | Esc：取消",
 
 	# --- Dice UI ---
 	"DEVIL'S DICE": "恶魔骰子",
@@ -311,6 +311,31 @@ var _zh: Dictionary = {
 	"Trojan Relic! Elite enemies spawned!": "特洛伊遗物！精锐敌人出现！",
 	"Only one Lucifer allowed!": "只能拥有一个路西法！",
 	"Not enough sins!": "罪孽不足！",
+	"A Demonic Pact is offered...": "一份恶魔契约正在等待...",
+	"Accepted!": "已接受！",
+	"Pact declined.": "契约已拒绝。",
+	"Accept": "接受",
+	"Decline": "拒绝",
+
+	# --- Pact descriptions ---
+	"+50% Sin income for 2 waves": "+50%罪孽收入，持续2波",
+	"Lose 15 Core HP": "失去15核心生命值",
+	"All towers +20% damage permanently": "所有塔永久+20%伤害",
+	"2 random towers disabled for 8s": "2座随机塔禁用8秒",
+	"Gain 120 Sins instantly": "立即获得120罪孽",
+	"Enemies +30% speed for 2 waves": "敌人速度+30%，持续2波",
+	"Restore 20 Core HP": "恢复20核心生命值",
+	"Lose 25% of current Sins": "失去当前25%的罪孽",
+	"Double damage for 1 wave": "1波内伤害翻倍",
+	"Next wave spawns 3 extra War Titans": "下一波额外生成3个战争巨人",
+	"Next tower placement is free": "下一座塔免费放置",
+	"All towers -15% damage for 3 waves": "所有塔伤害-15%，持续3波",
+	"Blood Tithe": "血之献祭",
+	"Infernal Forge": "地狱锻造",
+	"Soul Harvest": "灵魂收割",
+	"Dark Resilience": "黑暗韧性",
+	"Chaos Pact": "混沌契约",
+	"Abyssal Gambit": "深渊赌局",
 
 	# --- HUD buttons ---
 	"Upgrade": "升级",

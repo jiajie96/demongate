@@ -2610,6 +2610,16 @@ func _unhandled_input(event: InputEvent) -> void:
 				KEY_X:
 					if GM.selected_tower != null:
 						GM.sell_tower(GM.selected_tower)
+				KEY_Y:
+					if not GM.pending_pact.is_empty():
+						GM.accept_pact()
+					elif GM.pending_pandora_choice:
+						GM.accept_pandora_choice(0)
+				KEY_N:
+					if not GM.pending_pact.is_empty():
+						GM.decline_pact()
+					elif GM.pending_pandora_choice:
+						GM.accept_pandora_choice(1)
 				KEY_1:
 					GM.set_game_speed(0.5)
 				KEY_2:
@@ -2641,20 +2651,20 @@ func _handle_left_click(pos: Vector2) -> void:
 			var data: Dictionary = Config.TOWER_DATA[GM.selected_tower_type]
 			# Unique towers: only 1 allowed on the field (e.g., Lucifer)
 			if data.get("unique", false) and GM.has_tower_type(GM.selected_tower_type):
-				GM.notify(Locale.t("Only one Lucifer allowed!"), Color(1, 0.4, 0.0))
+				GM.notify(Locale.t("Only one Lucifer allowed!"), Config.COLOR_NOTIFY_GOLD)
 				return
 
 			var cost: int = data["cost"]
 
 			var is_free := GM.free_towers > 0
 			if not is_free and not GM.can_afford(cost):
-				GM.notify(Locale.t("Not enough sins!"), Color(1, 0.2, 0.2))
+				GM.notify(Locale.t("Not enough sins!"), Config.COLOR_NOTIFY_NEGATIVE)
 				return
 			if not is_free:
 				GM.spend(cost)
 			else:
 				GM.free_towers -= 1
-				GM.notify(Locale.tf("free_tower_notify", {"count": GM.free_towers}), Color(0.267, 1.0, 0.267))
+				GM.notify(Locale.tf("free_tower_notify", {"count": GM.free_towers}), Config.COLOR_NOTIFY_POSITIVE)
 
 			var tower := GM.create_tower(GM.selected_tower_type, grid.x, grid.y)
 			# REDESIGN: override auto-picked facing with player's rotated preview

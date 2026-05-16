@@ -123,9 +123,8 @@ const RELIC_DROP_MEDIUM := 0.05          # crusaders, clerics
 const RELIC_DROP_DEFAULT := 0.03         # all other enemies
 const RELIC_DROP_SPECIAL := 0.10         # zeus, sentinel, marshal, raphael
 
-# Dice AoE flash duration per tier
-const DICE_AOE_FLASH_STRONG := 0.2       # 25% AoE flash
-const DICE_AOE_FLASH_WEAK := 0.15        # 10% AoE flash
+# Tower Blessing relic — damage multiplier increment for nearest tower
+const TOWER_BLESSING_BUFF := 0.25        # +25% damage mult per blessing
 
 # Wave banner animation phase timings
 const WAVE_BANNER_SLIDE_IN := 0.35       # seconds to slide in from left
@@ -262,6 +261,21 @@ const PANDORA_SINS_REWARD := 100        # "Pandora grants N Sins!"
 # Special enemy types — used for spawn ordering and relic drop rates
 const SPECIAL_ENEMY_TYPES := ["archangel_marshal", "holy_sentinel", "archangel_michael", "zeus", "archangel_raphael"]
 
+
+# ═══════════════════════════════════════════════════════
+# NOTIFICATION COLORS — semantic colors for game event messages
+# ═══════════════════════════════════════════════════════
+const COLOR_NOTIFY_GOLD := Color(1.0, 0.8, 0.0)          # wave start, relic drops, fallen hero
+const COLOR_NOTIFY_SINS := Color(0.8, 0.267, 1.0)        # sins earned, wave complete
+const COLOR_NOTIFY_POSITIVE := Color(0.267, 1.0, 0.267)  # positive dice, tower buffs
+const COLOR_NOTIFY_NEGATIVE := Color(1.0, 0.267, 0.267)  # negative dice, trojan relics
+const COLOR_NOTIFY_PACT := Color(0.8, 0.2, 0.6)          # pact offers, accepts
+const COLOR_NOTIFY_NEUTRAL := Color(0.6, 0.6, 0.6)       # pact declined, time warp faded
+const COLOR_NOTIFY_SELL := Color(0.667, 0.667, 0.667)     # sold tower
+const COLOR_NOTIFY_DANGER := Color(0.8, 0.2, 0.2)        # tower cursed, trojan relic
+const COLOR_NOTIFY_LEGENDARY := Color(1.0, 0.85, 0.0)    # legendary upgrades, pandora
+const COLOR_NOTIFY_SLOW := Color(0.3, 0.6, 1.0)          # time warp active
+const COLOR_NOTIFY_CORRUPT := Color(0.6, 0.2, 0.8)       # corruption wave
 
 # ═══════════════════════════════════════════════════════
 # COLORS
@@ -419,17 +433,17 @@ var TOWER_DATA := {
 # ENEMY DATA
 # ═══════════════════════════════════════════════════════
 var ENEMY_DATA := {
-	"seraph_scout": {"name": "Seraph Scout", "hp": 14.0, "speed": 80.0, "core_dmg": 3, "is_boss": false, "color": Color(1.0, 0.867, 0.267), "radius": 7.0, "sin_reward": 6},
-	"crusader": {"name": "Crusader", "hp": 45.0, "speed": 55.0, "core_dmg": 6, "is_boss": false, "color": Color(0.91, 0.91, 0.91), "radius": 9.0, "sin_reward": 8},
-	"swift_ranger": {"name": "Swift Ranger", "hp": 28.0, "speed": 130.0, "core_dmg": 5, "is_boss": false, "color": Color(0.267, 0.867, 1.0), "radius": 8.0, "sin_reward": 6},
-	"war_titan": {"name": "War Titan", "hp": 110.0, "speed": 38.0, "core_dmg": 14, "is_boss": false, "color": Color(1.0, 0.533, 0.267), "radius": 11.0, "sin_reward": 15},
-	"grand_paladin": {"name": "Grand Paladin", "hp": 280.0, "speed": 42.0, "core_dmg": 30, "is_boss": true, "color": Color(1.0, 0.8, 0.0), "radius": 13.0, "sin_reward": 30},
-	"temple_cleric": {"name": "Temple Cleric", "hp": 32.0, "speed": 60.0, "core_dmg": 4, "is_boss": false, "color": Color(0.533, 1.0, 0.533), "radius": 8.0, "sin_reward": 8, "heal_aura_radius": 90.0, "heal_aura_pct": 0.02},
-	"archangel_marshal": {"name": "Archangel Marshal", "hp": 55.0, "speed": 42.0, "core_dmg": 10, "is_boss": false, "color": Color(1.0, 0.9, 0.5), "radius": 10.0, "sin_reward": 22},
-	"holy_sentinel": {"name": "Holy Sentinel", "hp": 65.0, "speed": 38.0, "core_dmg": 8, "is_boss": false, "color": Color(0.6, 0.8, 1.0), "radius": 10.0, "sin_reward": 25},
-	"archangel_michael": {"name": "Archangel Michael", "hp": 200.0, "speed": 35.0, "core_dmg": 25, "is_boss": true, "color": Color(1.0, 0.95, 0.8), "radius": 12.0, "sin_reward": 25},
-	"zeus": {"name": "Zeus", "hp": 80.0, "speed": 45.0, "core_dmg": 12, "is_boss": false, "color": Color(0.7, 0.8, 1.0), "radius": 10.0, "sin_reward": 18},
-	"archangel_raphael": {"name": "Archangel Raphael", "hp": 70.0, "speed": 40.0, "core_dmg": 8, "is_boss": false, "color": Color(0.5, 0.95, 0.6), "radius": 9.0, "sin_reward": 20},
+	"seraph_scout": {"name": "Seraph Scout", "hp": 14.0, "speed": 80.0, "core_dmg": 3, "is_boss": false, "color": Color(1.0, 0.867, 0.267), "radius": 7.0, "sin_reward": 6, "relic_drop": RELIC_DROP_DEFAULT},
+	"crusader": {"name": "Crusader", "hp": 45.0, "speed": 55.0, "core_dmg": 6, "is_boss": false, "color": Color(0.91, 0.91, 0.91), "radius": 9.0, "sin_reward": 8, "relic_drop": RELIC_DROP_MEDIUM},
+	"swift_ranger": {"name": "Swift Ranger", "hp": 28.0, "speed": 130.0, "core_dmg": 5, "is_boss": false, "color": Color(0.267, 0.867, 1.0), "radius": 8.0, "sin_reward": 6, "relic_drop": RELIC_DROP_DEFAULT},
+	"war_titan": {"name": "War Titan", "hp": 110.0, "speed": 38.0, "core_dmg": 14, "is_boss": false, "color": Color(1.0, 0.533, 0.267), "radius": 11.0, "sin_reward": 15, "relic_drop": RELIC_DROP_WAR_TITAN},
+	"grand_paladin": {"name": "Grand Paladin", "hp": 280.0, "speed": 42.0, "core_dmg": 30, "is_boss": true, "color": Color(1.0, 0.8, 0.0), "radius": 13.0, "sin_reward": 30, "relic_drop": RELIC_DROP_BOSS},
+	"temple_cleric": {"name": "Temple Cleric", "hp": 32.0, "speed": 60.0, "core_dmg": 4, "is_boss": false, "color": Color(0.533, 1.0, 0.533), "radius": 8.0, "sin_reward": 8, "heal_aura_radius": 90.0, "heal_aura_pct": 0.02, "relic_drop": RELIC_DROP_MEDIUM},
+	"archangel_marshal": {"name": "Archangel Marshal", "hp": 55.0, "speed": 42.0, "core_dmg": 10, "is_boss": false, "color": Color(1.0, 0.9, 0.5), "radius": 10.0, "sin_reward": 22, "relic_drop": RELIC_DROP_SPECIAL},
+	"holy_sentinel": {"name": "Holy Sentinel", "hp": 65.0, "speed": 38.0, "core_dmg": 8, "is_boss": false, "color": Color(0.6, 0.8, 1.0), "radius": 10.0, "sin_reward": 25, "relic_drop": RELIC_DROP_SPECIAL},
+	"archangel_michael": {"name": "Archangel Michael", "hp": 200.0, "speed": 35.0, "core_dmg": 25, "is_boss": true, "color": Color(1.0, 0.95, 0.8), "radius": 12.0, "sin_reward": 25, "relic_drop": RELIC_DROP_BOSS},
+	"zeus": {"name": "Zeus", "hp": 80.0, "speed": 45.0, "core_dmg": 12, "is_boss": false, "color": Color(0.7, 0.8, 1.0), "radius": 10.0, "sin_reward": 18, "relic_drop": RELIC_DROP_SPECIAL},
+	"archangel_raphael": {"name": "Archangel Raphael", "hp": 70.0, "speed": 40.0, "core_dmg": 8, "is_boss": false, "color": Color(0.5, 0.95, 0.6), "radius": 9.0, "sin_reward": 20, "relic_drop": RELIC_DROP_SPECIAL},
 }
 
 # ═══════════════════════════════════════════════════════

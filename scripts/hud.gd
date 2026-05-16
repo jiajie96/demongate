@@ -43,6 +43,10 @@ var settings_overlay: Control
 var go_stats_label: Label
 var vic_stats_label: Label
 var pandora_overlay: Control
+var pact_overlay: Control
+var pact_title_label: Label
+var pact_benefit_label: Label
+var pact_cost_label: Label
 
 # Menu overlay refs for locale
 var menu_title: Label
@@ -436,7 +440,7 @@ func _create_side_panel() -> void:
 
 	# Controls help
 	help_label = Label.new()
-	help_label.text = Locale.t("4-9: Towers | U: Upgrade | X: Sell | T: Target | P: Pause\nSpace: Skip | Tab: Overview | D: Dice | Esc: Cancel")
+	help_label.text = Locale.t("4-9: Towers | U: Upgrade | X: Sell | T: Target | P: Pause\nSpace: Skip | Tab: Overview | D: Dice | Y/N: Pacts | Esc: Cancel")
 	help_label.add_theme_font_size_override("font_size", 10)
 	help_label.add_theme_color_override("font_color", Color(0.4, 0.4, 0.4))
 	vbox.add_child(help_label)
@@ -581,6 +585,55 @@ func _create_overlays() -> void:
 	btn_sins.custom_minimum_size = Vector2(180, 50)
 	btn_sins.pressed.connect(_on_pandora_choice.bind(1))
 	pan_btns.add_child(btn_sins)
+
+	# --- Demonic Pact choice ---
+	pact_overlay = _make_overlay_bg()
+	pact_overlay.visible = false
+	add_child(pact_overlay)
+
+	var pact_panel := _make_centered_panel(440, 220)
+	pact_overlay.add_child(pact_panel)
+
+	var pact_vbox := VBoxContainer.new()
+	pact_vbox.alignment = BoxContainer.ALIGNMENT_CENTER
+	pact_vbox.add_theme_constant_override("separation", 10)
+	pact_panel.add_child(pact_vbox)
+
+	pact_title_label = Label.new()
+	pact_title_label.text = ""
+	pact_title_label.add_theme_font_size_override("font_size", 18)
+	pact_title_label.add_theme_color_override("font_color", Color(0.8, 0.2, 0.6))
+	pact_title_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	pact_vbox.add_child(pact_title_label)
+
+	pact_benefit_label = Label.new()
+	pact_benefit_label.text = ""
+	pact_benefit_label.add_theme_font_size_override("font_size", 12)
+	pact_benefit_label.add_theme_color_override("font_color", Color(0.267, 1.0, 0.267))
+	pact_benefit_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	pact_vbox.add_child(pact_benefit_label)
+
+	pact_cost_label = Label.new()
+	pact_cost_label.text = ""
+	pact_cost_label.add_theme_font_size_override("font_size", 12)
+	pact_cost_label.add_theme_color_override("font_color", Color(1.0, 0.267, 0.267))
+	pact_cost_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	pact_vbox.add_child(pact_cost_label)
+
+	var pact_btns := HBoxContainer.new()
+	pact_btns.alignment = BoxContainer.ALIGNMENT_CENTER
+	pact_btns.add_theme_constant_override("separation", 16)
+	pact_vbox.add_child(pact_btns)
+
+	var btn_accept := _make_action_button(Locale.t("Accept") + " [Y]", Color(0.6, 0.15, 0.4))
+	btn_accept.custom_minimum_size = Vector2(160, 45)
+	btn_accept.pressed.connect(_on_pact_accept)
+	pact_btns.add_child(btn_accept)
+
+	var btn_decline := _make_action_button(Locale.t("Decline") + " [N]", Color(0.3, 0.3, 0.3))
+	btn_decline.custom_minimum_size = Vector2(160, 45)
+	btn_decline.pressed.connect(_on_pact_decline)
+	pact_btns.add_child(btn_decline)
 
 # ═══════════════════════════════════════════════════════
 # SETTINGS OVERLAY
@@ -840,7 +893,7 @@ func _process(_dt: float) -> void:
 func _update_locale_text() -> void:
 	towers_title.text = Locale.t("TOWERS")
 	btn_next_wave.text = Locale.t("SEND NEXT WAVE")
-	help_label.text = Locale.t("4-9: Towers | U: Upgrade | X: Sell | T: Target | P: Pause\nSpace: Skip | Tab: Overview | D: Dice | Esc: Cancel")
+	help_label.text = Locale.t("4-9: Towers | U: Upgrade | X: Sell | T: Target | P: Pause\nSpace: Skip | Tab: Overview | D: Dice | Y/N: Pacts | Esc: Cancel")
 
 	# Menu overlay
 	menu_title.text = Locale.t("HELLGATE DEFENDERS")
@@ -871,6 +924,14 @@ func _update_overlay_visibility() -> void:
 	gameover_overlay.visible = GM.phase == "gameover"
 	victory_overlay.visible = GM.phase == "victory"
 	pandora_overlay.visible = GM.pending_pandora_choice
+
+	# Update pact overlay
+	var has_pact := not GM.pending_pact.is_empty()
+	pact_overlay.visible = has_pact
+	if has_pact:
+		pact_title_label.text = Locale.t(GM.pending_pact.get("name", ""))
+		pact_benefit_label.text = "+ " + Locale.t(GM.pending_pact.get("benefit_desc", ""))
+		pact_cost_label.text = "- " + Locale.t(GM.pending_pact.get("cost_desc", ""))
 
 # ═══════════════════════════════════════════════════════
 # BUTTON HANDLERS
@@ -917,6 +978,12 @@ func _on_dice_roll_pressed() -> void:
 func _on_pandora_choice(choice: int) -> void:
 	Audio.play_sfx("ui_click")
 	GM.accept_pandora_choice(choice)
+
+func _on_pact_accept() -> void:
+	GM.accept_pact()
+
+func _on_pact_decline() -> void:
+	GM.decline_pact()
 
 func _on_menu_btn_pressed() -> void:
 	Audio.play_sfx("ui_click")
