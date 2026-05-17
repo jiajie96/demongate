@@ -1707,7 +1707,7 @@ func _draw_notifications() -> void:
 		var n: Dictionary = GM.notifications[i]
 		var alpha: float = clampf(n["timer"], 0.0, 1.0)
 		# Draw at top of game area, below the 50px top bar, stacking downward
-		var ny: float = 65 + i * 20
+		var ny: float = Config.NOTIFICATION_Y_OFFSET + i * Config.NOTIFICATION_STACK_SPACING
 
 		# Shadow
 		var shadow_col := Color(0, 0, 0, alpha)
@@ -1725,7 +1725,7 @@ func _draw_dice_result() -> void:
 		return
 
 	var r: Dictionary = GM.dice_result
-	var alpha: float = clampf(GM.dice_result_timer / 0.8, 0.0, 1.0)
+	var alpha: float = clampf(GM.dice_result_timer / Config.DICE_RESULT_FADE_TIME, 0.0, 1.0)
 	var W: float = Config.GAME_WIDTH
 	var H: float = Config.GAME_HEIGHT
 	var outcome: Dictionary = r["outcome"]
@@ -1860,10 +1860,9 @@ func _update_facing_angles(dt: float) -> void:
 	# Lucifer spins 360° while fire_flash is burning down (cast window) —
 	# Rig_Large has no cast animation, so this reads the "channeling" beat
 	# using the pre-rendered idle angles.
-	const LUCIFER_SPIN_DUR := 0.3
 	for t in GM.towers:
 		if t.get("type", "") == "lucifer" and t.get("fire_flash", 0.0) > 0.0:
-			var spin_speed: float = TAU / LUCIFER_SPIN_DUR
+			var spin_speed: float = TAU / Config.LUCIFER_SPIN_DURATION
 			t["facing_angle"] = t.get("facing_angle", 0.0) + spin_speed * dt
 			continue
 		var target = t.get("target")

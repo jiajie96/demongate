@@ -137,6 +137,11 @@ func _ready() -> void:
 	_run_pact_accept_decline_logic_tests()
 	_run_relics_collected_stat_tests()
 	_run_wave_completion_bonus_math_tests()
+	_run_in_radius_tests()
+	_run_hero_pool_combat_kill_tests()
+	_run_format_damage_edge_tests()
+	_run_lucifer_execute_stat_tests()
+	_run_new_constants_validation_tests()
 
 	print("")
 	print("=== Results: %d/%d passed ===" % [_passed, _total])
@@ -3681,3 +3686,141 @@ func _run_wave_completion_bonus_math_tests() -> void:
 	# Verify formula: wave * BASE_PER_WAVE + round(SCALED_BASE * reward_scale(wave))
 	var expected_w1: int = 1 * Config.WAVE_BONUS_BASE_PER_WAVE + roundi(Config.WAVE_BONUS_SCALED_BASE * Config.reward_scale(1))
 	_assert_eq(float(bonus_w1), float(expected_w1), "Wave 1 bonus matches formula")
+
+# ═══════════════════════════════════════════════════════
+# IN_RADIUS HELPER TESTS
+# ═══════════════════════════════════════════════════════
+func _run_in_radius_tests() -> void:
+	print("[In Radius Helper]")
+
+	GM.reset_state()
+	# Place enemies at known positions
+	var e1 := GM.create_enemy("seraph_scout")
+	e1["x"] = 100.0; e1["y"] = 100.0
+	var e2 := GM.create_enemy("seraph_scout")
+	e2["x"] = 150.0; e2["y"] = 100.0
+	var e3 := GM.create_enemy("seraph_scout")
+	e3["x"] = 500.0; e3["y"] = 500.0
+	GM.enemies = [e1, e2, e3]
+
+	# Query centered on e1 with radius that includes e1 and e2 but not e3
+	var result := GM.in_radius(100.0, 100.0, 60.0)
+	_assert_eq(float(result.size()), 2.0, "in_radius finds 2 enemies within 60px of (100,100)")
+
+	# Query with tight radius should only find center enemy
+	var result2 := GM.in_radius(100.0, 100.0, 5.0)
+	_assert_eq(float(result2.size()), 1.0, "in_radius finds 1 enemy within 5px")
+
+	# Query far from any enemy
+	var result3 := GM.in_radius(700.0, 700.0, 50.0)
+	_assert_eq(float(result3.size()), 0.0, "in_radius finds 0 enemies far away")
+
+	# Dead enemies should not be included
+	e1["alive"] = false
+	var result4 := GM.in_radius(100.0, 100.0, 60.0)
+	_assert_eq(float(result4.size()), 1.0, "in_radius excludes dead enemies")
+
+# ═══════════════════════════════════════════════════════
+# HERO POOL COMBAT KILL INTEGRATION TESTS
+# ═══════════════════════════════════════════════════════
+func _run_hero_pool_combat_kill_tests() -> void:
+	print("[Hero Pool Combat Kill]")
+
+	GM.reset_state()
+	_assert_eq(float(GM.fallen_hero_pool), 0.0, "Hero pool starts at 0")
+
+	# Killing an enemy should increment the hero pool
+	var enemy := GM.create_enemy("seraph_scout")
+	enemy["x"] = 200.0; enemy["y"] = 200.0
+	GM.enemies.append(enemy)
+	GM.combat_kill(enemy, null)
+	_assert_eq(float(GM.fallen_hero_pool), 1.0, "Hero pool incremented by 1 after kill")
+
+	# Kill many enemies — pool should accumulate
+	GM.fallen_hero_pool = 0
+	GM.fallen_heroes_spawned = 0
+	for i in range(10):
+		var e := GM.create_enemy("seraph_scout")
+		e["x"] = 200.0; e["y"] = 200.0
+		GM.enemies.append(e)
+		GM.combat_kill(e, null)
+	_assert_eq(float(GM.fallen_hero_pool), 10.0, "Hero pool at 10 after 10 kills")
+
+	# Reaching threshold should spawn a hero and reduce pool
+	GM.fallen_hero_pool = Config.HERO_THRESHOLD_FIRST - 1
+	GM.fallen_heroes_spawned = 0
+	var e_trigger := GM.create_enemy("seraph_scout")
+	e_trigger["x"] = 200.0; e_trigger["y"] = 200.0
+	GM.enemies.append(e_trigger)
+	GM.combat_kill(e_trigger, null)
+	_assert_eq(float(GM.fallen_heroes_spawned), 1.0, "First fallen hero spawned at threshold")
+	_assert_lt(float(GM.fallen_hero_pool), float(Config.HERO_THRESHOLD_FIRST), "Pool reduced after hero spawn")
+
+# ═══════════════════════════════════════════════════════
+# FORMAT DAMAGE EDGE CASE TESTS
+# ═══════════════════════════════════════════════════════
+func _run_format_damage_edge_tests() -> void:
+	print("[Format Damage Edge Cases]")
+
+	# Zero damage
+	_assert_eq(GM.format_damage(0.0), "0", "format_damage(0) = '0'")
+
+	# Small values stay as integers
+	_assert_eq(GM.format_damage(1.0), "1", "format_damage(1) = '1'")
+	_assert_eq(GM.format_damage(999.0), "999", "format_damage(999) = '999'")
+
+	# 1000 threshold — switches to k suffix
+	var result_1000 := GM.format_damage(1000.0)
+	_assert(result_1000.ends_with("k"), "format_damage(1000) ends with 'k'")
+	_assert(result_1000.begins_with("1"), "format_damage(1000) starts with '1'")
+
+	# Large values
+	var result_5k := GM.format_damage(5000.0)
+	_assert(result_5k.ends_with("k"), "format_damage(5000) ends with 'k'")
+	_assert(result_5k.begins_with("5"), "format_damage(5000) starts with '5'")
+
+	# Fractional k values
+	var result_1500 := GM.format_damage(1500.0)
+	_assert(result_1500.ends_with("k"), "format_damage(1500) ends with 'k'")
+	_assert(result_1500.contains("1.5"), "format_damage(1500) contains '1.5'")
+
+# ═══════════════════════════════════════════════════════
+# LUCIFER EXECUTE STAT TESTS
+# ═══════════════════════════════════════════════════════
+func _run_lucifer_execute_stat_tests() -> void:
+	print("[Lucifer Execute Stat]")
+
+	GM.reset_state()
+	_assert_eq(float(GM.stats.get("lucifer_executes", -1)), 0.0, "lucifer_executes starts at 0")
+
+	# Simulate: enemy at exactly execute threshold — killed by lucifer
+	var lucifer := GM.create_tower("lucifer", 5, 5)
+	GM.towers.append(lucifer)
+	var enemy := GM.create_enemy("seraph_scout")
+	enemy["x"] = 200.0; enemy["y"] = 200.0
+	# Set HP to just at execute threshold
+	var threshold: float = Config.TOWER_DATA["lucifer"].get("execute_threshold", 0.15)
+	enemy["hp"] = enemy["max_hp"] * threshold * 0.5  # below threshold
+	GM.enemies.append(enemy)
+	GM.combat_kill(enemy, lucifer)
+	_assert_eq(float(GM.stats.get("lucifer_executes", 0)), 1.0, "lucifer_executes incremented on threshold kill")
+
+# ═══════════════════════════════════════════════════════
+# NEW CONSTANTS VALIDATION TESTS
+# ═══════════════════════════════════════════════════════
+func _run_new_constants_validation_tests() -> void:
+	print("[New Constants Validation]")
+
+	# Notification layout constants
+	_assert_gt(Config.NOTIFICATION_STACK_SPACING, 0.0, "NOTIFICATION_STACK_SPACING > 0")
+	_assert_gt(Config.NOTIFICATION_Y_OFFSET, 0.0, "NOTIFICATION_Y_OFFSET > 0")
+	_assert_near(Config.NOTIFICATION_STACK_SPACING, 20.0, 0.01, "NOTIFICATION_STACK_SPACING = 20")
+	_assert_near(Config.NOTIFICATION_Y_OFFSET, 65.0, 0.01, "NOTIFICATION_Y_OFFSET = 65")
+
+	# Dice result fade
+	_assert_gt(Config.DICE_RESULT_FADE_TIME, 0.0, "DICE_RESULT_FADE_TIME > 0")
+	_assert_lt(Config.DICE_RESULT_FADE_TIME, Config.DICE_RESULT_DISPLAY, "DICE_RESULT_FADE_TIME < display time")
+
+	# Lucifer spin
+	_assert_gt(Config.LUCIFER_SPIN_DURATION, 0.0, "LUCIFER_SPIN_DURATION > 0")
+	_assert_near(Config.LUCIFER_SPIN_DURATION, 0.3, 0.01, "LUCIFER_SPIN_DURATION = 0.3")

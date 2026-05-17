@@ -198,6 +198,14 @@ const DICE_RESULT_DISPLAY := 5.0         # seconds dice result stays on screen
 # Notification system
 const NOTIFICATION_MAX := 6              # max simultaneous notifications
 const NOTIFICATION_DURATION := 4.0       # seconds each notification lasts
+const NOTIFICATION_STACK_SPACING := 20.0 # vertical px between stacked notifications
+const NOTIFICATION_Y_OFFSET := 65.0      # starting y (below top bar)
+
+# Dice result overlay
+const DICE_RESULT_FADE_TIME := 0.8       # seconds over which dice overlay fades
+
+# Lucifer spin animation during pulse cast
+const LUCIFER_SPIN_DURATION := 0.3       # full 360° spin during fire_flash
 
 # Tower slow from legacy slow_power towers
 const SLOW_DEBUFF_DURATION := 2.0        # seconds slow lasts on enemy

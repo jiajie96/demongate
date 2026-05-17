@@ -127,7 +127,7 @@ func reset_state() -> void:
 	fast_enemy_waves = 0
 	fallen_hero_pool = 0
 	fallen_heroes_spawned = 0
-	stats = {"enemies_killed": 0, "towers_placed": 0, "towers_sold": 0, "total_sins_earned": 0, "total_damage_dealt": 0.0, "pacts_accepted": 0, "pacts_offered": 0, "fallen_heroes": 0, "waves_survived": 0, "boss_kills": 0, "total_core_damage": 0.0, "relics_collected": 0}
+	stats = {"enemies_killed": 0, "towers_placed": 0, "towers_sold": 0, "total_sins_earned": 0, "total_damage_dealt": 0.0, "pacts_accepted": 0, "pacts_offered": 0, "fallen_heroes": 0, "waves_survived": 0, "boss_kills": 0, "total_core_damage": 0.0, "relics_collected": 0, "lucifer_executes": 0}
 	occupied_tiles.clear()
 	notifications.clear()
 	game_time = 0.0
@@ -805,6 +805,14 @@ func combat_kill(enemy: Dictionary, tower) -> void:
 		tower["kill_count"] = tower.get("kill_count", 0) + 1
 	earn_from_kill(enemy["type"], tower != null and tower is Dictionary and tower.get("is_aoe", false))
 
+	# Feed the Fallen Hero pool — kills accumulate toward spawning allied heroes
+	add_to_hero_pool(1)
+
+	# Track Lucifer execute kills separately for stats display
+	if tower != null and tower is Dictionary and tower.get("type", "") == "lucifer":
+		if enemy.get("hp", 0.0) <= enemy.get("max_hp", 1.0) * Config.TOWER_DATA["lucifer"].get("execute_threshold", 0.0):
+			stats["lucifer_executes"] = stats.get("lucifer_executes", 0) + 1
+
 	if should_drop_relic(enemy["type"]):
 		drop_relic(enemy["x"], enemy["y"])
 
@@ -1261,11 +1269,13 @@ func drop_relic(rx: float, ry: float) -> void:
 			notify(Locale.tf("sins_gained", {"amount": amt}), Config.COLOR_NOTIFY_SINS)
 		"tower_buff":
 			var nearest = null
-			var best_dist := INF
+			var best_dist_sq := INF
 			for t in towers:
-				var d := sqrt((t["x"] - rx) * (t["x"] - rx) + (t["y"] - ry) * (t["y"] - ry))
-				if d < best_dist:
-					best_dist = d
+				var dx: float = t["x"] - rx
+				var dy: float = t["y"] - ry
+				var d2: float = dx * dx + dy * dy
+				if d2 < best_dist_sq:
+					best_dist_sq = d2
 					nearest = t
 			if nearest != null:
 				nearest["damage_mult"] += Config.TOWER_BLESSING_BUFF
