@@ -127,7 +127,7 @@ func reset_state() -> void:
 	fast_enemy_waves = 0
 	fallen_hero_pool = 0
 	fallen_heroes_spawned = 0
-	stats = {"enemies_killed": 0, "towers_placed": 0, "towers_sold": 0, "total_sins_earned": 0, "total_damage_dealt": 0.0, "pacts_accepted": 0, "pacts_offered": 0, "fallen_heroes": 0, "waves_survived": 0, "boss_kills": 0, "total_core_damage": 0.0, "relics_collected": 0, "lucifer_executes": 0}
+	stats = {"enemies_killed": 0, "towers_placed": 0, "towers_sold": 0, "total_sins_earned": 0, "total_damage_dealt": 0.0, "pacts_accepted": 0, "pacts_offered": 0, "fallen_heroes": 0, "waves_survived": 0, "boss_kills": 0, "total_core_damage": 0.0, "relics_collected": 0, "lucifer_executes": 0, "dice_rolls": 0}
 	occupied_tiles.clear()
 	notifications.clear()
 	game_time = 0.0
@@ -423,7 +423,7 @@ func _zeus_lightning(zeus: Dictionary) -> void:
 		t["is_disabled"] = true
 		t["disable_timer"] = Config.ZEUS_DISABLE_DURATION
 		# Lightning bolt from Zeus to tower
-		effects.append({"type": "zeus_bolt", "x": zx, "y": zy, "x2": t["x"], "y2": t["y"], "radius": 0, "color": Color(0.8, 0.9, 1.0), "timer": Config.FX_ZEUS_BOLT_DURATION})
+		effects.append({"type": "zeus_bolt", "x": zx, "y": zy, "x2": t["x"], "y2": t["y"], "radius": 0, "color": Config.COLOR_FX_ZEUS_BOLT, "timer": Config.FX_ZEUS_BOLT_DURATION})
 	if count > 0:
 		Audio.play_sfx("core_hit")
 
@@ -441,8 +441,8 @@ func _raphael_heal(raphael: Dictionary) -> void:
 	if best != null and best_missing > 0:
 		var heal: float = best["max_hp"] * Config.RAPHAEL_HEAL_PERCENT
 		best["hp"] = minf(best["hp"] + heal, best["max_hp"])
-		effects.append({"type": "heal_beam", "x": raphael["x"], "y": raphael["y"], "x2": best["x"], "y2": best["y"], "radius": 0, "color": Color(0.4, 1.0, 0.5), "timer": Config.FX_HEAL_BEAM_DURATION})
-		add_effect("heal_pulse", best["x"], best["y"], best.get("radius", 8.0), Color(0.4, 1.0, 0.5))
+		effects.append({"type": "heal_beam", "x": raphael["x"], "y": raphael["y"], "x2": best["x"], "y2": best["y"], "radius": 0, "color": Config.COLOR_FX_HEAL_BEAM, "timer": Config.FX_HEAL_BEAM_DURATION})
+		add_effect("heal_pulse", best["x"], best["y"], best.get("radius", 8.0), Config.COLOR_FX_HEAL_BEAM)
 
 func update_enemies(dt: float) -> void:
 	var path_px: Array[Vector2] = Config.path_pixels
@@ -595,14 +595,16 @@ func update_enemies(dt: float) -> void:
 		var target_pt: Vector2 = path_px[e["path_index"]]
 		var dx: float = target_pt.x - e["x"]
 		var dy: float = target_pt.y - e["y"]
-		var dist: float = sqrt(dx * dx + dy * dy)
+		var dist_sq: float = dx * dx + dy * dy
 		var move_dist: float = spd * dt
 
-		if dist <= move_dist:
+		if dist_sq <= move_dist * move_dist:
+			# Close enough to snap — skip sqrt
 			e["x"] = target_pt.x
 			e["y"] = target_pt.y
 			e["path_index"] += 1
 		else:
+			var dist: float = sqrt(dist_sq)
 			e["x"] += (dx / dist) * move_dist
 			e["y"] += (dy / dist) * move_dist
 
@@ -652,7 +654,7 @@ func update_projectiles(dt: float) -> void:
 			p["alive"] = false
 			if p["is_aoe"]:
 				combat_aoe(p["target_last_x"], p["target_last_y"], p["aoe_radius"], p["damage"], p["tower"])
-				add_effect("aoe", p["target_last_x"], p["target_last_y"], p["aoe_radius"], Color(1.0, 0.47, 0.12, 0.25))
+				add_effect("aoe", p["target_last_x"], p["target_last_y"], p["aoe_radius"], Config.COLOR_FX_AOE_SPLASH)
 			elif tgt != null and tgt is Dictionary and tgt.get("alive", false):
 				combat_hit(tgt, p["damage"], p["tower"])
 		else:
@@ -760,7 +762,7 @@ func combat_hit(enemy: Dictionary, base_dmg: float, tower) -> void:
 	# Hit spark + floating damage number — pick the effect flavor that matches
 	# the tower's fiction. Soul Reaper's scythe/spirit-bolt uses a ghostly
 	# green burst; every other tower falls back to the warm orange hit_spark.
-	var spark_col := Color(1, 0.7, 0.3)
+	var spark_col := Config.COLOR_FX_HIT_SPARK
 	var hit_fx := "hit_spark"
 	if tower != null and tower is Dictionary:
 		spark_col = tower.get("color", spark_col)
@@ -1008,7 +1010,7 @@ func _cocytus_cone(tower: Dictionary, dt: float) -> void:
 			"x": tower["x"], "y": tower["y"],
 			"x2": ex, "y2": ey,
 			"radius": 1.0,
-			"color": Color(0.6, 0.85, 1.0),
+			"color": Config.COLOR_FX_FROST_SPIKE,
 			"timer": 0.14,
 		})
 
@@ -1029,7 +1031,7 @@ func _apply_hades_buff(hades_tower: Dictionary) -> void:
 				"type": "hades_beam",
 				"x": hades_tower["x"], "y": hades_tower["y"],
 				"x2": t["x"], "y2": t["y"],
-				"radius": 0, "color": Color(0.7, 0.5, 1.0),
+				"radius": 0, "color": Config.COLOR_FX_HADES_BEAM,
 				"timer": Config.FX_HADES_BEAM_DURATION,
 			})
 
@@ -1049,7 +1051,7 @@ func _hades_damage(hades_tower: Dictionary) -> void:
 				"type": "hades_curse",
 				"x": hades_tower["x"], "y": hades_tower["y"],
 				"x2": e["x"], "y2": e["y"],
-				"radius": 0, "color": Color(1.0, 0.3, 0.45),
+				"radius": 0, "color": Config.COLOR_FX_HADES_CURSE,
 				"timer": Config.FX_HADES_CURSE_DURATION,
 			})
 
@@ -1201,6 +1203,7 @@ func roll_dice() -> Dictionary:
 	if dice_uses_left <= 0 or not wave_active:
 		return {}
 	dice_uses_left -= 1
+	stats["dice_rolls"] = stats.get("dice_rolls", 0) + 1
 
 	var d1: int = randi() % 6 + 1
 	var total: int = d1
@@ -1220,10 +1223,10 @@ func roll_dice() -> Dictionary:
 			_apply_speed_buff(Config.DICE_SURGE_SPEED, Config.DICE_SURGE_DURATION)
 		"aoe_25":
 			_damage_all_percent(0.25, Config.DICE_AOE_FLASH_25)
-			add_effect("screen_flash", 0, 0, 0, Color(1.0, 0.4, 0.0))
+			add_effect("screen_flash", 0, 0, 0, Config.COLOR_FX_SCREEN_FLASH_STRONG)
 		"aoe_10":
 			_damage_all_percent(0.10, Config.DICE_AOE_FLASH_10)
-			add_effect("screen_flash", 0, 0, 0, Color(1.0, 0.6, 0.2))
+			add_effect("screen_flash", 0, 0, 0, Config.COLOR_FX_SCREEN_FLASH_WEAK)
 		"speed_boost":
 			_apply_speed_buff(Config.DICE_SPEED_BOOST, Config.DICE_SPEED_BOOST_DURATION)
 		"bonus_sins":
@@ -1262,7 +1265,7 @@ func drop_relic(rx: float, ry: float) -> void:
 		"aoe":
 			var relic_dmg: float = Config.RELIC_AOE_BASE_DAMAGE * (1.0 + Config.RELIC_AOE_SCALE_PER_WAVE * wave)
 			combat_aoe(rx, ry, Config.RELIC_AOE_RADIUS, relic_dmg, null)
-			add_effect("aoe", rx, ry, Config.RELIC_AOE_RADIUS, Color(1.0, 0.47, 0.12, 0.25))
+			add_effect("aoe", rx, ry, Config.RELIC_AOE_RADIUS, Config.COLOR_FX_AOE_SPLASH)
 		"random_sins":
 			var amt: int = Config.SIN_CACHE_MIN + randi() % Config.SIN_CACHE_RANGE
 			earn(amt)
@@ -1431,6 +1434,9 @@ func add_effect(type: String, ex: float, ey: float, radius: float = 10.0, color:
 		"hades_wave": duration = Config.FX_HADES_WAVE_DURATION
 		"relic": duration = Config.FX_RELIC_DURATION
 		"aoe": duration = Config.FX_AOE_DURATION
+		"heal_pulse": duration = Config.FX_HEAL_PULSE_DURATION
+		"core_hit": duration = Config.FX_DEATH_DURATION
+		"screen_flash": duration = Config.FX_SCREEN_FLASH_DURATION
 		_: duration = Config.FX_DEATH_DURATION
 	effects.append({"type": type, "x": ex, "y": ey, "radius": radius, "color": color, "timer": duration})
 
@@ -1502,6 +1508,12 @@ func format_damage(value: float) -> String:
 	if value >= 1000.0:
 		return str(snappedf(value / 1000.0, 0.1)) + "k"
 	return str(roundi(value))
+
+## Format kill counts with "k" suffix for compact display.
+func format_kills(value: int) -> String:
+	if value >= 1000:
+		return str(snappedf(float(value) / 1000.0, 0.1)) + "k"
+	return str(value)
 
 # ═══════════════════════════════════════════════════════
 # UTILITY

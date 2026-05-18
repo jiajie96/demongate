@@ -269,6 +269,23 @@ const PANDORA_SINS_REWARD := 100        # "Pandora grants N Sins!"
 # Special enemy types — used for spawn ordering and relic drop rates
 const SPECIAL_ENEMY_TYPES := ["archangel_marshal", "holy_sentinel", "archangel_michael", "zeus", "archangel_raphael"]
 
+# Effect colors — inline Color literals extracted for consistency & tuning
+const COLOR_FX_ZEUS_BOLT := Color(0.8, 0.9, 1.0)        # Zeus lightning bolt visual
+const COLOR_FX_HEAL_BEAM := Color(0.4, 1.0, 0.5)        # Raphael heal beam/pulse
+const COLOR_FX_HADES_BEAM := Color(0.7, 0.5, 1.0)       # Hades buff beam to towers
+const COLOR_FX_HADES_CURSE := Color(1.0, 0.3, 0.45)     # Hades damage curse to enemies
+const COLOR_FX_FROST_SPIKE := Color(0.6, 0.85, 1.0)     # Cocytus frost spike particle
+const COLOR_FX_HIT_SPARK := Color(1.0, 0.7, 0.3)        # Default hit spark fallback
+const COLOR_FX_AOE_SPLASH := Color(1.0, 0.47, 0.12, 0.25)  # AoE impact ring
+const COLOR_FX_SCREEN_FLASH_STRONG := Color(1.0, 0.4, 0.0)  # Hellstorm 25% dice flash
+const COLOR_FX_SCREEN_FLASH_WEAK := Color(1.0, 0.6, 0.2)    # Small Spark 10% dice flash
+
+# Heal pulse visual — brief green ring on healed enemy
+const FX_HEAL_PULSE_DURATION := 0.3    # seconds
+
+# Screen flash — full-screen color overlay from dice AoE effects
+const FX_SCREEN_FLASH_DURATION := 0.3  # seconds
+
 
 # ═══════════════════════════════════════════════════════
 # NOTIFICATION COLORS — semantic colors for game event messages
@@ -562,6 +579,17 @@ var path_pixels: Array[Vector2] = []
 
 func _ready() -> void:
 	_init_path()
+	_validate_wave_data()
+
+## Assert that every enemy type referenced in WAVE_DATA exists in ENEMY_DATA.
+## Catches typos at load time rather than mid-game.
+func _validate_wave_data() -> void:
+	for i in range(WAVE_DATA.size()):
+		var wave_def: Dictionary = WAVE_DATA[i]
+		for entry in wave_def["enemies"]:
+			var etype: String = entry["type"]
+			if not ENEMY_DATA.has(etype):
+				push_error("WAVE_DATA[%d] references unknown enemy type: %s" % [i, etype])
 
 func _init_path() -> void:
 	path_set.clear()
@@ -621,4 +649,11 @@ func total_tower_damage(tower_list: Array) -> float:
 	var total := 0.0
 	for t in tower_list:
 		total += t.get("total_damage", 0.0)
+	return total
+
+## Sum total kills across all towers (useful for stats display).
+func total_tower_kills(tower_list: Array) -> int:
+	var total := 0
+	for t in tower_list:
+		total += t.get("kill_count", 0)
 	return total

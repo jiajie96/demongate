@@ -142,6 +142,13 @@ func _ready() -> void:
 	_run_format_damage_edge_tests()
 	_run_lucifer_execute_stat_tests()
 	_run_new_constants_validation_tests()
+	_run_fx_color_constants_tests()
+	_run_dice_rolls_stat_tests()
+	_run_heal_pulse_duration_tests()
+	_run_total_tower_kills_tests()
+	_run_format_kills_tests()
+	_run_screen_flash_duration_tests()
+	_run_wave_data_enemy_types_tests()
 
 	print("")
 	print("=== Results: %d/%d passed ===" % [_passed, _total])
@@ -3824,3 +3831,168 @@ func _run_new_constants_validation_tests() -> void:
 	# Lucifer spin
 	_assert_gt(Config.LUCIFER_SPIN_DURATION, 0.0, "LUCIFER_SPIN_DURATION > 0")
 	_assert_near(Config.LUCIFER_SPIN_DURATION, 0.3, 0.01, "LUCIFER_SPIN_DURATION = 0.3")
+
+# ═══════════════════════════════════════════════════════
+# FX COLOR CONSTANTS TESTS
+# ═══════════════════════════════════════════════════════
+func _run_fx_color_constants_tests() -> void:
+	print("[FX Color Constants]")
+
+	# Verify all extracted FX colors exist and have sane values
+	_assert_gt(Config.COLOR_FX_ZEUS_BOLT.r, 0.0, "COLOR_FX_ZEUS_BOLT has red > 0")
+	_assert_gt(Config.COLOR_FX_ZEUS_BOLT.b, 0.0, "COLOR_FX_ZEUS_BOLT has blue > 0")
+	_assert_near(Config.COLOR_FX_ZEUS_BOLT.a, 1.0, 0.01, "COLOR_FX_ZEUS_BOLT is fully opaque")
+
+	_assert_gt(Config.COLOR_FX_HEAL_BEAM.g, 0.5, "COLOR_FX_HEAL_BEAM is greenish")
+	_assert_near(Config.COLOR_FX_HEAL_BEAM.a, 1.0, 0.01, "COLOR_FX_HEAL_BEAM is fully opaque")
+
+	_assert_gt(Config.COLOR_FX_HADES_BEAM.b, 0.5, "COLOR_FX_HADES_BEAM is bluish/purple")
+	_assert_gt(Config.COLOR_FX_HADES_CURSE.r, 0.5, "COLOR_FX_HADES_CURSE is reddish")
+
+	_assert_gt(Config.COLOR_FX_FROST_SPIKE.b, 0.5, "COLOR_FX_FROST_SPIKE is blue-ish")
+	_assert_near(Config.COLOR_FX_FROST_SPIKE.a, 1.0, 0.01, "COLOR_FX_FROST_SPIKE is fully opaque")
+
+	_assert_gt(Config.COLOR_FX_HIT_SPARK.r, 0.5, "COLOR_FX_HIT_SPARK is warm-toned")
+	_assert_gt(Config.COLOR_FX_HIT_SPARK.g, 0.3, "COLOR_FX_HIT_SPARK has green component")
+
+	# AoE splash has alpha < 1 for transparency overlay
+	_assert_lt(Config.COLOR_FX_AOE_SPLASH.a, 1.0, "COLOR_FX_AOE_SPLASH is semi-transparent")
+	_assert_gt(Config.COLOR_FX_AOE_SPLASH.r, 0.5, "COLOR_FX_AOE_SPLASH is warm-colored")
+
+	# Screen flash colors should be opaque and distinct
+	_assert_gt(Config.COLOR_FX_SCREEN_FLASH_STRONG.r, 0.5, "SCREEN_FLASH_STRONG is red/orange")
+	_assert_gt(Config.COLOR_FX_SCREEN_FLASH_WEAK.r, 0.5, "SCREEN_FLASH_WEAK is warm")
+	_assert_gt(Config.COLOR_FX_SCREEN_FLASH_WEAK.g, Config.COLOR_FX_SCREEN_FLASH_STRONG.g, "SCREEN_FLASH_WEAK is lighter than STRONG")
+
+# ═══════════════════════════════════════════════════════
+# DICE ROLLS STAT TESTS
+# ═══════════════════════════════════════════════════════
+func _run_dice_rolls_stat_tests() -> void:
+	print("[Dice Rolls Stat]")
+
+	GM.reset_state()
+	_assert_eq(float(GM.stats.get("dice_rolls", -1)), 0.0, "dice_rolls starts at 0 in stats")
+
+	# Roll dice — should increment stat
+	GM.wave = 1
+	GM.wave_active = true
+	GM.dice_uses_left = 2
+	GM.roll_dice()
+	_assert_eq(float(GM.stats.get("dice_rolls", 0)), 1.0, "dice_rolls incremented after first roll")
+
+	GM.roll_dice()
+	_assert_eq(float(GM.stats.get("dice_rolls", 0)), 2.0, "dice_rolls incremented after second roll")
+
+	# No more uses — roll should fail and NOT increment
+	var result := GM.roll_dice()
+	_assert(result.is_empty(), "roll_dice returns empty when no uses left")
+	_assert_eq(float(GM.stats.get("dice_rolls", 0)), 2.0, "dice_rolls NOT incremented when no uses left")
+
+# ═══════════════════════════════════════════════════════
+# HEAL PULSE DURATION TESTS
+# ═══════════════════════════════════════════════════════
+func _run_heal_pulse_duration_tests() -> void:
+	print("[Heal Pulse Duration]")
+
+	_assert_gt(Config.FX_HEAL_PULSE_DURATION, 0.0, "FX_HEAL_PULSE_DURATION > 0")
+	_assert_near(Config.FX_HEAL_PULSE_DURATION, 0.3, 0.01, "FX_HEAL_PULSE_DURATION = 0.3")
+
+	# Verify heal_pulse uses its own duration via add_effect
+	GM.reset_state()
+	GM.add_effect("heal_pulse", 100.0, 100.0, 8.0, Config.COLOR_FX_HEAL_BEAM)
+	_assert_eq(float(GM.effects.size()), 1.0, "heal_pulse effect created")
+	_assert_near(GM.effects[0]["timer"], Config.FX_HEAL_PULSE_DURATION, 0.01, "heal_pulse uses FX_HEAL_PULSE_DURATION not default")
+
+	# Verify it is NOT equal to death duration (the old fallback)
+	# Only meaningful if they differ
+	if not is_equal_approx(Config.FX_HEAL_PULSE_DURATION, Config.FX_DEATH_DURATION):
+		_assert(not is_equal_approx(GM.effects[0]["timer"], Config.FX_DEATH_DURATION), "heal_pulse does NOT use death duration")
+
+# ═══════════════════════════════════════════════════════
+# TOTAL TOWER KILLS HELPER TESTS
+# ═══════════════════════════════════════════════════════
+func _run_total_tower_kills_tests() -> void:
+	print("[Total Tower Kills Helper]")
+
+	# Empty tower list
+	_assert_eq(float(Config.total_tower_kills([])), 0.0, "total_tower_kills([]) = 0")
+
+	# Single tower with kills
+	var t1 := {"kill_count": 15}
+	_assert_eq(float(Config.total_tower_kills([t1])), 15.0, "total_tower_kills with 1 tower")
+
+	# Multiple towers
+	var t2 := {"kill_count": 7}
+	var t3 := {"kill_count": 23}
+	_assert_eq(float(Config.total_tower_kills([t1, t2, t3])), 45.0, "total_tower_kills sums all")
+
+	# Tower without kill_count key (uses default 0)
+	var t4 := {"damage": 5.0}
+	_assert_eq(float(Config.total_tower_kills([t4])), 0.0, "total_tower_kills handles missing kill_count")
+
+# ═══════════════════════════════════════════════════════
+# FORMAT KILLS TESTS
+# ═══════════════════════════════════════════════════════
+func _run_format_kills_tests() -> void:
+	print("[Format Kills]")
+
+	_assert_eq(GM.format_kills(0), "0", "format_kills(0) = '0'")
+	_assert_eq(GM.format_kills(42), "42", "format_kills(42) = '42'")
+	_assert_eq(GM.format_kills(999), "999", "format_kills(999) = '999'")
+
+	# 1000+ gets k suffix
+	var result_1k := GM.format_kills(1000)
+	_assert(result_1k.ends_with("k"), "format_kills(1000) ends with 'k'")
+	_assert(result_1k.begins_with("1"), "format_kills(1000) starts with '1'")
+
+	var result_2500 := GM.format_kills(2500)
+	_assert(result_2500.ends_with("k"), "format_kills(2500) ends with 'k'")
+	_assert(result_2500.contains("2.5"), "format_kills(2500) contains '2.5'")
+
+	# Large value
+	var result_10k := GM.format_kills(10000)
+	_assert(result_10k.ends_with("k"), "format_kills(10000) ends with 'k'")
+
+# ═══════════════════════════════════════════════════════
+# SCREEN FLASH DURATION TESTS
+# ═══════════════════════════════════════════════════════
+func _run_screen_flash_duration_tests() -> void:
+	print("[Screen Flash Duration]")
+
+	_assert_gt(Config.FX_SCREEN_FLASH_DURATION, 0.0, "FX_SCREEN_FLASH_DURATION > 0")
+	_assert_near(Config.FX_SCREEN_FLASH_DURATION, 0.3, 0.01, "FX_SCREEN_FLASH_DURATION = 0.3")
+
+	# Verify screen_flash uses its own duration
+	GM.reset_state()
+	GM.add_effect("screen_flash", 0.0, 0.0, 0.0, Config.COLOR_FX_SCREEN_FLASH_STRONG)
+	_assert_eq(float(GM.effects.size()), 1.0, "screen_flash effect created")
+	_assert_near(GM.effects[0]["timer"], Config.FX_SCREEN_FLASH_DURATION, 0.01, "screen_flash uses FX_SCREEN_FLASH_DURATION")
+
+# ═══════════════════════════════════════════════════════
+# WAVE DATA ENEMY TYPES VALIDATION TESTS
+# ═══════════════════════════════════════════════════════
+func _run_wave_data_enemy_types_tests() -> void:
+	print("[Wave Data Enemy Types Validation]")
+
+	# Every enemy type referenced in WAVE_DATA must exist in ENEMY_DATA
+	var all_valid := true
+	var bad_types: Array = []
+	for i in range(Config.WAVE_DATA.size()):
+		var wave_def: Dictionary = Config.WAVE_DATA[i]
+		for entry in wave_def["enemies"]:
+			var etype: String = entry["type"]
+			if not Config.ENEMY_DATA.has(etype):
+				all_valid = false
+				bad_types.append("wave %d: %s" % [i + 1, etype])
+	_assert(all_valid, "All WAVE_DATA enemy types exist in ENEMY_DATA")
+
+	# Every enemy in ENEMY_DATA should appear in at least one wave
+	var used_types: Dictionary = {}
+	for wave_def in Config.WAVE_DATA:
+		for entry in wave_def["enemies"]:
+			used_types[entry["type"]] = true
+	for etype in Config.ENEMY_DATA:
+		_assert(used_types.has(etype), "Enemy type '%s' appears in at least one wave" % etype)
+
+	# Wave count matches MAX_WAVES
+	_assert_eq(float(Config.WAVE_DATA.size()), float(Config.MAX_WAVES), "WAVE_DATA.size() == MAX_WAVES")
