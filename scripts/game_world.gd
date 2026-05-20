@@ -262,12 +262,12 @@ func _draw_map() -> void:
 	_draw_hell_maw(cx, cy)
 
 	# Core HP bar on map
-	var bar_w: float = 40.0
-	var bar_h: float = 3.0
+	var bar_w: float = Config.CORE_HP_BAR_W
+	var bar_h: float = Config.CORE_HP_BAR_H
 	var hp_ratio: float = GM.core_hp / GM.core_max_hp
-	var bar_y: float = cy + 20
+	var bar_y: float = cy + Config.CORE_HP_BAR_OFFSET_Y
 	draw_rect(Rect2(cx - bar_w / 2, bar_y, bar_w, bar_h), Config.COLOR_HEALTH_BG)
-	var hp_color := Config.COLOR_HEALTH_HP if hp_ratio > 0.3 else Config.COLOR_HEALTH_LOW
+	var hp_color := Config.COLOR_HEALTH_HP if hp_ratio > Config.HEALTH_BAR_LOW_THRESHOLD else Config.COLOR_HEALTH_LOW
 	draw_rect(Rect2(cx - bar_w / 2, bar_y, bar_w * hp_ratio, bar_h), hp_color)
 
 func _draw_heaven_herald(sx: float, sy: float) -> void:
@@ -280,7 +280,7 @@ func _draw_heaven_herald(sx: float, sy: float) -> void:
 	# Center the sprite slightly south of spawn so wings poke up above the
 	# spawn tile and the figure aligns with the path entry point.
 	var center := Vector2(sx, sy + 9)
-	var size: float = 46.0
+	var size: float = Config.DRAW_HERALD_SIZE
 	var half: float = size * 0.5
 
 	# Soft golden divine aura behind the herald
@@ -322,7 +322,7 @@ func _draw_hell_maw(cx: float, cy: float) -> void:
 	var gt := GM.game_time
 
 	# Sprite — dark purple-black tint; rotated so mouth faces north
-	var size: float = 54.0
+	var size: float = Config.DRAW_HELL_MAW_SIZE
 	var half: float = size * 0.5
 	draw_set_transform(Vector2(cx, cy), -PI * 0.5, Vector2.ONE)
 	draw_texture_rect(TEX_DEMON_MAW, Rect2(-half, -half + 1.0, size, size),
@@ -344,16 +344,18 @@ func _draw_hell_maw(cx: float, cy: float) -> void:
 
 func _draw_ambient() -> void:
 	var t := GM.game_time
+	var heaven_h: float = float(4 * T)  # cached height of heaven zone
+	var inv_heaven_h: float = 1.0 / heaven_h  # precompute reciprocal for fades
 	# Heaven zone (top rows 0-3): bright golden light shafts and sparkles
-	for li in range(4):
+	for li in range(Config.DRAW_HEAVEN_SHAFT_COUNT):
 		var lx: float = 80.0 + float(li) * 180.0 + sin(t * 0.3 + float(li)) * 30.0
 		var shaft_a: float = 0.045 + 0.022 * sin(t * 0.8 + float(li) * 1.5)
 		# Vertical light shaft from top, fading downward
-		for sy in range(0, 4 * T, 4):
-			var fade: float = 1.0 - float(sy) / float(4 * T)
+		for sy in range(0, int(heaven_h), 4):
+			var fade: float = 1.0 - float(sy) * inv_heaven_h
 			draw_line(Vector2(lx, sy), Vector2(lx, sy + 4), Color(1.0, 0.95, 0.8, shaft_a * fade), 3.0)
 	# Sparkle particles in heaven zone
-	for si in range(12):
+	for si in range(Config.DRAW_HEAVEN_SPARKLE_COUNT):
 		var seed_val: float = float(si) * 73.37
 		var sx: float = fmod(seed_val * 47.1 + t * 8.0, Config.GAME_WIDTH)
 		var sy: float = fmod(seed_val * 31.7 + t * 3.0, float(3 * T))
@@ -367,7 +369,7 @@ func _draw_ambient() -> void:
 	draw_rect(Rect2(0, float(10 * T), Config.GAME_WIDTH, float(2 * T)), Color(1, 0.2, 0.0, fire_glow_a))
 	draw_rect(Rect2(0, float(11 * T), Config.GAME_WIDTH, float(T)), Color(1, 0.15, 0.0, fire_glow_a * 1.4))
 	# Rising ember particles — sparse, low alpha
-	for ei in range(7):
+	for ei in range(Config.DRAW_HELL_EMBER_COUNT):
 		var seed_val: float = float(ei) * 53.91
 		var ex: float = fmod(seed_val * 41.3, Config.GAME_WIDTH)
 		var ey_cycle: float = fmod(seed_val * 17.7 + t * (15.0 + fmod(seed_val, 10.0)), float(4 * T))
@@ -384,7 +386,7 @@ func _draw_foreground_particles() -> void:
 	# Foreground depth layer — larger, softer particles that drift in front of entities
 
 	# Heaven zone: drifting light motes — brighter
-	for i in range(8):
+	for i in range(Config.DRAW_HEAVEN_MOTE_COUNT):
 		var seed_f: float = float(i) * 97.13
 		var fx: float = fmod(seed_f * 37.7 + t * 6.0, float(Config.GAME_WIDTH + 40)) - 20.0
 		var fy: float = fmod(seed_f * 23.1 + t * 2.5, float(4 * T))
@@ -396,7 +398,7 @@ func _draw_foreground_particles() -> void:
 
 	# Hell zone: floating ash and cinder — sparse, muted
 	var hell_top_y: float = float(8 * T)
-	for i in range(5):
+	for i in range(Config.DRAW_HELL_ASH_COUNT):
 		var seed_f: float = float(i) * 61.47
 		var fx: float = fmod(seed_f * 29.3, float(Config.GAME_WIDTH))
 		fx += sin(t * 0.5 + seed_f) * 12.0
@@ -409,7 +411,7 @@ func _draw_foreground_particles() -> void:
 			draw_circle(Vector2(fx, fy), ash_r, Color(1.0, 0.45, 0.18, ash_a))
 
 	# Mid-zone: universal dust motes — slightly more visible
-	for i in range(6):
+	for i in range(Config.DRAW_DUST_MOTE_COUNT):
 		var seed_f: float = float(i) * 113.79
 		var fx: float = fmod(seed_f * 43.1 + t * 4.0, float(Config.GAME_WIDTH + 20)) - 10.0
 		var fy: float = fmod(seed_f * 67.3 + t * 1.2, float(Config.GAME_HEIGHT))
@@ -424,7 +426,7 @@ func _draw_path_flow() -> void:
 	var path_len: int = path_px.size()
 
 	# Multiple glowing dots flowing along the path from spawn toward core
-	var num_dots: int = 6
+	var num_dots: int = Config.DRAW_PATH_FLOW_DOTS
 	for di in range(num_dots):
 		# Each dot has a unique phase cycling through the path
 		var speed: float = 0.06 + fmod(float(di) * 0.37, 0.03)
@@ -454,7 +456,7 @@ func _tile_hash(c: int, r: int) -> int:
 func _draw_ground_tile(rx: float, ry: float, c: int, r: int) -> void:
 	var h := _tile_hash(c, r)
 	var g := _row_gradient(r)  # 0.0 = heaven, 1.0 = hell
-	var WALL_H := 10  # visible wall height for isometric depth
+	var WALL_H: int = Config.DRAW_WALL_HEIGHT  # visible wall height for isometric depth
 
 	# Base color blended by gradient: cool blue-silver (heaven) → warm crimson (hell)
 	var v := float(h % 30 - 15) * 0.002
@@ -903,19 +905,19 @@ func _draw_enemies() -> void:
 
 		# Health bar (only when damaged)
 		if e["hp"] < e["max_hp"]:
-			var bar_w: float = er * 2 + 4
-			var bar_h: float = 3.0
+			var bar_w: float = er * 2 + Config.ENEMY_HP_BAR_PADDING
+			var bar_h: float = Config.ENEMY_HP_BAR_H
 			var bar_x: float = ex - bar_w / 2
-			var bar_y: float = ey - er - 8
+			var bar_y: float = ey - er - Config.ENEMY_HP_BAR_OFFSET_Y
 			var hp_ratio: float = e["hp"] / e["max_hp"]
 
 			draw_rect(Rect2(bar_x, bar_y, bar_w, bar_h), Config.COLOR_HEALTH_BG)
-			var hp_col := Config.COLOR_HEALTH_HP if hp_ratio > 0.3 else Config.COLOR_HEALTH_LOW
+			var hp_col := Config.COLOR_HEALTH_HP if hp_ratio > Config.HEALTH_BAR_LOW_THRESHOLD else Config.COLOR_HEALTH_LOW
 			draw_rect(Rect2(bar_x, bar_y, bar_w * hp_ratio, bar_h), hp_col)
 
 			# HP number
 			var hp_text := str(roundi(e["hp"]))
-			draw_string(font, Vector2(ex - 12, bar_y - 2), hp_text, HORIZONTAL_ALIGNMENT_CENTER, 24, 8, Color(1, 1, 1, 0.7))
+			draw_string(font, Vector2(ex - 12, bar_y - 2), hp_text, HORIZONTAL_ALIGNMENT_CENTER, 24, Config.ENEMY_HP_LABEL_FONT, Color(1, 1, 1, 0.7))
 
 # ═══════════════════════════════════════════════════════
 # PROJECTILES

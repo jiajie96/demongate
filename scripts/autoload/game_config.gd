@@ -201,6 +201,40 @@ const NOTIFICATION_DURATION := 4.0       # seconds each notification lasts
 const NOTIFICATION_STACK_SPACING := 20.0 # vertical px between stacked notifications
 const NOTIFICATION_Y_OFFSET := 65.0      # starting y (below top bar)
 
+# Drawing / visual layout constants — extracted from game_world.gd inline values
+const DRAW_HELL_MAW_SIZE := 54.0         # pixel size of demon maw sprite
+const DRAW_HERALD_SIZE := 46.0           # pixel size of heaven herald sprite
+const DRAW_WALL_HEIGHT := 10             # isometric wall face height in pixels
+const DRAW_PATH_FLOW_DOTS := 6           # number of flowing dots along the path
+const DRAW_HEAVEN_SPARKLE_COUNT := 12    # sparkle particles in heaven zone
+const DRAW_HELL_EMBER_COUNT := 7         # rising ember particles in hell zone
+const DRAW_HEAVEN_MOTE_COUNT := 8        # foreground light motes in heaven
+const DRAW_HELL_ASH_COUNT := 5           # foreground ash particles in hell
+const DRAW_DUST_MOTE_COUNT := 6          # universal dust motes across map
+const DRAW_HEAVEN_SHAFT_COUNT := 4       # vertical light shafts in heaven zone
+
+# HUD font sizes — consistent typography scale across all UI elements
+const HUD_FONT_TITLE := 24              # overlay titles (game over, victory, settings)
+const HUD_FONT_SUBTITLE := 20           # sub-titles (Pandora, Pact)
+const HUD_FONT_LARGE := 18              # sins display, settings title, menu button
+const HUD_FONT_WAVE := 14               # wave progress label
+const HUD_FONT_SECTION := 13            # section headers (TOWERS)
+const HUD_FONT_BODY := 12               # stats, descriptions, labels
+const HUD_FONT_SMALL := 11              # HP label, wave desc, tower button text
+const HUD_FONT_TINY := 10               # speed buttons, map labels
+
+# HUD overlay panel dimensions — standard sizes for popup/overlay panels
+const OVERLAY_MENU_W := 400.0            # main menu panel
+const OVERLAY_MENU_H := 340.0
+const OVERLAY_RESULT_W := 400.0          # game over / victory panels
+const OVERLAY_RESULT_H := 250.0
+const OVERLAY_PANDORA_W := 420.0         # Pandora choice panel
+const OVERLAY_PANDORA_H := 220.0
+const OVERLAY_PACT_W := 440.0            # Demonic Pact panel
+const OVERLAY_PACT_H := 220.0
+const OVERLAY_SETTINGS_W := 360.0        # settings panel
+const OVERLAY_SETTINGS_H := 440.0
+
 # Dice result overlay
 const DICE_RESULT_FADE_TIME := 0.8       # seconds over which dice overlay fades
 
@@ -225,6 +259,16 @@ const FX_HADES_CURSE_DURATION := 0.5     # damage curse visual
 
 # Core hit visual effect radius
 const FX_CORE_HIT_RADIUS := 10.0         # pixel radius of core damage burst
+
+# HP bar drawing — shared by core HP bar and per-enemy HP bar
+const HEALTH_BAR_LOW_THRESHOLD := 0.3    # below this ratio, bar turns red
+const CORE_HP_BAR_W := 40.0              # pixel width of core HP bar on map
+const CORE_HP_BAR_H := 3.0               # pixel height of core HP bar
+const CORE_HP_BAR_OFFSET_Y := 20.0       # pixels below core center
+const ENEMY_HP_BAR_H := 3.0              # pixel height of enemy HP bar
+const ENEMY_HP_BAR_OFFSET_Y := 8.0       # pixels above enemy radius
+const ENEMY_HP_BAR_PADDING := 4.0        # extra width beyond enemy diameter
+const ENEMY_HP_LABEL_FONT := 8           # font size for HP text above bar
 
 # Game over shake parameters
 const GAMEOVER_SHAKE_INTENSITY := 8.0

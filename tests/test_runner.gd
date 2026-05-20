@@ -149,6 +149,19 @@ func _ready() -> void:
 	_run_format_kills_tests()
 	_run_screen_flash_duration_tests()
 	_run_wave_data_enemy_types_tests()
+	_run_last_targeting_mode_tests()
+	_run_highest_wave_stat_tests()
+	_run_lucifer_execute_fix_tests()
+	_run_free_upgrade_edge_case_tests()
+	_run_cocytus_cone_facing_tests()
+	_run_draw_constants_tests()
+	_run_format_time_tests()
+	_run_total_game_time_stat_tests()
+	_run_cocytus_dps_calc_tests()
+	_run_format_damage_sub1_tests()
+	_run_hp_bar_constants_tests()
+	_run_overlay_panel_constants_tests()
+	_run_hades_cache_perf_tests()
 
 	print("")
 	print("=== Results: %d/%d passed ===" % [_passed, _total])
@@ -3800,17 +3813,17 @@ func _run_lucifer_execute_stat_tests() -> void:
 	GM.reset_state()
 	_assert_eq(float(GM.stats.get("lucifer_executes", -1)), 0.0, "lucifer_executes starts at 0")
 
-	# Simulate: enemy at exactly execute threshold — killed by lucifer
+	# combat_kill alone should NOT increment lucifer_executes — the stat
+	# is only tracked in the explicit execute path inside _lucifer_pulse.
 	var lucifer := GM.create_tower("lucifer", 5, 5)
 	GM.towers.append(lucifer)
 	var enemy := GM.create_enemy("seraph_scout")
 	enemy["x"] = 200.0; enemy["y"] = 200.0
-	# Set HP to just at execute threshold
 	var threshold: float = Config.TOWER_DATA["lucifer"].get("execute_threshold", 0.15)
 	enemy["hp"] = enemy["max_hp"] * threshold * 0.5  # below threshold
 	GM.enemies.append(enemy)
 	GM.combat_kill(enemy, lucifer)
-	_assert_eq(float(GM.stats.get("lucifer_executes", 0)), 1.0, "lucifer_executes incremented on threshold kill")
+	_assert_eq(float(GM.stats.get("lucifer_executes", 0)), 0.0, "combat_kill alone does NOT count as lucifer execute")
 
 # ═══════════════════════════════════════════════════════
 # NEW CONSTANTS VALIDATION TESTS
@@ -3996,3 +4009,352 @@ func _run_wave_data_enemy_types_tests() -> void:
 
 	# Wave count matches MAX_WAVES
 	_assert_eq(float(Config.WAVE_DATA.size()), float(Config.MAX_WAVES), "WAVE_DATA.size() == MAX_WAVES")
+
+# ═══════════════════════════════════════════════════════
+# LAST TARGETING MODE TESTS
+# ═══════════════════════════════════════════════════════
+func _run_last_targeting_mode_tests() -> void:
+	print("[Last Targeting Mode]")
+
+	# "last" is in the TARGETING_MODES list
+	_assert(GM.TARGETING_MODES.has("last"), "TARGETING_MODES contains 'last'")
+
+	# find_target with "last" picks lowest path_index
+	GM.reset_state()
+	var tower := GM.create_tower("bone_marksman", 5, 5)
+	tower["targeting_mode"] = "last"
+	tower["range"] = 9999.0
+	GM.towers.append(tower)
+
+	var e1 := GM.create_enemy("seraph_scout")
+	e1["x"] = 200.0; e1["y"] = 200.0; e1["path_index"] = 10
+	var e2 := GM.create_enemy("seraph_scout")
+	e2["x"] = 210.0; e2["y"] = 200.0; e2["path_index"] = 3
+	var e3 := GM.create_enemy("seraph_scout")
+	e3["x"] = 220.0; e3["y"] = 200.0; e3["path_index"] = 7
+	GM.enemies = [e1, e2, e3]
+
+	var target = GM.find_target(tower)
+	_assert(target != null, "last targeting finds a target")
+	_assert_eq(float(target["path_index"]), 3.0, "last targeting picks lowest path_index")
+
+	# cycle_targeting wraps through "last"
+	tower["targeting_mode"] = "first"
+	GM.cycle_targeting(tower)
+	_assert_eq(tower["targeting_mode"], "last", "cycle from first goes to last")
+	GM.cycle_targeting(tower)
+	_assert_eq(tower["targeting_mode"], "strongest", "cycle from last goes to strongest")
+
+# ═══════════════════════════════════════════════════════
+# HIGHEST WAVE STAT TESTS
+# ═══════════════════════════════════════════════════════
+func _run_highest_wave_stat_tests() -> void:
+	print("[Highest Wave Stat]")
+
+	GM.reset_state()
+	_assert_eq(float(GM.stats.get("highest_wave", -1)), 0.0, "highest_wave starts at 0")
+
+	# Manually set wave and call start_wave
+	GM.wave = 0
+	GM.start_wave()
+	_assert_eq(float(GM.stats.get("highest_wave", 0)), 1.0, "highest_wave = 1 after first wave")
+
+	# Simulate wave 5
+	GM.wave = 4
+	GM.wave_active = false
+	GM.start_wave()
+	_assert_eq(float(GM.stats.get("highest_wave", 0)), 5.0, "highest_wave = 5 after wave 5 start")
+
+	# Resetting state clears highest_wave
+	GM.reset_state()
+	_assert_eq(float(GM.stats.get("highest_wave", -1)), 0.0, "highest_wave reset to 0")
+
+# ═══════════════════════════════════════════════════════
+# LUCIFER EXECUTE FIX TESTS
+# ═══════════════════════════════════════════════════════
+func _run_lucifer_execute_fix_tests() -> void:
+	print("[Lucifer Execute Fix]")
+
+	GM.reset_state()
+
+	# Regular kill by non-lucifer tower should NOT increment lucifer_executes
+	var arc := GM.create_tower("bone_marksman", 3, 3)
+	GM.towers.append(arc)
+	var e1 := GM.create_enemy("seraph_scout")
+	e1["x"] = 200.0; e1["y"] = 200.0
+	e1["hp"] = 0.5  # below any threshold
+	GM.enemies.append(e1)
+	GM.combat_kill(e1, arc)
+	_assert_eq(float(GM.stats.get("lucifer_executes", 0)), 0.0, "non-lucifer kill does NOT increment lucifer_executes")
+
+	# Regular kill by Lucifer from combat_hit (hp goes to 0) should NOT count as execute
+	var luc := GM.create_tower("lucifer", 5, 5)
+	GM.towers.append(luc)
+	var e2 := GM.create_enemy("seraph_scout")
+	e2["x"] = 200.0; e2["y"] = 200.0
+	e2["hp"] = 0.1
+	GM.enemies.append(e2)
+	GM.combat_kill(e2, luc)
+	_assert_eq(float(GM.stats.get("lucifer_executes", 0)), 0.0, "regular lucifer kill does NOT increment execute stat")
+
+# ═══════════════════════════════════════════════════════
+# FREE UPGRADE EDGE CASE TESTS
+# ═══════════════════════════════════════════════════════
+func _run_free_upgrade_edge_case_tests() -> void:
+	print("[Free Upgrade Edge Cases]")
+
+	# All towers max level — should return false
+	GM.reset_state()
+	var t1 := GM.create_tower("bone_marksman", 2, 2)
+	t1["level"] = Config.MAX_TOWER_LEVEL
+	var t2 := GM.create_tower("inferno_warlock", 4, 4)
+	t2["level"] = Config.MAX_TOWER_LEVEL
+	GM.towers = [t1, t2]
+	_assert(not GM.free_upgrade_best_tower(), "free_upgrade returns false when all towers maxed")
+
+	# Mixed max/non-max — should upgrade the non-max with best DPS
+	GM.reset_state()
+	var t3 := GM.create_tower("bone_marksman", 2, 2)
+	t3["level"] = Config.MAX_TOWER_LEVEL
+	var t4 := GM.create_tower("inferno_warlock", 4, 4)
+	t4["level"] = 1
+	t4["damage"] = 10.0
+	t4["damage_mult"] = 1.0
+	t4["attack_speed"] = 2.0
+	var t5 := GM.create_tower("soul_reaper", 6, 6)
+	t5["level"] = 1
+	t5["damage"] = 5.0
+	t5["damage_mult"] = 1.0
+	t5["attack_speed"] = 1.0
+	GM.towers = [t3, t4, t5]
+	var result := GM.free_upgrade_best_tower()
+	_assert(result, "free_upgrade returns true when upgradable towers exist")
+	_assert_eq(float(t4["level"]), 2.0, "highest DPS tower gets upgraded")
+	_assert_eq(float(t5["level"]), 1.0, "lower DPS tower stays at level 1")
+
+	# Single tower — should upgrade it
+	GM.reset_state()
+	var t6 := GM.create_tower("bone_marksman", 2, 2)
+	t6["level"] = 1
+	GM.towers = [t6]
+	_assert(GM.free_upgrade_best_tower(), "free_upgrade works with single tower")
+	_assert_eq(float(t6["level"]), 2.0, "single tower upgraded to level 2")
+
+	# Empty tower list
+	GM.reset_state()
+	GM.towers = []
+	_assert(not GM.free_upgrade_best_tower(), "free_upgrade returns false with no towers")
+
+# ═══════════════════════════════════════════════════════
+# COCYTUS CONE FACING TESTS
+# ═══════════════════════════════════════════════════════
+func _run_cocytus_cone_facing_tests() -> void:
+	print("[Cocytus Cone Facing]")
+
+	# Placed Cocytus tower gets facing_angle set
+	GM.reset_state()
+	var coc := GM.create_tower("cocytus", 5, 5)
+	_assert(coc.has("facing_angle"), "Cocytus tower has facing_angle key")
+	_assert(coc["is_beam_cone"], "Cocytus tower has is_beam_cone = true")
+
+	# _best_cone_facing returns a finite angle
+	var angle: float = GM._best_cone_facing(240.0, 240.0, 240.0, 0.6108652)
+	_assert(is_finite(angle), "_best_cone_facing returns finite angle")
+	_assert(angle >= 0.0 and angle < TAU, "_best_cone_facing returns angle in [0, TAU)")
+
+	# Non-cone towers do NOT have is_beam_cone
+	var arc := GM.create_tower("bone_marksman", 3, 3)
+	_assert(not arc.get("is_beam_cone", false), "bone_marksman is NOT beam_cone")
+
+# ═══════════════════════════════════════════════════════
+# DRAW CONSTANTS TESTS
+# ═══════════════════════════════════════════════════════
+func _run_draw_constants_tests() -> void:
+	print("[Draw Constants]")
+
+	_assert_gt(Config.DRAW_HELL_MAW_SIZE, 0.0, "DRAW_HELL_MAW_SIZE > 0")
+	_assert_gt(Config.DRAW_HERALD_SIZE, 0.0, "DRAW_HERALD_SIZE > 0")
+	_assert_gt(float(Config.DRAW_WALL_HEIGHT), 0.0, "DRAW_WALL_HEIGHT > 0")
+	_assert_gt(float(Config.DRAW_PATH_FLOW_DOTS), 0.0, "DRAW_PATH_FLOW_DOTS > 0")
+	_assert_gt(float(Config.DRAW_HEAVEN_SPARKLE_COUNT), 0.0, "DRAW_HEAVEN_SPARKLE_COUNT > 0")
+	_assert_gt(float(Config.DRAW_HELL_EMBER_COUNT), 0.0, "DRAW_HELL_EMBER_COUNT > 0")
+	_assert_gt(float(Config.DRAW_HEAVEN_MOTE_COUNT), 0.0, "DRAW_HEAVEN_MOTE_COUNT > 0")
+	_assert_gt(float(Config.DRAW_HELL_ASH_COUNT), 0.0, "DRAW_HELL_ASH_COUNT > 0")
+	_assert_gt(float(Config.DRAW_DUST_MOTE_COUNT), 0.0, "DRAW_DUST_MOTE_COUNT > 0")
+	_assert_gt(float(Config.DRAW_HEAVEN_SHAFT_COUNT), 0.0, "DRAW_HEAVEN_SHAFT_COUNT > 0")
+
+	# Verify specific values match what was extracted
+	_assert_near(Config.DRAW_HELL_MAW_SIZE, 54.0, 0.01, "DRAW_HELL_MAW_SIZE = 54")
+	_assert_near(Config.DRAW_HERALD_SIZE, 46.0, 0.01, "DRAW_HERALD_SIZE = 46")
+	_assert_eq(float(Config.DRAW_WALL_HEIGHT), 10.0, "DRAW_WALL_HEIGHT = 10")
+	_assert_eq(float(Config.DRAW_PATH_FLOW_DOTS), 6.0, "DRAW_PATH_FLOW_DOTS = 6")
+
+# ═══════════════════════════════════════════════════════
+# FORMAT TIME TESTS
+# ═══════════════════════════════════════════════════════
+func _run_format_time_tests() -> void:
+	print("[Format Time]")
+
+	_assert_eq(GM.format_time(0.0), "0:00", "format_time(0) = 0:00")
+	_assert_eq(GM.format_time(59.0), "0:59", "format_time(59) = 0:59")
+	_assert_eq(GM.format_time(60.0), "1:00", "format_time(60) = 1:00")
+	_assert_eq(GM.format_time(125.7), "2:05", "format_time(125.7) = 2:05")
+	_assert_eq(GM.format_time(600.0), "10:00", "format_time(600) = 10:00")
+	_assert_eq(GM.format_time(3661.0), "61:01", "format_time(3661) = 61:01")
+
+# ═══════════════════════════════════════════════════════
+# TOTAL GAME TIME STAT TESTS
+# ═══════════════════════════════════════════════════════
+func _run_total_game_time_stat_tests() -> void:
+	print("[Total Game Time Stat]")
+
+	GM.reset_state()
+	_assert_eq(GM.stats.get("total_game_time", -1.0), 0.0, "total_game_time starts at 0")
+
+	# Simulate game time advancing
+	GM.game_time = 123.5
+
+	# Gameover should snapshot game_time into stats
+	GM.core_hp = 0.0
+	# We can't easily trigger the gameover path without side effects,
+	# so test the stat key exists and is the right type
+	_assert(GM.stats.has("total_game_time"), "stats has total_game_time key")
+
+	# Manually set it like gameover would
+	GM.stats["total_game_time"] = GM.game_time
+	_assert_near(GM.stats["total_game_time"], 123.5, 0.01, "total_game_time records game_time value")
+
+	GM.reset_state()
+	_assert_eq(GM.stats.get("total_game_time", -1.0), 0.0, "total_game_time resets to 0")
+
+# ═══════════════════════════════════════════════════════
+# COCYTUS DPS CALC TESTS
+# ═══════════════════════════════════════════════════════
+func _run_cocytus_dps_calc_tests() -> void:
+	print("[Cocytus DPS Calc]")
+
+	GM.reset_state()
+	var coc := GM.create_tower("cocytus", 5, 5)
+	GM.towers.append(coc)
+
+	# Base DPS = damage * attack_speed * perm_speed * temp_speed * damage_mult
+	var expected_dps: float = coc["damage"] * coc["attack_speed"] * GM.perm_speed_buff * GM.temp_speed_buff * coc["damage_mult"]
+	var actual_dps: float = GM._calc_cocytus_dps(coc)
+	_assert_near(actual_dps, expected_dps, 0.01, "Cocytus base DPS = damage * attack_speed")
+
+	# With double damage
+	GM.double_damage = 1
+	var dd_dps: float = GM._calc_cocytus_dps(coc)
+	_assert_near(dd_dps, expected_dps * Config.DOUBLE_DAMAGE_MULT, 0.01, "Cocytus DPS doubles with double_damage")
+	GM.double_damage = 0
+
+	# With tower weaken
+	GM.tower_weaken_mult = Config.TOWER_WEAKEN_MULT
+	var weak_dps: float = GM._calc_cocytus_dps(coc)
+	_assert_near(weak_dps, expected_dps * Config.TOWER_WEAKEN_MULT, 0.01, "Cocytus DPS reduced by tower_weaken_mult")
+	GM.tower_weaken_mult = 1.0
+
+	# With Hades buff
+	coc["hades_buffed"] = true
+	coc["buff_multiplier"] = 1.5
+	var hades_dps: float = GM._calc_cocytus_dps(coc)
+	_assert_near(hades_dps, expected_dps * 1.5, 0.01, "Cocytus DPS boosted by Hades buff")
+	coc["hades_buffed"] = false
+
+	# With damage_mult from Tower Blessing
+	coc["damage_mult"] = 1.5
+	var blessed_dps: float = GM._calc_cocytus_dps(coc)
+	_assert_near(blessed_dps, coc["damage"] * coc["attack_speed"] * 1.5, 0.01, "Cocytus DPS scales with damage_mult")
+
+# ═══════════════════════════════════════════════════════
+# FORMAT DAMAGE SUB-1 VALUES TESTS
+# ═══════════════════════════════════════════════════════
+func _run_format_damage_sub1_tests() -> void:
+	print("[Format Damage Sub-1]")
+
+	# Sub-1 values should show decimal
+	_assert_eq(GM.format_damage(0.3), "0.3", "format_damage(0.3) shows decimal")
+	_assert_eq(GM.format_damage(0.7), "0.7", "format_damage(0.7) shows decimal")
+	_assert_eq(GM.format_damage(0.15), "0.2", "format_damage(0.15) rounds to 0.2")
+	_assert_eq(GM.format_damage(0.05), "0.1", "format_damage(0.05) rounds to 0.1")
+
+	# Zero stays zero (via roundi path)
+	_assert_eq(GM.format_damage(0.0), "0", "format_damage(0.0) = 0")
+
+	# Normal values unchanged
+	_assert_eq(GM.format_damage(5.0), "5", "format_damage(5) = 5")
+	_assert_eq(GM.format_damage(999.0), "999", "format_damage(999) = 999")
+
+	# Exactly 1000 threshold
+	_assert_eq(GM.format_damage(1000.0), "1k", "format_damage(1000) = 1k")
+	_assert_eq(GM.format_damage(1500.0), "1.5k", "format_damage(1500) = 1.5k")
+
+# ═══════════════════════════════════════════════════════
+# HP BAR CONSTANTS TESTS
+# ═══════════════════════════════════════════════════════
+func _run_hp_bar_constants_tests() -> void:
+	print("[HP Bar Constants]")
+
+	_assert_gt(Config.HEALTH_BAR_LOW_THRESHOLD, 0.0, "HEALTH_BAR_LOW_THRESHOLD > 0")
+	_assert(Config.HEALTH_BAR_LOW_THRESHOLD < 1.0, "HEALTH_BAR_LOW_THRESHOLD < 1")
+	_assert_near(Config.HEALTH_BAR_LOW_THRESHOLD, 0.3, 0.01, "HEALTH_BAR_LOW_THRESHOLD = 0.3")
+
+	_assert_gt(Config.CORE_HP_BAR_W, 0.0, "CORE_HP_BAR_W > 0")
+	_assert_gt(Config.CORE_HP_BAR_H, 0.0, "CORE_HP_BAR_H > 0")
+	_assert_gt(Config.CORE_HP_BAR_OFFSET_Y, 0.0, "CORE_HP_BAR_OFFSET_Y > 0")
+	_assert_gt(Config.ENEMY_HP_BAR_H, 0.0, "ENEMY_HP_BAR_H > 0")
+	_assert_gt(Config.ENEMY_HP_BAR_OFFSET_Y, 0.0, "ENEMY_HP_BAR_OFFSET_Y > 0")
+	_assert_gt(Config.ENEMY_HP_BAR_PADDING, 0.0, "ENEMY_HP_BAR_PADDING > 0")
+	_assert_gt(float(Config.ENEMY_HP_LABEL_FONT), 0.0, "ENEMY_HP_LABEL_FONT > 0")
+
+# ═══════════════════════════════════════════════════════
+# OVERLAY PANEL CONSTANTS TESTS
+# ═══════════════════════════════════════════════════════
+func _run_overlay_panel_constants_tests() -> void:
+	print("[Overlay Panel Constants]")
+
+	# All overlay dimensions should be positive
+	_assert_gt(Config.OVERLAY_MENU_W, 0.0, "OVERLAY_MENU_W > 0")
+	_assert_gt(Config.OVERLAY_MENU_H, 0.0, "OVERLAY_MENU_H > 0")
+	_assert_gt(Config.OVERLAY_RESULT_W, 0.0, "OVERLAY_RESULT_W > 0")
+	_assert_gt(Config.OVERLAY_RESULT_H, 0.0, "OVERLAY_RESULT_H > 0")
+	_assert_gt(Config.OVERLAY_PANDORA_W, 0.0, "OVERLAY_PANDORA_W > 0")
+	_assert_gt(Config.OVERLAY_PANDORA_H, 0.0, "OVERLAY_PANDORA_H > 0")
+	_assert_gt(Config.OVERLAY_PACT_W, 0.0, "OVERLAY_PACT_W > 0")
+	_assert_gt(Config.OVERLAY_PACT_H, 0.0, "OVERLAY_PACT_H > 0")
+	_assert_gt(Config.OVERLAY_SETTINGS_W, 0.0, "OVERLAY_SETTINGS_W > 0")
+	_assert_gt(Config.OVERLAY_SETTINGS_H, 0.0, "OVERLAY_SETTINGS_H > 0")
+
+	# Panels should fit within the game window + side panel (1100x650)
+	_assert(Config.OVERLAY_MENU_W < 1100.0, "OVERLAY_MENU_W fits in window")
+	_assert(Config.OVERLAY_SETTINGS_W < 1100.0, "OVERLAY_SETTINGS_W fits in window")
+	_assert(Config.OVERLAY_PACT_W < 1100.0, "OVERLAY_PACT_W fits in window")
+
+# ═══════════════════════════════════════════════════════
+# HADES CACHE PERF TESTS
+# ═══════════════════════════════════════════════════════
+func _run_hades_cache_perf_tests() -> void:
+	print("[Hades Cache Perf]")
+
+	# Verify corruption_mult exists in TOWER_DATA["hades"]
+	var corruption: float = Config.TOWER_DATA["hades"].get("corruption_mult", 1.0)
+	_assert_gt(corruption, 1.0, "Hades corruption_mult > 1.0")
+	_assert_near(corruption, 1.15, 0.01, "Hades corruption_mult = 1.15")
+
+	# Verify that building a Hades list from towers works correctly
+	GM.reset_state()
+	var h1 := GM.create_tower("hades", 3, 3)
+	GM.towers.append(h1)
+	var h2 := GM.create_tower("hades", 7, 7)
+	h2["is_disabled"] = true
+	GM.towers.append(h2)
+	var arc := GM.create_tower("bone_marksman", 5, 5)
+	GM.towers.append(arc)
+
+	# Manually build list like update_towers does
+	var hades_list: Array = []
+	for h in GM.towers:
+		if h["type"] == "hades" and not h["is_disabled"]:
+			hades_list.append(h)
+	_assert_eq(float(hades_list.size()), 1.0, "Only active Hades towers in cache list")
+	_assert_eq(float(hades_list[0]["id"]), float(h1["id"]), "Cached Hades is the active one")

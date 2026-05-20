@@ -127,7 +127,7 @@ func reset_state() -> void:
 	fast_enemy_waves = 0
 	fallen_hero_pool = 0
 	fallen_heroes_spawned = 0
-	stats = {"enemies_killed": 0, "towers_placed": 0, "towers_sold": 0, "total_sins_earned": 0, "total_damage_dealt": 0.0, "pacts_accepted": 0, "pacts_offered": 0, "fallen_heroes": 0, "waves_survived": 0, "boss_kills": 0, "total_core_damage": 0.0, "relics_collected": 0, "lucifer_executes": 0, "dice_rolls": 0}
+	stats = {"enemies_killed": 0, "towers_placed": 0, "towers_sold": 0, "total_sins_earned": 0, "total_damage_dealt": 0.0, "pacts_accepted": 0, "pacts_offered": 0, "fallen_heroes": 0, "waves_survived": 0, "boss_kills": 0, "total_core_damage": 0.0, "relics_collected": 0, "lucifer_executes": 0, "dice_rolls": 0, "highest_wave": 0, "total_game_time": 0.0}
 	occupied_tiles.clear()
 	notifications.clear()
 	game_time = 0.0
@@ -587,6 +587,7 @@ func update_enemies(dt: float) -> void:
 			shake(Config.SHAKE_CORE_HIT_INTENSITY, Config.SHAKE_CORE_HIT_DURATION)
 			if core_hp <= 0:
 				shake(Config.GAMEOVER_SHAKE_INTENSITY, Config.GAMEOVER_SHAKE_DURATION)
+				stats["total_game_time"] = game_time
 				phase = "gameover"
 				Audio.play_music_stinger("defeat")
 			i -= 1
@@ -672,7 +673,7 @@ func update_projectiles(dt: float) -> void:
 # ═══════════════════════════════════════════════════════
 # TARGETING
 # ═══════════════════════════════════════════════════════
-const TARGETING_MODES := ["closest", "first", "strongest", "weakest"]
+const TARGETING_MODES := ["closest", "first", "last", "strongest", "weakest"]
 
 func cycle_targeting(tower: Dictionary) -> void:
 	var idx := TARGETING_MODES.find(tower.get("targeting_mode", "closest"))
@@ -681,7 +682,7 @@ func cycle_targeting(tower: Dictionary) -> void:
 func find_target(tower: Dictionary):
 	var mode: String = tower.get("targeting_mode", "closest")
 	var best = null
-	var best_val: float = -1.0 if mode != "closest" and mode != "weakest" else INF
+	var best_val: float = -1.0 if mode != "closest" and mode != "weakest" and mode != "last" else INF
 	var r2: float = tower["range"] * tower["range"]
 	for e in enemies:
 		if not e["alive"]:
@@ -700,6 +701,11 @@ func find_target(tower: Dictionary):
 				var pi: float = float(e.get("path_index", 0))
 				if pi > best_val:
 					best_val = pi
+					best = e
+			"last":
+				var pi2: float = float(e.get("path_index", 0))
+				if pi2 < best_val:
+					best_val = pi2
 					best = e
 			"strongest":
 				if e["max_hp"] > best_val:
@@ -810,11 +816,6 @@ func combat_kill(enemy: Dictionary, tower) -> void:
 	# Feed the Fallen Hero pool — kills accumulate toward spawning allied heroes
 	add_to_hero_pool(1)
 
-	# Track Lucifer execute kills separately for stats display
-	if tower != null and tower is Dictionary and tower.get("type", "") == "lucifer":
-		if enemy.get("hp", 0.0) <= enemy.get("max_hp", 1.0) * Config.TOWER_DATA["lucifer"].get("execute_threshold", 0.0):
-			stats["lucifer_executes"] = stats.get("lucifer_executes", 0) + 1
-
 	if should_drop_relic(enemy["type"]):
 		drop_relic(enemy["x"], enemy["y"])
 
@@ -825,6 +826,13 @@ func combat_kill(enemy: Dictionary, tower) -> void:
 # TOWER UPDATE
 # ═══════════════════════════════════════════════════════
 func update_towers(dt: float) -> void:
+	# Pre-cache active Hades towers for Cocytus corruption check (avoid per-cone rebuild)
+	var _cached_hades_list: Array = []
+	var _hades_corruption: float = Config.TOWER_DATA["hades"].get("corruption_mult", 1.0)
+	if _hades_corruption > 1.0:
+		for h in towers:
+			if h["type"] == "hades" and not h["is_disabled"]:
+				_cached_hades_list.append(h)
 	for t in towers:
 		# Decay Hades buff timers inline (avoids a separate loop)
 		if t["hades_buffed"]:
@@ -874,7 +882,7 @@ func update_towers(dt: float) -> void:
 
 		# REDESIGN: Cocytus continuous cone — always casting in facing direction
 		if t["is_beam_cone"]:
-			_cocytus_cone(t, dt)
+			_cocytus_cone(t, dt, _cached_hades_list, _hades_corruption)
 			continue
 
 		var effective_speed: float = t["attack_speed"] * perm_speed_buff * temp_speed_buff
@@ -907,6 +915,7 @@ func _lucifer_pulse(tower: Dictionary) -> void:
 			combat_hit(e, base_dmg, tower)
 			# REDESIGN: execute — kill any enemy surviving pulse below threshold HP
 			if e["alive"] and threshold > 0 and e["hp"] <= e["max_hp"] * threshold:
+				stats["lucifer_executes"] = stats.get("lucifer_executes", 0) + 1
 				combat_kill(e, tower)
 			# Only spawn hit flash for enemies still alive (dead ones already got death FX)
 			if e["alive"]:
@@ -924,13 +933,9 @@ func _lucifer_pulse(tower: Dictionary) -> void:
 	add_effect("lucifer_wave", tower["x"], tower["y"], 0, tower["color"])
 	Audio.play_sfx("lucifer_pulse", -6.0)
 
-func _cocytus_cone(tower: Dictionary, dt: float) -> void:
-	# Continuous damage every tick — bypasses calc_damage's 1.0 floor because
-	# per-tick damage is fractional (e.g. 0.2 at 60 FPS). Applies multipliers manually.
-	# Force casting pose always (fire_flash held high while cone is active).
-	tower["fire_flash"] = Config.TOWER_FIRE_FLASH
-	if enemies.size() == 0:
-		return
+## Calculate Cocytus effective DPS before per-enemy reductions (shields, guardian, etc).
+## Extracted from _cocytus_cone for readability and reuse in tooltip display.
+func _calc_cocytus_dps(tower: Dictionary) -> float:
 	var cone_dps: float = tower["damage"] * tower["attack_speed"] * perm_speed_buff * temp_speed_buff
 	if tower["hades_buffed"]:
 		cone_dps *= tower.get("buff_multiplier", 1.5)
@@ -939,6 +944,16 @@ func _cocytus_cone(tower: Dictionary, dt: float) -> void:
 	if tower_weaken_mult < 1.0:
 		cone_dps *= tower_weaken_mult
 	cone_dps *= tower.get("damage_mult", 1.0)
+	return cone_dps
+
+func _cocytus_cone(tower: Dictionary, dt: float, hades_list: Array = [], corruption: float = 1.0) -> void:
+	# Continuous damage every tick — bypasses calc_damage's 1.0 floor because
+	# per-tick damage is fractional (e.g. 0.2 at 60 FPS). Applies multipliers manually.
+	# Force casting pose always (fire_flash held high while cone is active).
+	tower["fire_flash"] = Config.TOWER_FIRE_FLASH
+	if enemies.size() == 0:
+		return
+	var cone_dps: float = _calc_cocytus_dps(tower)
 	var cl2: float = tower["range"] * tower["range"]
 	var half_angle: float = Config.TOWER_DATA[tower["type"]]["cone_half_angle"]
 	var cos_half: float = cos(half_angle)
@@ -948,13 +963,7 @@ func _cocytus_cone(tower: Dictionary, dt: float) -> void:
 	var fx: float = cos(eff_facing)
 	var fy: float = sin(eff_facing)
 	var has_cmd := _has_alive_type("archangel_marshal")
-	var corruption: float = Config.TOWER_DATA["hades"].get("corruption_mult", 1.0)
-	# Pre-cache active Hades towers to avoid inner-loop scan per enemy
-	var _hades_list: Array = []
-	if corruption > 1.0:
-		for h in towers:
-			if h["type"] == "hades" and not h["is_disabled"]:
-				_hades_list.append(h)
+	var _hades_list: Array = hades_list
 	var _hit_any := false
 	for e in enemies:
 		if not e["alive"]:
@@ -1061,10 +1070,12 @@ func _hades_damage(hades_tower: Dictionary) -> void:
 func start_wave() -> void:
 	wave += 1
 	if wave > Config.MAX_WAVES:
+		stats["total_game_time"] = game_time
 		phase = "victory"
 		Audio.play_music_stinger("victory")
 		return
 	wave_active = true
+	stats["highest_wave"] = maxi(stats.get("highest_wave", 0), wave)
 	Audio.update_music_for_wave(wave)
 	var wave_def: Dictionary = Config.WAVE_DATA[wave - 1]
 	wave_desc = wave_def["desc"]
@@ -1176,6 +1187,7 @@ func complete_wave() -> void:
 		notify(Locale.tf("dice_replenish", {"count": dice_uses_left, "max": Config.DICE_MAX_USES}), Config.COLOR_NOTIFY_GOLD)
 
 	if wave >= Config.MAX_WAVES:
+		stats["total_game_time"] = game_time
 		phase = "victory"
 		Audio.play_music_stinger("victory")
 		return
@@ -1504,9 +1516,12 @@ func _apply_speed_buff(factor: float, duration: float) -> void:
 	speed_buff_timer = duration
 
 ## Format large damage values with "k" suffix for compact display.
+## Sub-1 values show one decimal place so Cocytus tick damage doesn't read "0".
 func format_damage(value: float) -> String:
 	if value >= 1000.0:
 		return str(snappedf(value / 1000.0, 0.1)) + "k"
+	if value < 1.0 and value > 0.0:
+		return str(snappedf(value, 0.1))
 	return str(roundi(value))
 
 ## Format kill counts with "k" suffix for compact display.
@@ -1514,6 +1529,14 @@ func format_kills(value: int) -> String:
 	if value >= 1000:
 		return str(snappedf(float(value) / 1000.0, 0.1)) + "k"
 	return str(value)
+
+## Format game_time (seconds float) into a human-readable mm:ss string.
+func format_time(seconds: float) -> String:
+	var total_s := int(seconds)
+	@warning_ignore("integer_division")
+	var mins := total_s / 60
+	var secs := total_s % 60
+	return "%d:%02d" % [mins, secs]
 
 # ═══════════════════════════════════════════════════════
 # UTILITY

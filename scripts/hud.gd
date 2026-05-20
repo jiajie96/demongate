@@ -111,7 +111,7 @@ func _create_top_bar() -> void:
 
 	hp_label = Label.new()
 	hp_label.text = ""
-	hp_label.add_theme_font_size_override("font_size", 11)
+	hp_label.add_theme_font_size_override("font_size", Config.HUD_FONT_SMALL)
 	hp_label.add_theme_color_override("font_color", Color(1, 0.3, 0.3))
 	hp_box.add_child(hp_label)
 
@@ -131,7 +131,7 @@ func _create_top_bar() -> void:
 	# Wave
 	wave_label = Label.new()
 	wave_label.text = ""
-	wave_label.add_theme_font_size_override("font_size", 14)
+	wave_label.add_theme_font_size_override("font_size", Config.HUD_FONT_WAVE)
 	wave_label.add_theme_color_override("font_color", Color(1, 0.8, 0))
 	wave_label.custom_minimum_size = Vector2(120, 40)
 	hbox.add_child(wave_label)
@@ -139,7 +139,7 @@ func _create_top_bar() -> void:
 	# Wave desc
 	wave_desc_label = Label.new()
 	wave_desc_label.text = ""
-	wave_desc_label.add_theme_font_size_override("font_size", 11)
+	wave_desc_label.add_theme_font_size_override("font_size", Config.HUD_FONT_SMALL)
 	wave_desc_label.add_theme_color_override("font_color", Color(0.7, 0.7, 0.7))
 	wave_desc_label.custom_minimum_size = Vector2(280, 40)
 	hbox.add_child(wave_desc_label)
@@ -147,7 +147,7 @@ func _create_top_bar() -> void:
 	# Enemies
 	enemies_label = Label.new()
 	enemies_label.text = ""
-	enemies_label.add_theme_font_size_override("font_size", 12)
+	enemies_label.add_theme_font_size_override("font_size", Config.HUD_FONT_BODY)
 	enemies_label.add_theme_color_override("font_color", Color(0.8, 0.8, 0.8))
 	enemies_label.custom_minimum_size = Vector2(120, 40)
 	hbox.add_child(enemies_label)
@@ -159,7 +159,7 @@ func _create_top_bar() -> void:
 		var sbtn := Button.new()
 		sbtn.text = str(spd) + "x"
 		sbtn.custom_minimum_size = Vector2(38, 28)
-		sbtn.add_theme_font_size_override("font_size", 10)
+		sbtn.add_theme_font_size_override("font_size", Config.HUD_FONT_TINY)
 		var s := StyleBoxFlat.new()
 		s.bg_color = Color(0.18, 0.1, 0.12)
 		s.border_color = Color(0.4, 0.22, 0.25)
@@ -188,7 +188,7 @@ func _create_top_bar() -> void:
 	mb_hover.bg_color = Color(0.3, 0.16, 0.2)
 	mb_hover.border_color = Color(0.55, 0.3, 0.35)
 	menu_btn.add_theme_stylebox_override("hover", mb_hover)
-	menu_btn.add_theme_font_size_override("font_size", 18)
+	menu_btn.add_theme_font_size_override("font_size", Config.HUD_FONT_LARGE)
 	menu_btn.add_theme_color_override("font_color", Color(0.9, 0.9, 0.9))
 	menu_btn.pressed.connect(_on_menu_btn_pressed)
 	hbox.add_child(menu_btn)
@@ -220,7 +220,7 @@ func _create_side_panel() -> void:
 	# Sins display
 	sins_label = Label.new()
 	sins_label.text = ""
-	sins_label.add_theme_font_size_override("font_size", 18)
+	sins_label.add_theme_font_size_override("font_size", Config.HUD_FONT_LARGE)
 	sins_label.add_theme_color_override("font_color", Config.COLOR_SINS)
 	sins_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	vbox.add_child(sins_label)
@@ -231,7 +231,7 @@ func _create_side_panel() -> void:
 	# Towers title
 	towers_title = Label.new()
 	towers_title.text = Locale.t("TOWERS")
-	towers_title.add_theme_font_size_override("font_size", 13)
+	towers_title.add_theme_font_size_override("font_size", Config.HUD_FONT_SECTION)
 	towers_title.add_theme_color_override("font_color", Color(1, 0.3, 0.3))
 	towers_title.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	vbox.add_child(towers_title)
@@ -286,7 +286,7 @@ func _create_side_panel() -> void:
 		btn_pressed.bg_color = Color(0.38, 0.20, 0.22).lerp(data["color"], 0.20)
 		btn.add_theme_stylebox_override("pressed", btn_pressed)
 
-		btn.add_theme_font_size_override("font_size", 11)
+		btn.add_theme_font_size_override("font_size", Config.HUD_FONT_SMALL)
 		btn.add_theme_color_override("font_color", Color(0.85, 0.85, 0.85))
 
 		tower_style_idle[type] = btn_style
@@ -320,18 +320,18 @@ func _create_side_panel() -> void:
 	ti_vbox.add_child(ti_name)
 
 	ti_desc = Label.new()
-	ti_desc.add_theme_font_size_override("font_size", 10)
+	ti_desc.add_theme_font_size_override("font_size", Config.HUD_FONT_TINY)
 	ti_desc.add_theme_color_override("font_color", Color(0.65, 0.6, 0.55))
 	ti_desc.autowrap_mode = TextServer.AUTOWRAP_WORD
 	ti_vbox.add_child(ti_desc)
 
 	ti_role = Label.new()
-	ti_role.add_theme_font_size_override("font_size", 10)
+	ti_role.add_theme_font_size_override("font_size", Config.HUD_FONT_TINY)
 	ti_role.add_theme_color_override("font_color", Color(0.5, 0.75, 0.9))
 	ti_vbox.add_child(ti_role)
 
 	ti_stats = Label.new()
-	ti_stats.add_theme_font_size_override("font_size", 11)
+	ti_stats.add_theme_font_size_override("font_size", Config.HUD_FONT_SMALL)
 	ti_stats.add_theme_color_override("font_color", Color(0.8, 0.8, 0.8))
 	ti_vbox.add_child(ti_stats)
 
@@ -342,21 +342,21 @@ func _create_side_panel() -> void:
 	btn_upgrade = Button.new()
 	btn_upgrade.text = Locale.t("Upgrade")
 	btn_upgrade.custom_minimum_size = Vector2(130, 30)
-	btn_upgrade.add_theme_font_size_override("font_size", 11)
+	btn_upgrade.add_theme_font_size_override("font_size", Config.HUD_FONT_SMALL)
 	btn_upgrade.pressed.connect(_on_upgrade_pressed)
 	btn_row.add_child(btn_upgrade)
 
 	btn_sell = Button.new()
 	btn_sell.text = Locale.t("Sell")
 	btn_sell.custom_minimum_size = Vector2(130, 30)
-	btn_sell.add_theme_font_size_override("font_size", 11)
+	btn_sell.add_theme_font_size_override("font_size", Config.HUD_FONT_SMALL)
 	btn_sell.pressed.connect(_on_sell_pressed)
 	btn_row.add_child(btn_sell)
 
 	btn_targeting = Button.new()
 	btn_targeting.text = "Target: Closest"
 	btn_targeting.custom_minimum_size = Vector2(268, 28)
-	btn_targeting.add_theme_font_size_override("font_size", 11)
+	btn_targeting.add_theme_font_size_override("font_size", Config.HUD_FONT_SMALL)
 	btn_targeting.pressed.connect(_on_targeting_pressed)
 	ti_vbox.add_child(btn_targeting)
 
@@ -372,7 +372,7 @@ func _create_side_panel() -> void:
 	nw_style.set_corner_radius_all(4)
 	nw_style.set_content_margin_all(4)
 	btn_next_wave.add_theme_stylebox_override("normal", nw_style)
-	btn_next_wave.add_theme_font_size_override("font_size", 12)
+	btn_next_wave.add_theme_font_size_override("font_size", Config.HUD_FONT_BODY)
 	btn_next_wave.add_theme_color_override("font_color", Color(0.3, 1, 0.3))
 	btn_next_wave.pressed.connect(_on_next_wave_pressed)
 	vbox.add_child(btn_next_wave)
@@ -403,7 +403,7 @@ func _create_side_panel() -> void:
 
 	dice_desc_label = Label.new()
 	dice_desc_label.text = Locale.t("Roll during battle! High = blessing, low = curse.")
-	dice_desc_label.add_theme_font_size_override("font_size", 10)
+	dice_desc_label.add_theme_font_size_override("font_size", Config.HUD_FONT_TINY)
 	dice_desc_label.add_theme_color_override("font_color", Color(0.65, 0.55, 0.4))
 	dice_desc_label.autowrap_mode = TextServer.AUTOWRAP_WORD
 	dice_vbox.add_child(dice_desc_label)
@@ -426,7 +426,7 @@ func _create_side_panel() -> void:
 	dr_disabled.bg_color = Color(0.2, 0.15, 0.1)
 	dr_disabled.border_color = Color(0.3, 0.25, 0.15)
 	btn_dice_roll.add_theme_stylebox_override("disabled", dr_disabled)
-	btn_dice_roll.add_theme_font_size_override("font_size", 12)
+	btn_dice_roll.add_theme_font_size_override("font_size", Config.HUD_FONT_BODY)
 	btn_dice_roll.add_theme_color_override("font_color", Color(1, 0.85, 0.5))
 	btn_dice_roll.pressed.connect(_on_dice_roll_pressed)
 	dice_vbox.add_child(btn_dice_roll)
@@ -434,14 +434,14 @@ func _create_side_panel() -> void:
 	# Hero pool
 	hero_pool_label = Label.new()
 	hero_pool_label.text = ""
-	hero_pool_label.add_theme_font_size_override("font_size", 11)
+	hero_pool_label.add_theme_font_size_override("font_size", Config.HUD_FONT_SMALL)
 	hero_pool_label.add_theme_color_override("font_color", Color(0.6, 0.6, 0.6))
 	vbox.add_child(hero_pool_label)
 
 	# Controls help
 	help_label = Label.new()
 	help_label.text = Locale.t("4-9: Towers | U: Upgrade | X: Sell | T: Target | P: Pause\nSpace: Skip | Tab: Overview | D: Dice | Y/N: Pacts | Esc: Cancel")
-	help_label.add_theme_font_size_override("font_size", 10)
+	help_label.add_theme_font_size_override("font_size", Config.HUD_FONT_TINY)
 	help_label.add_theme_color_override("font_color", Color(0.4, 0.4, 0.4))
 	vbox.add_child(help_label)
 
@@ -453,7 +453,7 @@ func _create_overlays() -> void:
 	menu_overlay = _make_overlay_bg()
 	add_child(menu_overlay)
 
-	var menu_panel := _make_centered_panel(400, 340)
+	var menu_panel := _make_centered_panel(Config.OVERLAY_MENU_W, Config.OVERLAY_MENU_H)
 	menu_overlay.add_child(menu_panel)
 
 	var menu_vbox := VBoxContainer.new()
@@ -489,7 +489,7 @@ func _create_overlays() -> void:
 	gameover_overlay.visible = false
 	add_child(gameover_overlay)
 
-	var go_panel := _make_centered_panel(400, 250)
+	var go_panel := _make_centered_panel(Config.OVERLAY_RESULT_W, Config.OVERLAY_RESULT_H)
 	gameover_overlay.add_child(go_panel)
 
 	var go_vbox := VBoxContainer.new()
@@ -499,13 +499,13 @@ func _create_overlays() -> void:
 
 	go_title = Label.new()
 	go_title.text = Locale.t("HELL HAS FALLEN")
-	go_title.add_theme_font_size_override("font_size", 24)
+	go_title.add_theme_font_size_override("font_size", Config.HUD_FONT_TITLE)
 	go_title.add_theme_color_override("font_color", Color(1, 0.2, 0.2))
 	go_title.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	go_vbox.add_child(go_title)
 
 	go_stats_label = Label.new()
-	go_stats_label.add_theme_font_size_override("font_size", 12)
+	go_stats_label.add_theme_font_size_override("font_size", Config.HUD_FONT_BODY)
 	go_stats_label.add_theme_color_override("font_color", Color(0.7, 0.7, 0.7))
 	go_stats_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	go_vbox.add_child(go_stats_label)
@@ -519,7 +519,7 @@ func _create_overlays() -> void:
 	victory_overlay.visible = false
 	add_child(victory_overlay)
 
-	var vic_panel := _make_centered_panel(400, 250)
+	var vic_panel := _make_centered_panel(Config.OVERLAY_RESULT_W, Config.OVERLAY_RESULT_H)
 	victory_overlay.add_child(vic_panel)
 
 	var vic_vbox := VBoxContainer.new()
@@ -529,13 +529,13 @@ func _create_overlays() -> void:
 
 	vic_title = Label.new()
 	vic_title.text = Locale.t("HELL ENDURES!")
-	vic_title.add_theme_font_size_override("font_size", 24)
+	vic_title.add_theme_font_size_override("font_size", Config.HUD_FONT_TITLE)
 	vic_title.add_theme_color_override("font_color", Color(1, 0.8, 0))
 	vic_title.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	vic_vbox.add_child(vic_title)
 
 	vic_stats_label = Label.new()
-	vic_stats_label.add_theme_font_size_override("font_size", 12)
+	vic_stats_label.add_theme_font_size_override("font_size", Config.HUD_FONT_BODY)
 	vic_stats_label.add_theme_color_override("font_color", Color(0.7, 0.7, 0.7))
 	vic_stats_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	vic_vbox.add_child(vic_stats_label)
@@ -549,7 +549,7 @@ func _create_overlays() -> void:
 	pandora_overlay.visible = false
 	add_child(pandora_overlay)
 
-	var pan_panel := _make_centered_panel(420, 220)
+	var pan_panel := _make_centered_panel(Config.OVERLAY_PANDORA_W, Config.OVERLAY_PANDORA_H)
 	pandora_overlay.add_child(pan_panel)
 
 	var pan_vbox := VBoxContainer.new()
@@ -559,14 +559,14 @@ func _create_overlays() -> void:
 
 	var pan_title := Label.new()
 	pan_title.text = Locale.t("PANDORA'S TRUE GIFT")
-	pan_title.add_theme_font_size_override("font_size", 20)
+	pan_title.add_theme_font_size_override("font_size", Config.HUD_FONT_SUBTITLE)
 	pan_title.add_theme_color_override("font_color", Color(1.0, 0.85, 0.0))
 	pan_title.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	pan_vbox.add_child(pan_title)
 
 	var pan_desc := Label.new()
 	pan_desc.text = Locale.t("Choose your reward wisely.")
-	pan_desc.add_theme_font_size_override("font_size", 11)
+	pan_desc.add_theme_font_size_override("font_size", Config.HUD_FONT_SMALL)
 	pan_desc.add_theme_color_override("font_color", Color(0.6, 0.6, 0.6))
 	pan_desc.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	pan_vbox.add_child(pan_desc)
@@ -591,7 +591,7 @@ func _create_overlays() -> void:
 	pact_overlay.visible = false
 	add_child(pact_overlay)
 
-	var pact_panel := _make_centered_panel(440, 220)
+	var pact_panel := _make_centered_panel(Config.OVERLAY_PACT_W, Config.OVERLAY_PACT_H)
 	pact_overlay.add_child(pact_panel)
 
 	var pact_vbox := VBoxContainer.new()
@@ -601,21 +601,21 @@ func _create_overlays() -> void:
 
 	pact_title_label = Label.new()
 	pact_title_label.text = ""
-	pact_title_label.add_theme_font_size_override("font_size", 18)
+	pact_title_label.add_theme_font_size_override("font_size", Config.HUD_FONT_LARGE)
 	pact_title_label.add_theme_color_override("font_color", Color(0.8, 0.2, 0.6))
 	pact_title_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	pact_vbox.add_child(pact_title_label)
 
 	pact_benefit_label = Label.new()
 	pact_benefit_label.text = ""
-	pact_benefit_label.add_theme_font_size_override("font_size", 12)
+	pact_benefit_label.add_theme_font_size_override("font_size", Config.HUD_FONT_BODY)
 	pact_benefit_label.add_theme_color_override("font_color", Color(0.267, 1.0, 0.267))
 	pact_benefit_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	pact_vbox.add_child(pact_benefit_label)
 
 	pact_cost_label = Label.new()
 	pact_cost_label.text = ""
-	pact_cost_label.add_theme_font_size_override("font_size", 12)
+	pact_cost_label.add_theme_font_size_override("font_size", Config.HUD_FONT_BODY)
 	pact_cost_label.add_theme_color_override("font_color", Color(1.0, 0.267, 0.267))
 	pact_cost_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	pact_vbox.add_child(pact_cost_label)
@@ -643,7 +643,7 @@ func _create_settings_overlay() -> void:
 	settings_overlay.visible = false
 	add_child(settings_overlay)
 
-	var panel := _make_centered_panel(360, 440)
+	var panel := _make_centered_panel(Config.OVERLAY_SETTINGS_W, Config.OVERLAY_SETTINGS_H)
 	settings_overlay.add_child(panel)
 
 	var vbox := VBoxContainer.new()
@@ -653,7 +653,7 @@ func _create_settings_overlay() -> void:
 
 	settings_title = Label.new()
 	settings_title.text = Locale.t("SETTINGS")
-	settings_title.add_theme_font_size_override("font_size", 22)
+	settings_title.add_theme_font_size_override("font_size", Config.HUD_FONT_TITLE)
 	settings_title.add_theme_color_override("font_color", Color(1, 0.8, 0.4))
 	settings_title.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	vbox.add_child(settings_title)
@@ -701,7 +701,7 @@ func _create_settings_overlay() -> void:
 func _make_slider_label(title: String) -> Label:
 	var lbl := Label.new()
 	lbl.text = Locale.t(title) + ": 100%"
-	lbl.add_theme_font_size_override("font_size", 12)
+	lbl.add_theme_font_size_override("font_size", Config.HUD_FONT_BODY)
 	lbl.add_theme_color_override("font_color", Color(0.9, 0.85, 0.75))
 	lbl.set_meta("title", title)
 	return lbl
@@ -833,8 +833,11 @@ func _process(_dt: float) -> void:
 		if tw["hades_buffed"]:
 			effective_spd *= Config.HADES_BUFF_DEFAULT
 		var dps: float = effective_dmg * effective_spd
+		# Cocytus beam cone: use dedicated DPS calc (damage * speed * buffs)
+		if tw.get("is_beam_cone", false):
+			dps = GM._calc_cocytus_dps(tw)
 		# Support towers deal damage on buff cycle, not via attack_speed
-		if tw["is_support"] and tw["damage"] > 0 and tw["buff_cooldown"] > 0:
+		elif tw["is_support"] and tw["damage"] > 0 and tw["buff_cooldown"] > 0:
 			dps = effective_dmg / tw["buff_cooldown"]
 		ti_stats.text = Locale.tf("tower_stats", {
 			"dmg": snappedf(effective_dmg, 0.1),
@@ -878,10 +881,11 @@ func _process(_dt: float) -> void:
 	# End screen stats
 	var _dmg_str := _format_large_number(GM.stats.get("total_damage_dealt", 0.0))
 	var _boss_kills: int = GM.stats.get("boss_kills", 0)
+	var _core_dmg_str := _format_large_number(GM.stats.get("total_core_damage", 0.0))
 	if GM.phase == "gameover":
-		go_stats_label.text = Locale.tf("gameover_stats", {"wave": GM.wave, "kills": GM.stats["enemies_killed"], "towers": GM.stats["towers_placed"], "sins": GM.stats["total_sins_earned"], "dmg": _dmg_str, "bosses": _boss_kills})
+		go_stats_label.text = Locale.tf("gameover_stats", {"wave": GM.wave, "kills": GM.stats["enemies_killed"], "towers": GM.stats["towers_placed"], "sins": GM.stats["total_sins_earned"], "dmg": _dmg_str, "bosses": _boss_kills, "core_dmg": _core_dmg_str})
 	elif GM.phase == "victory":
-		vic_stats_label.text = Locale.tf("victory_stats", {"kills": GM.stats["enemies_killed"], "towers": GM.stats["towers_placed"], "sins": GM.stats["total_sins_earned"], "dmg": _dmg_str, "bosses": _boss_kills})
+		vic_stats_label.text = Locale.tf("victory_stats", {"kills": GM.stats["enemies_killed"], "towers": GM.stats["towers_placed"], "sins": GM.stats["total_sins_earned"], "dmg": _dmg_str, "bosses": _boss_kills, "core_dmg": _core_dmg_str})
 
 	# Settings pause button text
 	if settings_overlay.visible:

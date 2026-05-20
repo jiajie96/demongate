@@ -82,12 +82,12 @@ var _templates: Dictionary = {
 		"zh": "{cost} 罪孽",
 	},
 	"gameover_stats": {
-		"en": "Wave: {wave} | Kills: {kills} | Bosses: {bosses} | Towers: {towers} | Sins: {sins} | Dmg: {dmg}",
-		"zh": "波次: {wave} | 击杀: {kills} | Boss: {bosses} | 塔: {towers} | 罪孽: {sins} | 伤害: {dmg}",
+		"en": "Wave: {wave} | Kills: {kills} | Bosses: {bosses} | Towers: {towers}\nSins: {sins} | Dmg: {dmg} | Leaked: {core_dmg}",
+		"zh": "波次: {wave} | 击杀: {kills} | Boss: {bosses} | 塔: {towers}\n罪孽: {sins} | 伤害: {dmg} | 泄漏: {core_dmg}",
 	},
 	"victory_stats": {
-		"en": "Kills: {kills} | Bosses: {bosses} | Towers: {towers} | Sins: {sins} | Dmg: {dmg}",
-		"zh": "击杀: {kills} | Boss: {bosses} | 塔: {towers} | 罪孽: {sins} | 伤害: {dmg}",
+		"en": "Kills: {kills} | Bosses: {bosses} | Towers: {towers}\nSins: {sins} | Dmg: {dmg} | Leaked: {core_dmg}",
+		"zh": "击杀: {kills} | Boss: {bosses} | 塔: {towers}\n罪孽: {sins} | 伤害: {dmg} | 泄漏: {core_dmg}",
 	},
 	"tower_button": {
 		"en": "{name} [{symbol}]\n{desc}\n{cost}",
