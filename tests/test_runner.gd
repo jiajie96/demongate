@@ -162,6 +162,10 @@ func _ready() -> void:
 	_run_hp_bar_constants_tests()
 	_run_overlay_panel_constants_tests()
 	_run_hades_cache_perf_tests()
+	_run_special_enemy_invariant_tests()
+	_run_last_targeting_behavior_tests()
+	_run_format_damage_k_strip_tests()
+	_run_projectile_immediate_cull_tests()
 
 	print("")
 	print("=== Results: %d/%d passed ===" % [_passed, _total])
@@ -711,9 +715,11 @@ func _run_targeting_tests() -> void:
 	var tower := GM.create_tower("bone_marksman", 5, 1)
 	_assert_eq(tower["targeting_mode"], "closest", "Default targeting mode is 'closest'")
 
-	# Cycle through modes
+	# Cycle through modes (closest → first → last → strongest → weakest → closest)
 	GM.cycle_targeting(tower)
 	_assert_eq(tower["targeting_mode"], "first", "Cycle to 'first'")
+	GM.cycle_targeting(tower)
+	_assert_eq(tower["targeting_mode"], "last", "Cycle to 'last'")
 	GM.cycle_targeting(tower)
 	_assert_eq(tower["targeting_mode"], "strongest", "Cycle to 'strongest'")
 	GM.cycle_targeting(tower)
@@ -722,7 +728,7 @@ func _run_targeting_tests() -> void:
 	_assert_eq(tower["targeting_mode"], "closest", "Cycle wraps to 'closest'")
 
 	# TARGETING_MODES constant
-	_assert_eq(GM.TARGETING_MODES.size(), 4, "4 targeting modes exist")
+	_assert_eq(GM.TARGETING_MODES.size(), 5, "5 targeting modes exist")
 
 # ═══════════════════════════════════════════════════════
 # HERO POOL TESTS
@@ -962,13 +968,15 @@ func _run_weakest_targeting_tests() -> void:
 	var tower := GM.create_tower("bone_marksman", 5, 5)
 	GM.towers.append(tower)
 
-	_assert_eq(GM.TARGETING_MODES.size(), 4, "4 targeting modes exist")
-	_assert_eq(GM.TARGETING_MODES[3], "weakest", "Fourth mode is 'weakest'")
+	_assert_eq(GM.TARGETING_MODES.size(), 5, "5 targeting modes exist")
+	_assert_eq(GM.TARGETING_MODES[4], "weakest", "Fifth mode is 'weakest'")
 
 	# Cycle through all modes
 	_assert_eq(tower["targeting_mode"], "closest", "Starts at closest")
 	GM.cycle_targeting(tower)
 	_assert_eq(tower["targeting_mode"], "first", "Cycles to first")
+	GM.cycle_targeting(tower)
+	_assert_eq(tower["targeting_mode"], "last", "Cycles to last")
 	GM.cycle_targeting(tower)
 	_assert_eq(tower["targeting_mode"], "strongest", "Cycles to strongest")
 	GM.cycle_targeting(tower)
@@ -1073,8 +1081,8 @@ func _run_first_targeting_tests() -> void:
 	print("[First Targeting]")
 	GM.reset_state()
 
-	# Verify 4 targeting modes now
-	_assert_eq(GM.TARGETING_MODES.size(), 4, "4 targeting modes exist")
+	# Verify 5 targeting modes now
+	_assert_eq(GM.TARGETING_MODES.size(), 5, "5 targeting modes exist")
 	_assert_eq(GM.TARGETING_MODES[1], "first", "Second mode is 'first'")
 
 	# Cycle through all modes
@@ -1083,6 +1091,8 @@ func _run_first_targeting_tests() -> void:
 	_assert_eq(tower["targeting_mode"], "closest", "Starts at closest")
 	GM.cycle_targeting(tower)
 	_assert_eq(tower["targeting_mode"], "first", "Cycles to first")
+	GM.cycle_targeting(tower)
+	_assert_eq(tower["targeting_mode"], "last", "Cycles to last")
 	GM.cycle_targeting(tower)
 	_assert_eq(tower["targeting_mode"], "strongest", "Cycles to strongest")
 	GM.cycle_targeting(tower)
@@ -1570,7 +1580,7 @@ func _run_sell_tower_tests() -> void:
 	GM.towers.append(tower)
 	GM.occupied_tiles[Config.tile_key(3, 3)] = true
 	var initial_sins := GM.sins
-	var tower_id := tower["id"]
+	var tower_id: int = tower["id"]
 
 	GM.sell_tower(tower)
 	_assert(not GM.occupied_tiles.has(Config.tile_key(3, 3)), "Tile freed after sell")
@@ -2479,7 +2489,8 @@ func _run_wave_spawn_interleave_tests() -> void:
 	var expected_count := 0
 	for entry in wave1_def["enemies"]:
 		expected_count += entry["count"]
-	_assert_eq(GM.spawn_queue.size() + 1, expected_count, "Wave 1 spawn queue has right count (1 already spawned)")
+	# start_wave() queues every enemy; the first spawns later via update_waves.
+	_assert_eq(GM.spawn_queue.size(), expected_count, "Wave 1 spawn queue holds all enemies")
 
 	# Specials should appear in back half
 	GM.reset_state()
@@ -3140,18 +3151,21 @@ func _run_cycle_targeting_wrap_tests() -> void:
 	_assert_eq(tower["targeting_mode"], "first", "After 1 cycle: first")
 
 	GM.cycle_targeting(tower)
-	_assert_eq(tower["targeting_mode"], "strongest", "After 2 cycles: strongest")
+	_assert_eq(tower["targeting_mode"], "last", "After 2 cycles: last")
 
 	GM.cycle_targeting(tower)
-	_assert_eq(tower["targeting_mode"], "weakest", "After 3 cycles: weakest")
+	_assert_eq(tower["targeting_mode"], "strongest", "After 3 cycles: strongest")
+
+	GM.cycle_targeting(tower)
+	_assert_eq(tower["targeting_mode"], "weakest", "After 4 cycles: weakest")
 
 	# Wrap around back to closest
 	GM.cycle_targeting(tower)
-	_assert_eq(tower["targeting_mode"], "closest", "After 4 cycles: wraps to closest")
+	_assert_eq(tower["targeting_mode"], "closest", "After 5 cycles: wraps to closest")
 
 	# One more cycle to confirm stable wrapping
 	GM.cycle_targeting(tower)
-	_assert_eq(tower["targeting_mode"], "first", "After 5 cycles: wraps correctly")
+	_assert_eq(tower["targeting_mode"], "first", "After 6 cycles: wraps correctly")
 
 	GM.reset_state()
 
@@ -3232,9 +3246,9 @@ func _run_format_damage_tests() -> void:
 	_assert_eq(GM.format_damage(0.0), "0", "Zero damage formats as 0")
 	_assert_eq(GM.format_damage(500.0), "500", "Sub-1k formats as integer")
 	_assert_eq(GM.format_damage(999.0), "999", "999 formats without k")
-	_assert_eq(GM.format_damage(1000.0), "1.0k", "1000 formats as 1.0k")
+	_assert_eq(GM.format_damage(1000.0), "1k", "1000 formats as 1k")
 	_assert_eq(GM.format_damage(1500.0), "1.5k", "1500 formats as 1.5k")
-	_assert_eq(GM.format_damage(10000.0), "10.0k", "10000 formats as 10.0k")
+	_assert_eq(GM.format_damage(10000.0), "10k", "10000 formats as 10k")
 	_assert_eq(GM.format_damage(123456.0), "123.5k", "Large value formats with k")
 
 # ═══════════════════════════════════════════════════════
@@ -4358,3 +4372,115 @@ func _run_hades_cache_perf_tests() -> void:
 			hades_list.append(h)
 	_assert_eq(float(hades_list.size()), 1.0, "Only active Hades towers in cache list")
 	_assert_eq(float(hades_list[0]["id"]), float(h1["id"]), "Cached Hades is the active one")
+
+# ═══════════════════════════════════════════════════════
+# SPECIAL ENEMY INVARIANT TESTS
+# Regression guard: bosses must never be duplicated in SPECIAL_ENEMY_TYPES,
+# since is_special_enemy() already treats every is_boss enemy as special.
+# ═══════════════════════════════════════════════════════
+func _run_special_enemy_invariant_tests() -> void:
+	print("[Special Enemy Invariant]")
+
+	var seen: Dictionary = {}
+	for etype in Config.SPECIAL_ENEMY_TYPES:
+		_assert(Config.ENEMY_DATA.has(etype), "Special '" + etype + "' exists in ENEMY_DATA")
+		var edata: Dictionary = Config.ENEMY_DATA.get(etype, {})
+		_assert(not edata.get("is_boss", false), "Special '" + etype + "' is not a boss")
+		_assert(not seen.has(etype), "Special '" + etype + "' appears exactly once")
+		seen[etype] = true
+
+	# Bosses remain auto-special even though they are not in the list.
+	_assert(Config.is_special_enemy("archangel_michael"), "Boss archangel_michael is auto-special")
+	# Listed elites are special.
+	_assert(Config.is_special_enemy("zeus"), "Listed elite zeus is special")
+	# Plain trash enemies are not special.
+	_assert(not Config.is_special_enemy("seraph_scout"), "Plain seraph_scout is not special")
+
+# ═══════════════════════════════════════════════════════
+# LAST TARGETING BEHAVIOR TESTS
+# Verifies the 'last' mode (added alongside 'first') picks the enemy that has
+# advanced the LEAST along the path — the trailing enemy — not just any in range.
+# ═══════════════════════════════════════════════════════
+func _run_last_targeting_behavior_tests() -> void:
+	print("[Last Targeting Behavior]")
+	GM.reset_state()
+
+	var tower := GM.create_tower("bone_marksman", 5, 5)  # range 120px
+	GM.towers.append(tower)
+
+	# Two enemies in range, different path progress.
+	var lead := GM.create_enemy("seraph_scout")
+	lead["x"] = tower["x"] + 20.0; lead["y"] = tower["y"]
+	lead["path_index"] = 8  # furthest along
+	GM.enemies.append(lead)
+
+	var rear := GM.create_enemy("seraph_scout")
+	rear["x"] = tower["x"] + 30.0; rear["y"] = tower["y"]
+	rear["path_index"] = 2  # least advanced
+	GM.enemies.append(rear)
+
+	tower["targeting_mode"] = "last"
+	var tgt = GM.find_target(tower)
+	_assert(tgt != null, "Last mode finds a target")
+	_assert_eq(tgt["path_index"], 2, "Last mode targets least-advanced enemy (lowest path_index)")
+
+	# Sanity check the mirror image: 'first' picks the most-advanced enemy.
+	tower["targeting_mode"] = "first"
+	var tgt2 = GM.find_target(tower)
+	_assert(tgt2 != null, "First mode finds a target")
+	_assert_eq(tgt2["path_index"], 8, "First mode targets most-advanced enemy (highest path_index)")
+
+	GM.reset_state()
+
+# ═══════════════════════════════════════════════════════
+# FORMAT DAMAGE K-STRIP TESTS
+# Whole-thousand values drop the trailing ".0" ("1k" not "1.0k"); fractional
+# thousands keep one decimal; sub-1 values round half-up despite float drift.
+# ═══════════════════════════════════════════════════════
+func _run_format_damage_k_strip_tests() -> void:
+	print("[Format Damage K-Strip]")
+
+	_assert_eq(GM.format_damage(1000.0), "1k", "1000 -> 1k")
+	_assert_eq(GM.format_damage(2000.0), "2k", "2000 -> 2k")
+	_assert_eq(GM.format_damage(5000.0), "5k", "5000 -> 5k")
+	_assert_eq(GM.format_damage(10000.0), "10k", "10000 -> 10k")
+
+	_assert_eq(GM.format_damage(1500.0), "1.5k", "1500 -> 1.5k")
+	_assert_eq(GM.format_damage(2500.0), "2.5k", "2500 -> 2.5k")
+	_assert_eq(GM.format_damage(123456.0), "123.5k", "123456 -> 123.5k")
+
+	_assert_eq(GM.format_damage(0.15), "0.2", "0.15 rounds half-up to 0.2")
+	_assert_eq(GM.format_damage(0.25), "0.3", "0.25 rounds half-up to 0.3")
+	_assert_eq(GM.format_damage(0.05), "0.1", "0.05 rounds half-up to 0.1")
+
+# ═══════════════════════════════════════════════════════
+# PROJECTILE IMMEDIATE CULL TESTS
+# A projectile past PROJECTILE_MAX_DIST from its origin is removed on the same
+# frame; an in-flight projectile within range survives the update.
+# ═══════════════════════════════════════════════════════
+func _run_projectile_immediate_cull_tests() -> void:
+	print("[Projectile Immediate Cull]")
+
+	# In-flight projectile heading to a distant target is NOT culled.
+	GM.reset_state()
+	GM.wave = 1
+	var tower := GM.create_tower("bone_marksman", 3, 3)
+	var far_enemy := GM.create_enemy("seraph_scout")
+	far_enemy["x"] = 9999.0; far_enemy["y"] = 9999.0
+	var live_proj := GM.create_projectile(tower, far_enemy)  # starts at origin
+	GM.projectiles.append(live_proj)
+	GM.update_projectiles(0.016)
+	_assert_gte(float(GM.projectiles.size()), 1.0, "In-flight projectile survives an update")
+
+	# A projectile already beyond max distance is removed the SAME frame.
+	GM.reset_state()
+	var tower2 := GM.create_tower("bone_marksman", 3, 3)
+	var far_enemy2 := GM.create_enemy("seraph_scout")
+	far_enemy2["x"] = 9999.0; far_enemy2["y"] = 9999.0
+	var stray := GM.create_projectile(tower2, far_enemy2)
+	stray["x"] = stray["origin_x"] + Config.PROJECTILE_MAX_DIST + 100.0
+	GM.projectiles.append(stray)
+	GM.update_projectiles(0.016)
+	_assert_eq(float(GM.projectiles.size()), 0.0, "Beyond-max-dist projectile culled same frame")
+
+	GM.reset_state()

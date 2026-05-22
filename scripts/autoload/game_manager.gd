@@ -662,11 +662,14 @@ func update_projectiles(dt: float) -> void:
 			p["x"] += (dx / dist) * move_dist
 			p["y"] += (dy / dist) * move_dist
 
-		# Cull projectiles that have traveled too far from their origin
+		# Cull projectiles that have traveled too far from their origin.
+		# Remove immediately rather than letting the dead projectile linger an
+		# extra frame — saves one needless update/draw pass per stray shot.
 		var odx: float = p["x"] - p["origin_x"]
 		var ody: float = p["y"] - p["origin_y"]
 		if odx * odx + ody * ody > Config.PROJECTILE_MAX_DIST * Config.PROJECTILE_MAX_DIST:
 			p["alive"] = false
+			projectiles.remove_at(i)
 
 		i -= 1
 
@@ -674,6 +677,10 @@ func update_projectiles(dt: float) -> void:
 # TARGETING
 # ═══════════════════════════════════════════════════════
 const TARGETING_MODES := ["closest", "first", "last", "strongest", "weakest"]
+# Modes that select the SMALLEST metric (lowest distance / hp / path index).
+# Listing them explicitly keeps find_target's best-value seed correct when new
+# modes are added — far less error-prone than a chain of `!=` comparisons.
+const MIN_SEEKING_MODES := ["closest", "weakest", "last"]
 
 func cycle_targeting(tower: Dictionary) -> void:
 	var idx := TARGETING_MODES.find(tower.get("targeting_mode", "closest"))
@@ -682,7 +689,7 @@ func cycle_targeting(tower: Dictionary) -> void:
 func find_target(tower: Dictionary):
 	var mode: String = tower.get("targeting_mode", "closest")
 	var best = null
-	var best_val: float = -1.0 if mode != "closest" and mode != "weakest" and mode != "last" else INF
+	var best_val: float = INF if mode in MIN_SEEKING_MODES else -1.0
 	var r2: float = tower["range"] * tower["range"]
 	for e in enemies:
 		if not e["alive"]:
@@ -1519,9 +1526,16 @@ func _apply_speed_buff(factor: float, duration: float) -> void:
 ## Sub-1 values show one decimal place so Cocytus tick damage doesn't read "0".
 func format_damage(value: float) -> String:
 	if value >= 1000.0:
-		return str(snappedf(value / 1000.0, 0.1)) + "k"
+		# Compact thousands. Whole-number results drop the trailing ".0"
+		# ("1k" not "1.0k"); fractional results keep one decimal ("1.5k").
+		var k: float = snappedf(value / 1000.0, 0.1)
+		if k == floorf(k):
+			return str(int(k)) + "k"
+		return str(k) + "k"
 	if value < 1.0 and value > 0.0:
-		return str(snappedf(value, 0.1))
+		# Round half-up to one decimal. The epsilon guards against float
+		# representation underflow (e.g. 0.15 stored as 0.1499999 → "0.2").
+		return str(snappedf(value + 0.0001, 0.1))
 	return str(roundi(value))
 
 ## Format kill counts with "k" suffix for compact display.

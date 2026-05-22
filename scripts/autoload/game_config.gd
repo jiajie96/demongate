@@ -310,8 +310,10 @@ const LEGENDARY_FALLBACK_SINS := 80     # consolation prize
 # Pandora's True Gift — sins option reward
 const PANDORA_SINS_REWARD := 100        # "Pandora grants N Sins!"
 
-# Special enemy types — used for spawn ordering and relic drop rates
-const SPECIAL_ENEMY_TYPES := ["archangel_marshal", "holy_sentinel", "archangel_michael", "zeus", "archangel_raphael"]
+# Special enemy types — used for spawn ordering and relic drop rates.
+# Bosses (is_boss=true, e.g. archangel_michael) are auto-special via
+# is_special_enemy() and must NOT be duplicated here.
+const SPECIAL_ENEMY_TYPES := ["archangel_marshal", "holy_sentinel", "zeus", "archangel_raphael"]
 
 # Effect colors — inline Color literals extracted for consistency & tuning
 const COLOR_FX_ZEUS_BOLT := Color(0.8, 0.9, 1.0)        # Zeus lightning bolt visual
