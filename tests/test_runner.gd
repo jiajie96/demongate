@@ -166,6 +166,11 @@ func _ready() -> void:
 	_run_last_targeting_behavior_tests()
 	_run_format_damage_k_strip_tests()
 	_run_projectile_immediate_cull_tests()
+	_run_hades_buff_all_towers_tests()
+	_run_special_enemy_ability_delay_tests()
+	_run_tower_levelup_helper_tests()
+	_run_format_kills_k_strip_tests()
+	_run_uses_targeting_tests()
 
 	print("")
 	print("=== Results: %d/%d passed ===" % [_passed, _total])
@@ -4482,5 +4487,141 @@ func _run_projectile_immediate_cull_tests() -> void:
 	GM.projectiles.append(stray)
 	GM.update_projectiles(0.016)
 	_assert_eq(float(GM.projectiles.size()), 0.0, "Beyond-max-dist projectile culled same frame")
+
+	GM.reset_state()
+
+# ═══════════════════════════════════════════════════════
+# HADES BUFF ALL TOWERS TESTS
+# Regression guard: Hades's buff used to read the BUFFED tower's own
+# buff_multiplier (1.0 for non-Hades towers) instead of HADES_BUFF_DEFAULT,
+# so Lucifer and Cocytus silently gained nothing from a nearby Hades.
+# ═══════════════════════════════════════════════════════
+func _run_hades_buff_all_towers_tests() -> void:
+	print("[Hades Buff All Towers]")
+	GM.reset_state()
+	GM.wave = 1
+
+	# Fresh non-Hades towers carry their OWN buff_multiplier of 1.0 — they are not
+	# buff sources. Reading that as the received buff was the bug.
+	var fresh_luc := GM.create_tower("lucifer", 5, 5)
+	var fresh_coc := GM.create_tower("cocytus", 6, 6)
+	_assert_near(float(fresh_luc["buff_multiplier"]), 1.0, 0.001, "Fresh Lucifer buff_multiplier == 1.0 (not a buff source)")
+	_assert_near(float(fresh_coc["buff_multiplier"]), 1.0, 0.001, "Fresh Cocytus buff_multiplier == 1.0 (not a buff source)")
+	_assert_gt(Config.HADES_BUFF_DEFAULT, 1.0, "HADES_BUFF_DEFAULT > 1.0 (a real buff)")
+
+	# Cocytus DPS must rise by exactly HADES_BUFF_DEFAULT when Hades-buffed,
+	# WITHOUT manually patching buff_multiplier (that override masked the bug).
+	var unbuffed_dps: float = GM._calc_cocytus_dps(fresh_coc)
+	fresh_coc["hades_buffed"] = true
+	var buffed_dps: float = GM._calc_cocytus_dps(fresh_coc)
+	_assert_near(buffed_dps, unbuffed_dps * Config.HADES_BUFF_DEFAULT, 0.01, "Cocytus DPS scales by HADES_BUFF_DEFAULT when Hades-buffed")
+	_assert_gt(buffed_dps, unbuffed_dps, "Hades buff actually raises Cocytus DPS")
+	fresh_coc["hades_buffed"] = false
+
+	GM.reset_state()
+
+# ═══════════════════════════════════════════════════════
+# SPECIAL ENEMY ABILITY START DELAY TESTS
+# Michael/Zeus/Raphael must not fire their ability on the spawn frame; the
+# timer is seeded with the ability cooldown so the player gets a reaction window.
+# ═══════════════════════════════════════════════════════
+func _run_special_enemy_ability_delay_tests() -> void:
+	print("[Special Enemy Ability Delay]")
+	GM.reset_state()
+	GM.wave = 10
+
+	var michael := GM.create_enemy("archangel_michael")
+	_assert_near(float(michael["ability_timer"]), Config.MICHAEL_SHIELD_COOLDOWN, 0.01, "Michael spawns with shield-cooldown delay")
+	var zeus := GM.create_enemy("zeus")
+	_assert_near(float(zeus["ability_timer"]), Config.ZEUS_LIGHTNING_COOLDOWN, 0.01, "Zeus spawns with lightning-cooldown delay")
+	var raphael := GM.create_enemy("archangel_raphael")
+	_assert_near(float(raphael["ability_timer"]), Config.RAPHAEL_HEAL_COOLDOWN, 0.01, "Raphael spawns with heal-cooldown delay")
+	_assert_gt(float(zeus["ability_timer"]), 0.0, "Zeus does not fire on the spawn frame")
+
+	# Ordinary enemies have no ability warmup.
+	var scout := GM.create_enemy("seraph_scout")
+	_assert_near(float(scout["ability_timer"]), 0.0, 0.001, "Plain enemy has zero ability_timer")
+	var titan := GM.create_enemy("war_titan")
+	_assert_near(float(titan["ability_timer"]), 0.0, 0.001, "War Titan has zero ability_timer")
+
+	GM.reset_state()
+
+# ═══════════════════════════════════════════════════════
+# TOWER LEVELUP HELPER TESTS
+# _apply_tower_levelup is shared by paid upgrade + legendary free upgrade so the
+# two paths can never drift apart.
+# ═══════════════════════════════════════════════════════
+func _run_tower_levelup_helper_tests() -> void:
+	print("[Tower Levelup Helper]")
+	GM.reset_state()
+
+	var a := GM.create_tower("bone_marksman", 3, 3)
+	var base_dmg: float = a["damage"]
+	var base_rng: float = a["range"]
+	var base_spd: float = a["attack_speed"]
+
+	GM._apply_tower_levelup(a)
+	_assert_eq(a["level"], 2, "Helper increments level")
+	_assert_near(a["damage"], base_dmg * Config.UPGRADE_MULT, 0.01, "Helper scales damage by UPGRADE_MULT")
+	_assert_near(a["range"], base_rng * Config.UPGRADE_RANGE_MULT, 0.01, "Helper scales range by UPGRADE_RANGE_MULT")
+	_assert_near(a["attack_speed"], base_spd * Config.UPGRADE_SPEED_MULT, 0.01, "Helper scales attack_speed by UPGRADE_SPEED_MULT")
+
+	# Paid upgrade_tower must produce the same scaled result as the helper.
+	GM.sins = 99999
+	var b := GM.create_tower("bone_marksman", 4, 3)
+	GM.towers.append(b)
+	GM.upgrade_tower(b)
+	_assert_eq(b["level"], 2, "upgrade_tower increments level")
+	_assert_near(b["damage"], base_dmg * Config.UPGRADE_MULT, 0.01, "upgrade_tower matches helper damage scaling")
+	_assert_near(b["attack_speed"], base_spd * Config.UPGRADE_SPEED_MULT, 0.01, "upgrade_tower matches helper attack_speed scaling")
+
+	GM.reset_state()
+
+# ═══════════════════════════════════════════════════════
+# FORMAT KILLS K-STRIP TESTS
+# format_kills now mirrors format_damage: whole thousands drop trailing ".0".
+# ═══════════════════════════════════════════════════════
+func _run_format_kills_k_strip_tests() -> void:
+	print("[Format Kills K-Strip]")
+	_assert_eq(GM.format_kills(1000), "1k", "format_kills(1000) -> 1k")
+	_assert_eq(GM.format_kills(2000), "2k", "format_kills(2000) -> 2k")
+	_assert_eq(GM.format_kills(10000), "10k", "format_kills(10000) -> 10k")
+	_assert_eq(GM.format_kills(1500), "1.5k", "format_kills(1500) -> 1.5k")
+	_assert_eq(GM.format_kills(2500), "2.5k", "format_kills(2500) -> 2.5k")
+	_assert_eq(GM.format_kills(0), "0", "format_kills(0) -> 0")
+	_assert_eq(GM.format_kills(999), "999", "format_kills(999) -> 999")
+
+# ═══════════════════════════════════════════════════════
+# USES TARGETING TESTS
+# Only towers that select individual targets expose the targeting control;
+# global / beam-cone / support towers ignore targeting entirely.
+# ═══════════════════════════════════════════════════════
+func _run_uses_targeting_tests() -> void:
+	print("[Uses Targeting]")
+	GM.reset_state()
+
+	var arc := GM.create_tower("bone_marksman", 3, 3)
+	var mag := GM.create_tower("inferno_warlock", 4, 3)
+	var nec := GM.create_tower("soul_reaper", 5, 3)
+	var had := GM.create_tower("hades", 6, 3)
+	var coc := GM.create_tower("cocytus", 7, 3)
+	var luc := GM.create_tower("lucifer", 8, 3)
+
+	_assert(GM.uses_targeting(arc), "Bone Marksman uses targeting")
+	_assert(GM.uses_targeting(mag), "Inferno Warlock uses targeting")
+	_assert(GM.uses_targeting(nec), "Soul Reaper uses targeting")
+	_assert(not GM.uses_targeting(had), "Hades (support) does not use targeting")
+	_assert(not GM.uses_targeting(coc), "Cocytus (beam cone) does not use targeting")
+	_assert(not GM.uses_targeting(luc), "Lucifer (global) does not use targeting")
+
+	# cycle_targeting is a no-op for non-targeting towers...
+	var luc_mode_before: String = luc.get("targeting_mode", "closest")
+	GM.cycle_targeting(luc)
+	_assert_eq(luc.get("targeting_mode", "closest"), luc_mode_before, "cycle_targeting no-op on Lucifer")
+
+	# ...but advances for towers that do target.
+	var arc_mode_before: String = arc.get("targeting_mode", "closest")
+	GM.cycle_targeting(arc)
+	_assert(arc.get("targeting_mode", "closest") != arc_mode_before, "cycle_targeting advances Bone Marksman")
 
 	GM.reset_state()

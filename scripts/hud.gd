@@ -859,7 +859,9 @@ func _process(_dt: float) -> void:
 
 		var mode: String = tw.get("targeting_mode", "closest")
 		btn_targeting.text = Locale.t("Target") + ": " + mode.capitalize()
-		btn_targeting.visible = not tw["is_support"]
+		# Only towers that actually select targets show the targeting control.
+		# Global (Lucifer), beam-cone (Cocytus) and support (Hades) all ignore it.
+		btn_targeting.visible = GM.uses_targeting(tw)
 	else:
 		tower_info_panel.visible = false
 

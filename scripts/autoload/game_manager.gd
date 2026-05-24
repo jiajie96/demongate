@@ -296,12 +296,17 @@ func upgrade_tower(tower: Dictionary) -> bool:
 	var cost: int = roundi(data["upgrade_cost"] * pow(Config.UPGRADE_COST_SCALING, tower["level"] - 1))
 	if not spend(cost):
 		return false
+	_apply_tower_levelup(tower)
+	notify(Locale.tf("tower_upgraded", {"name": Locale.t(tower["name"]), "level": tower["level"]}), tower["color"])
+	return true
+
+## Apply one level-up's stat scaling to a tower. Shared by the paid upgrade and
+## the Legendary Blueprint free upgrade so the two paths can never drift apart.
+func _apply_tower_levelup(tower: Dictionary) -> void:
 	tower["level"] += 1
 	tower["damage"] *= Config.UPGRADE_MULT
 	tower["range"] *= Config.UPGRADE_RANGE_MULT
 	tower["attack_speed"] *= Config.UPGRADE_SPEED_MULT
-	notify(Locale.tf("tower_upgraded", {"name": Locale.t(tower["name"]), "level": tower["level"]}), tower["color"])
-	return true
 
 func sell_tower(tower: Dictionary) -> void:
 	var data: Dictionary = Config.TOWER_DATA[tower["type"]]
@@ -342,6 +347,16 @@ func create_enemy(type: String) -> Dictionary:
 	_next_id += 1
 	var scaled_hp: float = data["hp"] * Config.hp_scale(wave)
 	var scaled_speed: float = data["speed"] * Config.spd_scale(wave)
+	# Special enemies (Michael/Zeus/Raphael) previously fired their ability on the
+	# very first processed frame after spawn — an instant, unavoidable tower
+	# disable / shield / heal with zero counterplay. Seed the timer with the
+	# ability's cooldown so the first cast lands one cooldown after they arrive,
+	# giving the player a reaction window. Non-ability enemies stay at 0.
+	var ability_start := 0.0
+	match type:
+		"archangel_michael": ability_start = Config.MICHAEL_SHIELD_COOLDOWN
+		"zeus": ability_start = Config.ZEUS_LIGHTNING_COOLDOWN
+		"archangel_raphael": ability_start = Config.RAPHAEL_HEAL_COOLDOWN
 	return {
 		"id": _next_id,
 		"type": type,
@@ -364,7 +379,7 @@ func create_enemy(type: String) -> Dictionary:
 		"shield_buff_timer": 0.0,
 		"flash_timer": 0.0,
 		"spawn_timer": Config.ENEMY_SPAWN_DURATION,
-		"ability_timer": 0.0,
+		"ability_timer": ability_start,
 		"burn_stacks": 0,
 		"burn_timer": 0.0,
 		"burn_source": null,
@@ -682,7 +697,23 @@ const TARGETING_MODES := ["closest", "first", "last", "strongest", "weakest"]
 # modes are added — far less error-prone than a chain of `!=` comparisons.
 const MIN_SEEKING_MODES := ["closest", "weakest", "last"]
 
+## Returns true if the tower selects individual targets (and therefore respects
+## targeting_mode). Support (Hades), global (Lucifer) and beam-cone (Cocytus)
+## towers ignore targeting entirely, so their targeting UI/hotkey is a no-op.
+func uses_targeting(tower: Dictionary) -> bool:
+	if tower.get("is_support", false):
+		return false
+	if tower.get("is_global", false):
+		return false
+	if tower.get("is_beam_cone", false):
+		return false
+	return true
+
 func cycle_targeting(tower: Dictionary) -> void:
+	# Guard the hotkey/button path: cycling a mode a tower never reads is
+	# confusing, so towers that don't target are a no-op here.
+	if not uses_targeting(tower):
+		return
 	var idx := TARGETING_MODES.find(tower.get("targeting_mode", "closest"))
 	tower["targeting_mode"] = TARGETING_MODES[(idx + 1) % TARGETING_MODES.size()]
 
@@ -876,7 +907,11 @@ func update_towers(dt: float) -> void:
 		if t["is_global"]:
 			var pulse_speed: float = t["attack_speed"] * perm_speed_buff * temp_speed_buff
 			if t["hades_buffed"]:
-				pulse_speed *= t.get("buff_multiplier", 1.5)
+				# Use the shared Hades buff constant. A buffed tower carries its OWN
+				# buff_multiplier (1.0 for every non-Hades tower), so reading that here
+				# meant Lucifer never actually received the speed-up. Match the
+				# single-target path (and the HUD) with HADES_BUFF_DEFAULT.
+				pulse_speed *= Config.HADES_BUFF_DEFAULT
 			t["cooldown"] -= dt
 			if t["cooldown"] > 0:
 				continue
@@ -945,7 +980,9 @@ func _lucifer_pulse(tower: Dictionary) -> void:
 func _calc_cocytus_dps(tower: Dictionary) -> float:
 	var cone_dps: float = tower["damage"] * tower["attack_speed"] * perm_speed_buff * temp_speed_buff
 	if tower["hades_buffed"]:
-		cone_dps *= tower.get("buff_multiplier", 1.5)
+		# Shared Hades buff constant (see Lucifer note) — Cocytus's own
+		# buff_multiplier is 1.0, so it previously gained nothing from a Hades.
+		cone_dps *= Config.HADES_BUFF_DEFAULT
 	if double_damage > 0:
 		cone_dps *= Config.DOUBLE_DAMAGE_MULT
 	if tower_weaken_mult < 1.0:
@@ -1346,10 +1383,7 @@ func free_upgrade_best_tower() -> bool:
 				best_val = val
 				best_tower = t
 	if best_tower != null:
-		best_tower["level"] += 1
-		best_tower["damage"] *= Config.UPGRADE_MULT
-		best_tower["range"] *= Config.UPGRADE_RANGE_MULT
-		best_tower["attack_speed"] *= Config.UPGRADE_SPEED_MULT
+		_apply_tower_levelup(best_tower)
 		notify(Locale.tf("legendary_upgrade", {"name": Locale.t(best_tower["name"]), "level": best_tower["level"]}), Config.COLOR_NOTIFY_LEGENDARY)
 		return true
 	return false
@@ -1539,9 +1573,14 @@ func format_damage(value: float) -> String:
 	return str(roundi(value))
 
 ## Format kill counts with "k" suffix for compact display.
+## Mirrors format_damage's k-strip: whole-thousand counts drop the trailing
+## ".0" ("1k" not "1.0k") while fractional counts keep one decimal ("2.5k").
 func format_kills(value: int) -> String:
 	if value >= 1000:
-		return str(snappedf(float(value) / 1000.0, 0.1)) + "k"
+		var k: float = snappedf(float(value) / 1000.0, 0.1)
+		if k == floorf(k):
+			return str(int(k)) + "k"
+		return str(k) + "k"
 	return str(value)
 
 ## Format game_time (seconds float) into a human-readable mm:ss string.
