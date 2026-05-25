@@ -87,6 +87,13 @@ var _next_id: int = 0
 # Per-frame cache for _has_alive_type — cleared at start of each update cycle.
 var _alive_type_cache: Dictionary = {}
 
+# Per-wave cache for reward_scale(). earn_from_kill is a hot path (an AoE-heavy
+# late wave can kill dozens of enemies in a single frame), and Config.reward_scale
+# performs three pow() calls. The result only depends on `wave`, so cache it and
+# recompute only when the wave actually changes.
+var _reward_scale_cache: float = -1.0
+var _reward_scale_wave: int = -1
+
 
 # ═══════════════════════════════════════════════════════
 # RESET
@@ -151,6 +158,8 @@ func reset_state() -> void:
 	wave_banner_is_boss = false
 	_next_id = 0
 	_alive_type_cache.clear()
+	_reward_scale_cache = -1.0
+	_reward_scale_wave = -1
 
 func set_game_speed(speed: float) -> void:
 	game_speed = speed
@@ -166,8 +175,13 @@ func earn(amount: int) -> void:
 
 # powHPG scaling: kill rewards grow with enemy HP scaling (exponent 0.85).
 # Keeps economy from dying as enemies get tougher in late waves.
+# Cached per-wave — see _reward_scale_cache — so the per-kill hot path doesn't
+# recompute three pow() calls for every enemy that dies in the same wave.
 func reward_scale() -> float:
-	return Config.reward_scale(wave)
+	if _reward_scale_wave != wave:
+		_reward_scale_wave = wave
+		_reward_scale_cache = Config.reward_scale(wave)
+	return _reward_scale_cache
 
 func earn_from_kill(enemy_type: String, was_aoe: bool) -> void:
 	var data: Dictionary = Config.ENEMY_DATA.get(enemy_type, {})
@@ -730,6 +744,12 @@ func find_target(tower: Dictionary):
 		var dist_sq: float = dx * dx + dy * dy
 		if dist_sq > r2:
 			continue
+		# Skip enemies the Holy Sentinel is shielding: a single-target shot is
+		# fully absorbed there (combat_hit no-ops with just a flash), so locking
+		# onto one burns the tower's cooldown and a projectile for zero damage.
+		# Retarget to a damageable enemy — or hold fire if none are reachable.
+		if _is_guardian_protected(e):
+			continue
 		match mode:
 			"closest":
 				if dist_sq < best_val:
@@ -863,6 +883,19 @@ func combat_kill(enemy: Dictionary, tower) -> void:
 # ═══════════════════════════════════════════════════════
 # TOWER UPDATE
 # ═══════════════════════════════════════════════════════
+## Effective attack-speed multiplier for a tower: global permanent + temporary
+## speed buffs, and the Hades support buff when active. Shared by every firing
+## path (single-target, Lucifer pulse, Cocytus DPS) AND the HUD readout so the
+## displayed speed/DPS always matches what the tower actually does. Folding the
+## Hades branch in here also fixes the old bug where a buffed tower's own
+## buff_multiplier (always 1.0 on non-Hades towers) was read instead of the
+## shared HADES_BUFF_DEFAULT.
+func tower_speed_multiplier(tower: Dictionary) -> float:
+	var m: float = perm_speed_buff * temp_speed_buff
+	if tower.get("hades_buffed", false):
+		m *= Config.HADES_BUFF_DEFAULT
+	return m
+
 func update_towers(dt: float) -> void:
 	# Pre-cache active Hades towers for Cocytus corruption check (avoid per-cone rebuild)
 	var _cached_hades_list: Array = []
@@ -905,13 +938,7 @@ func update_towers(dt: float) -> void:
 
 		# Lucifer global pulse: damage ALL enemies + execute threshold
 		if t["is_global"]:
-			var pulse_speed: float = t["attack_speed"] * perm_speed_buff * temp_speed_buff
-			if t["hades_buffed"]:
-				# Use the shared Hades buff constant. A buffed tower carries its OWN
-				# buff_multiplier (1.0 for every non-Hades tower), so reading that here
-				# meant Lucifer never actually received the speed-up. Match the
-				# single-target path (and the HUD) with HADES_BUFF_DEFAULT.
-				pulse_speed *= Config.HADES_BUFF_DEFAULT
+			var pulse_speed: float = t["attack_speed"] * tower_speed_multiplier(t)
 			t["cooldown"] -= dt
 			if t["cooldown"] > 0:
 				continue
@@ -927,9 +954,7 @@ func update_towers(dt: float) -> void:
 			_cocytus_cone(t, dt, _cached_hades_list, _hades_corruption)
 			continue
 
-		var effective_speed: float = t["attack_speed"] * perm_speed_buff * temp_speed_buff
-		if t["hades_buffed"]:
-			effective_speed *= Config.HADES_BUFF_DEFAULT
+		var effective_speed: float = t["attack_speed"] * tower_speed_multiplier(t)
 		t["cooldown"] -= dt
 		if t["cooldown"] > 0:
 			continue
@@ -978,11 +1003,7 @@ func _lucifer_pulse(tower: Dictionary) -> void:
 ## Calculate Cocytus effective DPS before per-enemy reductions (shields, guardian, etc).
 ## Extracted from _cocytus_cone for readability and reuse in tooltip display.
 func _calc_cocytus_dps(tower: Dictionary) -> float:
-	var cone_dps: float = tower["damage"] * tower["attack_speed"] * perm_speed_buff * temp_speed_buff
-	if tower["hades_buffed"]:
-		# Shared Hades buff constant (see Lucifer note) — Cocytus's own
-		# buff_multiplier is 1.0, so it previously gained nothing from a Hades.
-		cone_dps *= Config.HADES_BUFF_DEFAULT
+	var cone_dps: float = tower["damage"] * tower["attack_speed"] * tower_speed_multiplier(tower)
 	if double_damage > 0:
 		cone_dps *= Config.DOUBLE_DAMAGE_MULT
 	if tower_weaken_mult < 1.0:
@@ -1278,10 +1299,10 @@ func roll_dice() -> Dictionary:
 		"surge":
 			_apply_speed_buff(Config.DICE_SURGE_SPEED, Config.DICE_SURGE_DURATION)
 		"aoe_25":
-			_damage_all_percent(0.25, Config.DICE_AOE_FLASH_25)
+			_damage_all_percent(Config.DICE_AOE_DAMAGE_25, Config.DICE_AOE_FLASH_25)
 			add_effect("screen_flash", 0, 0, 0, Config.COLOR_FX_SCREEN_FLASH_STRONG)
 		"aoe_10":
-			_damage_all_percent(0.10, Config.DICE_AOE_FLASH_10)
+			_damage_all_percent(Config.DICE_AOE_DAMAGE_10, Config.DICE_AOE_FLASH_10)
 			add_effect("screen_flash", 0, 0, 0, Config.COLOR_FX_SCREEN_FLASH_WEAK)
 		"speed_boost":
 			_apply_speed_buff(Config.DICE_SPEED_BOOST, Config.DICE_SPEED_BOOST_DURATION)

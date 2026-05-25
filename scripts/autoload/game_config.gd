@@ -181,6 +181,11 @@ const HERO_THRESHOLD_STEP := 500         # increment per additional hero
 const DICE_AOE_FLASH_25 := 0.2           # 25% AoE: stronger flash
 const DICE_AOE_FLASH_10 := 0.15          # 10% AoE: lighter flash
 
+# Dice AoE damage fractions — % of each enemy's MAX HP dealt by the dice AoE rolls.
+# Extracted from the inline 0.25 / 0.10 literals in roll_dice() for tuning clarity.
+const DICE_AOE_DAMAGE_25 := 0.25         # Hellstorm (roll 5): 25% of max HP
+const DICE_AOE_DAMAGE_10 := 0.10         # Small Spark (roll 3): 10% of max HP
+
 # Dice effect parameters — extracted from roll_dice() for tuning
 const DICE_SURGE_SPEED := 1.8            # Demonic Surge: +80% attack speed
 const DICE_SURGE_DURATION := 15.0        # seconds Surge lasts

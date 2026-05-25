@@ -829,9 +829,10 @@ func _process(_dt: float) -> void:
 		var effective_dmg: float = tw["damage"] * tw["damage_mult"]
 		if GM.double_damage > 0:
 			effective_dmg *= Config.DOUBLE_DAMAGE_MULT
-		var effective_spd: float = tw["attack_speed"] * GM.perm_speed_buff
-		if tw["hades_buffed"]:
-			effective_spd *= Config.HADES_BUFF_DEFAULT
+		# Use the shared speed-multiplier helper so the readout matches the actual
+		# firing rate — this now includes the temporary speed buff (Demonic Surge /
+		# Quick Hands), which the old inline math omitted, plus the Hades buff.
+		var effective_spd: float = tw["attack_speed"] * GM.tower_speed_multiplier(tw)
 		var dps: float = effective_dmg * effective_spd
 		# Cocytus beam cone: use dedicated DPS calc (damage * speed * buffs)
 		if tw.get("is_beam_cone", false):

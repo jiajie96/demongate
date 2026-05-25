@@ -322,6 +322,10 @@ func _generate_fallback_sounds() -> void:
 		_proc_sounds["hades_buff"] = _make_hades_buff()
 	if not _streams.has("lucifer_pulse"):
 		_proc_sounds["lucifer_pulse"] = _make_lucifer_pulse()
+	# Pact accept is a player-facing confirmation (accept pact / Pandora choice);
+	# without a fallback a missing file left those actions silent.
+	if not _streams.has("pact_accept"):
+		_proc_sounds["pact_accept"] = _make_pact_accept()
 	# Ambient music — always procedural for now (Kenney has no gameplay-loop music)
 	_proc_sounds["music"] = _make_music()
 
@@ -454,6 +458,25 @@ func _make_lucifer_pulse() -> AudioStreamWAV:
 		s += sin(phase * TAU * 2.0) * 0.1
 		s += _noise(i) * 0.03 * env
 		_pack(buf, i, _saturate(s * env * 0.5))
+	return _make_wav(buf)
+
+func _make_pact_accept() -> AudioStreamWAV:
+	# Ominous descending two-note motif — "a deal struck in shadow". A3 → E3
+	# with an octave shimmer on top and a sub layer for weight, lightly saturated.
+	var freqs := [220.0, 164.81]  # A3, E3 (descending fifth)
+	var note_len := _n_samples(0.18)
+	var total := note_len * 2
+	var buf := PackedByteArray()
+	buf.resize(total * 2)
+	for ni in range(2):
+		var offset := ni * note_len
+		for i in range(note_len):
+			var t := float(i) / SAMPLE_RATE
+			var env := _env_ad(i, note_len, 0.04)
+			var s := sin(t * freqs[ni] * TAU) * 0.3
+			s += sin(t * freqs[ni] * 2.0 * TAU) * 0.08   # octave shimmer
+			s += sin(t * freqs[ni] * 0.5 * TAU) * 0.12   # sub layer for weight
+			_pack(buf, offset + i, _saturate(s * env * 0.7))
 	return _make_wav(buf)
 
 func _make_wave_start() -> AudioStreamWAV:

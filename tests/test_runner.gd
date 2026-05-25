@@ -171,6 +171,11 @@ func _ready() -> void:
 	_run_tower_levelup_helper_tests()
 	_run_format_kills_k_strip_tests()
 	_run_uses_targeting_tests()
+	_run_reward_scale_cache_tests()
+	_run_tower_speed_multiplier_tests()
+	_run_guardian_targeting_skip_tests()
+	_run_dice_aoe_damage_constants_tests()
+	_run_audio_fallback_tests()
 
 	print("")
 	print("=== Results: %d/%d passed ===" % [_passed, _total])
@@ -4625,3 +4630,173 @@ func _run_uses_targeting_tests() -> void:
 	_assert(arc.get("targeting_mode", "closest") != arc_mode_before, "cycle_targeting advances Bone Marksman")
 
 	GM.reset_state()
+
+# ═══════════════════════════════════════════════════════
+# REWARD SCALE CACHE TESTS
+# GM.reward_scale() caches its result per-wave (hot path in earn_from_kill).
+# The cached value must equal Config.reward_scale(wave) and invalidate when the
+# wave changes.
+# ═══════════════════════════════════════════════════════
+func _run_reward_scale_cache_tests() -> void:
+	print("[Reward Scale Cache]")
+	GM.reset_state()
+
+	# Cached value matches the pure Config function at several waves.
+	GM.wave = 5
+	_assert_near(GM.reward_scale(), Config.reward_scale(5), 0.0001, "Cached reward_scale matches Config at wave 5")
+	_assert_eq(GM._reward_scale_wave, 5, "Cache wave tracker set to 5 after first call")
+
+	# Repeat call at same wave returns identical value (still correct).
+	_assert_near(GM.reward_scale(), Config.reward_scale(5), 0.0001, "Repeat call at wave 5 stays correct")
+
+	# Changing the wave invalidates the cache and recomputes.
+	GM.wave = 10
+	_assert_near(GM.reward_scale(), Config.reward_scale(10), 0.0001, "Cache invalidates and recomputes at wave 10")
+	_assert_eq(GM._reward_scale_wave, 10, "Cache wave tracker updated to 10")
+
+	# reset_state clears the cache tracker.
+	GM.reset_state()
+	_assert_eq(GM._reward_scale_wave, -1, "reset_state clears reward_scale cache wave tracker")
+
+	GM.reset_state()
+
+# ═══════════════════════════════════════════════════════
+# TOWER SPEED MULTIPLIER TESTS
+# The shared helper folds permanent + temporary speed buffs and the Hades buff
+# into one multiplier used by every firing path and the HUD readout.
+# ═══════════════════════════════════════════════════════
+func _run_tower_speed_multiplier_tests() -> void:
+	print("[Tower Speed Multiplier]")
+	GM.reset_state()
+
+	var tower := GM.create_tower("bone_marksman", 5, 5)
+
+	# Baseline: no buffs → 1.0
+	_assert_near(GM.tower_speed_multiplier(tower), 1.0, 0.0001, "No buffs → multiplier 1.0")
+
+	# Temporary speed buff (e.g. Demonic Surge) is included.
+	GM.temp_speed_buff = Config.DICE_SURGE_SPEED
+	_assert_near(GM.tower_speed_multiplier(tower), Config.DICE_SURGE_SPEED, 0.0001, "Temp speed buff included in multiplier")
+
+	# Permanent buff stacks multiplicatively with temp.
+	GM.perm_speed_buff = 1.2
+	_assert_near(GM.tower_speed_multiplier(tower), 1.2 * Config.DICE_SURGE_SPEED, 0.0001, "Perm * temp stack")
+
+	# Hades buff multiplies on top by HADES_BUFF_DEFAULT.
+	tower["hades_buffed"] = true
+	_assert_near(GM.tower_speed_multiplier(tower), 1.2 * Config.DICE_SURGE_SPEED * Config.HADES_BUFF_DEFAULT, 0.0001, "Hades buff multiplies multiplier")
+
+	# Helper drives the actual fire rate: effective_speed = attack_speed * multiplier
+	var expected_speed: float = tower["attack_speed"] * GM.tower_speed_multiplier(tower)
+	_assert_gt(expected_speed, tower["attack_speed"], "Effective speed exceeds base when buffed")
+
+	GM.reset_state()
+	# After reset, a fresh tower with no buffs is back to 1.0
+	var tower2 := GM.create_tower("lucifer", 6, 6)
+	_assert_near(GM.tower_speed_multiplier(tower2), 1.0, 0.0001, "Multiplier resets to 1.0 after reset_state")
+
+	GM.reset_state()
+
+# ═══════════════════════════════════════════════════════
+# GUARDIAN TARGETING SKIP TESTS
+# find_target must not lock onto Holy-Sentinel-protected enemies — their shots
+# are fully absorbed, so targeting them wastes the tower's cooldown.
+# ═══════════════════════════════════════════════════════
+func _run_guardian_targeting_skip_tests() -> void:
+	print("[Guardian Targeting Skip]")
+	GM.reset_state()
+	GM.wave = 1
+
+	var tower := GM.create_tower("bone_marksman", 5, 5)
+	GM.towers.append(tower)
+
+	# A protected enemy in range (first half of path), and a Holy Sentinel alive
+	# but OUT of range (so the sentinel itself is never a valid target).
+	var protected := GM.create_enemy("seraph_scout")
+	protected["x"] = tower["x"] + 30.0; protected["y"] = tower["y"]
+	protected["path_index"] = 2  # first half → protected
+	protected["spawn_timer"] = 0.0
+	GM.enemies.append(protected)
+
+	var sentinel := GM.create_enemy("holy_sentinel")
+	sentinel["x"] = tower["x"] + 9999.0; sentinel["y"] = tower["y"]  # far out of range
+	sentinel["path_index"] = 2
+	sentinel["spawn_timer"] = 0.0
+	GM.enemies.append(sentinel)
+	GM.clear_alive_type_cache()
+
+	# Sanity: the protected enemy really is protected.
+	_assert(GM._is_guardian_protected(protected), "Scout in first half is guardian-protected")
+	# Tower should NOT target the protected enemy → hold fire (null).
+	_assert(GM.find_target(tower) == null, "find_target skips guardian-protected enemy (holds fire)")
+
+	# Add a damageable enemy (past halfway → not protected) within range.
+	var reachable := GM.create_enemy("seraph_scout")
+	reachable["x"] = tower["x"] + 40.0; reachable["y"] = tower["y"]
+	reachable["path_index"] = Config.path_pixels.size() - 1  # second half → not protected
+	reachable["spawn_timer"] = 0.0
+	GM.enemies.append(reachable)
+	GM.clear_alive_type_cache()
+	_assert(GM.find_target(tower) == reachable, "find_target picks the damageable enemy over the protected one")
+
+	# With no sentinel alive, the formerly-protected enemy is targetable again.
+	sentinel["alive"] = false
+	GM.clear_alive_type_cache()
+	var t2 = GM.find_target(tower)
+	_assert(t2 != null, "find_target returns a target once the Sentinel is gone")
+
+	GM.reset_state()
+
+# ═══════════════════════════════════════════════════════
+# DICE AOE DAMAGE CONSTANTS TESTS
+# The 25% / 10% dice AoE damage fractions are now named constants and drive
+# _damage_all_percent correctly.
+# ═══════════════════════════════════════════════════════
+func _run_dice_aoe_damage_constants_tests() -> void:
+	print("[Dice AoE Damage Constants]")
+
+	_assert_near(Config.DICE_AOE_DAMAGE_25, 0.25, 0.0001, "DICE_AOE_DAMAGE_25 = 0.25")
+	_assert_near(Config.DICE_AOE_DAMAGE_10, 0.10, 0.0001, "DICE_AOE_DAMAGE_10 = 0.10")
+	_assert_gt(Config.DICE_AOE_DAMAGE_25, Config.DICE_AOE_DAMAGE_10, "25% tier hits harder than 10% tier")
+
+	# _damage_all_percent applies the fraction of MAX HP to every alive enemy.
+	GM.reset_state()
+	var enemy := GM.create_enemy("war_titan")
+	enemy["spawn_timer"] = 0.0
+	GM.enemies.append(enemy)
+	var max_hp: float = enemy["max_hp"]
+	GM._damage_all_percent(Config.DICE_AOE_DAMAGE_25, Config.DICE_AOE_FLASH_25)
+	_assert_near(enemy["hp"], max_hp - max_hp * Config.DICE_AOE_DAMAGE_25, 0.01, "25% AoE removes 25% of max HP")
+	_assert_gt(enemy["flash_timer"], 0.0, "AoE sets enemy flash timer")
+
+	GM.reset_state()
+
+# ═══════════════════════════════════════════════════════
+# AUDIO FALLBACK TESTS
+# Procedural synth generators must produce valid, non-empty 16-bit WAV streams
+# at the manager's sample rate. Guards the fallback path (e.g. pact_accept, which
+# previously had no procedural fallback and went silent if the file was missing).
+# ═══════════════════════════════════════════════════════
+func _run_audio_fallback_tests() -> void:
+	print("[Audio Fallback]")
+
+	_assert_eq(Audio.SAMPLE_RATE, 22050, "Audio sample rate is 22050")
+	_assert_eq(Audio.MAX_SFX_PLAYERS, 16, "16 pooled SFX players")
+
+	# New pact_accept generator produces a valid stream.
+	var pact := Audio._make_pact_accept()
+	_assert(pact != null, "pact_accept generator returns a stream")
+	_assert(pact is AudioStreamWAV, "pact_accept is an AudioStreamWAV")
+	_assert_gt(float(pact.data.size()), 0.0, "pact_accept has non-empty sample data")
+	_assert_eq(pact.mix_rate, Audio.SAMPLE_RATE, "pact_accept mix rate matches manager")
+	_assert_eq(pact.format, AudioStreamWAV.FORMAT_16_BITS, "pact_accept is 16-bit")
+
+	# A couple of existing generators still produce valid streams (regression).
+	var click := Audio._make_ui_click()
+	_assert_gt(float(click.data.size()), 0.0, "ui_click generator non-empty")
+	var death := Audio._make_enemy_death()
+	_assert_gt(float(death.data.size()), 0.0, "enemy_death generator non-empty")
+
+	# Looping music stream is flagged to loop.
+	var music := Audio._make_music()
+	_assert_eq(music.loop_mode, AudioStreamWAV.LOOP_FORWARD, "procedural music loops forward")
