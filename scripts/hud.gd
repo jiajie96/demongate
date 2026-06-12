@@ -85,6 +85,11 @@ func _ready() -> void:
 	_create_settings_overlay()
 	_update_overlay_visibility()
 	_disable_focus(self)
+	# Static translated strings only change when the language toggles, so
+	# rebuild them on the Locale signal instead of re-translating ~20 strings
+	# every frame in _process (the old behavior).
+	Locale.language_changed.connect(_update_locale_text)
+	_update_locale_text()
 
 # ═══════════════════════════════════════════════════════
 # TOP BAR
@@ -743,7 +748,6 @@ func _update_volume_labels() -> void:
 # ═══════════════════════════════════════════════════════
 func _process(_dt: float) -> void:
 	_update_overlay_visibility()
-	_update_locale_text()
 
 	if GM.phase == "menu":
 		return
@@ -851,12 +855,13 @@ func _process(_dt: float) -> void:
 			btn_upgrade.text = Locale.t("MAX LEVEL")
 			btn_upgrade.disabled = true
 		else:
-			var cost: int = roundi(data["upgrade_cost"] * pow(Config.UPGRADE_COST_SCALING, tw["level"] - 1))
+			# Shared GM helpers — same math the actions themselves use, so the
+			# displayed cost/refund can never drift from what actually happens.
+			var cost: int = GM.upgrade_cost(tw)
 			btn_upgrade.text = Locale.tf("upgrade_cost", {"cost": GM.format_cost(cost)})
 			btn_upgrade.disabled = not GM.can_afford(cost)
 
-		var refund: int = roundi(data["cost"] * Config.SELL_REFUND * tw["level"])
-		btn_sell.text = Locale.tf("sell_refund", {"cost": GM.format_cost(refund)})
+		btn_sell.text = Locale.tf("sell_refund", {"cost": GM.format_cost(GM.sell_refund(tw))})
 
 		var mode: String = tw.get("targeting_mode", "closest")
 		btn_targeting.text = Locale.t("Target") + ": " + mode.capitalize()
@@ -869,9 +874,8 @@ func _process(_dt: float) -> void:
 	# Hero pool
 	hero_pool_label.text = Locale.tf("hero_pool", {"pool": GM.fallen_hero_pool, "threshold": GM.hero_threshold()})
 
-	# Dice section
+	# Dice section (static desc text lives in _update_locale_text)
 	dice_title_label.text = Locale.tf("dice_title", {"count": GM.dice_uses_left})
-	dice_desc_label.text = Locale.t("Roll during battle! High = blessing, low = curse.")
 	var can_roll := GM.wave_active and GM.dice_uses_left > 0
 	btn_dice_roll.disabled = not can_roll
 	if GM.dice_uses_left <= 0:
@@ -900,6 +904,9 @@ func _process(_dt: float) -> void:
 func _update_locale_text() -> void:
 	towers_title.text = Locale.t("TOWERS")
 	btn_next_wave.text = Locale.t("SEND NEXT WAVE")
+	dice_desc_label.text = Locale.t("Roll during battle! High = blessing, low = curse.")
+	btn_upgrade.text = Locale.t("Upgrade")
+	btn_sell.text = Locale.t("Sell")
 	help_label.text = Locale.t("4-9: Towers | U: Upgrade | X: Sell | T: Target | P: Pause\nSpace: Skip | Tab: Overview | D: Dice | Y/N: Pacts | Esc: Cancel")
 
 	# Menu overlay

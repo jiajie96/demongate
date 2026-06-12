@@ -573,8 +573,7 @@ func _draw_path_tile(rx: float, ry: float, c: int, r: int) -> void:
 func _draw_guardian_zone() -> void:
 	if not GM._has_alive_type("holy_sentinel"):
 		return
-	@warning_ignore("integer_division")
-	var half := Config.path_pixels.size() / 2
+	var half := Config.path_half
 	var pulse := 0.3 + 0.15 * sin(GM.game_time * 2.0)
 	# Highlight protected path tiles with blue overlay
 	for i in range(mini(half, Config.MAP_PATH.size())):
@@ -2676,6 +2675,7 @@ func _handle_left_click(pos: Vector2) -> void:
 			GM.towers.append(tower)
 			GM.occupied_tiles[Config.tile_key(grid.x, grid.y)] = tower
 			GM.stats["towers_placed"] += 1
+			Audio.play_sfx("tower_place")
 	else:
 		# Selection mode
 		var key := Config.tile_key(grid.x, grid.y)

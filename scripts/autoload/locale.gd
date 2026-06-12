@@ -229,13 +229,15 @@ var _zh: Dictionary = {
 	"Hades": "哈迪斯",
 	"Cocytus": "科赛特斯",
 
-	# --- Tower descriptions ---
+	# --- Tower descriptions (must match TOWER_DATA desc strings exactly —
+	# the old post-redesign strings had drifted, leaving zh players with
+	# untranslated English tooltips) ---
 	"Fast attacks, reliable early damage": "快速攻击，可靠的前期伤害",
-	"AoE blasts, essential vs swarms": "范围爆炸，对付群敌必备",
-	"Slows enemies on hit, force multiplier": "命中减速，战力倍增",
-	"Global pulse damages ALL enemies, slow attack": "全局脉冲伤害所有敌人，攻速慢",
-	"Buffs nearby tower attack speed periodically": "定期提升范围内塔的攻速",
-	"Ice spike ramps damage on same target": "冰锥射击，对同一目标伤害递增",
+	"AoE blast ignites burn stacks (1 dps/stack, caps 4, 3s)": "范围爆炸点燃灼烧层数（每层1伤害/秒，上限4层，持续3秒）",
+	"Slow aura: enemies in range move 40% slower": "减速光环：范围内敌人移速降低40%",
+	"Buffs nearby towers, damages enemies, +15% Cocytus corruption": "增益附近塔防，伤害敌人，科赛特斯腐蚀+15%",
+	"Continuous frost cone — always casting in one direction": "持续冰霜锥形——始终向一个方向施放",
+	"Global pulse, executes enemies below 15% HP": "全局脉冲，处决生命值低于15%的敌人",
 
 	# --- Enemy names ---
 	"Seraph Scout": "炽天斥候",

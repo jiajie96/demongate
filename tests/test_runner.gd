@@ -176,6 +176,12 @@ func _ready() -> void:
 	_run_guardian_targeting_skip_tests()
 	_run_dice_aoe_damage_constants_tests()
 	_run_audio_fallback_tests()
+	_run_lucifer_execute_guardian_tests()
+	_run_dice_aoe_guardian_tests()
+	_run_cost_helper_tests()
+	_run_path_half_tests()
+	_run_tower_place_audio_tests()
+	_run_locale_tower_desc_tests()
 
 	print("")
 	print("=== Results: %d/%d passed ===" % [_passed, _total])
@@ -4800,3 +4806,198 @@ func _run_audio_fallback_tests() -> void:
 	# Looping music stream is flagged to loop.
 	var music := Audio._make_music()
 	_assert_eq(music.loop_mode, AudioStreamWAV.LOOP_FORWARD, "procedural music loops forward")
+
+# ═══════════════════════════════════════════════════════
+# LUCIFER EXECUTE vs GUARDIAN PROTECTION TESTS
+# The execute must not punch through the Holy Sentinel's shield: combat_hit
+# already no-ops on protected enemies, but a low-HP protected enemy (e.g.
+# whittled down by burn DoT) could previously be executed straight through it.
+# ═══════════════════════════════════════════════════════
+func _run_lucifer_execute_guardian_tests() -> void:
+	print("[Lucifer Execute vs Guardian]")
+	GM.reset_state()
+	GM.wave = 1
+
+	var lucifer := GM.create_tower("lucifer", 5, 5)
+	GM.towers.append(lucifer)
+
+	# Sentinel alive → first half of path is protected.
+	var sentinel := GM.create_enemy("holy_sentinel")
+	sentinel["path_index"] = Config.path_pixels.size() - 1
+	GM.enemies.append(sentinel)
+
+	# Protected enemy already below the 15% execute threshold.
+	var protected := GM.create_enemy("war_titan")
+	protected["path_index"] = 1  # first half → protected
+	protected["hp"] = protected["max_hp"] * 0.05
+	GM.enemies.append(protected)
+
+	# Unprotected enemy below threshold (second half of path), HP high enough
+	# that the pulse damage alone wouldn't kill it — only the execute can.
+	var exposed := GM.create_enemy("war_titan")
+	exposed["path_index"] = Config.path_pixels.size() - 1
+	exposed["hp"] = exposed["max_hp"] * 0.14
+	GM.enemies.append(exposed)
+	GM.clear_alive_type_cache()
+
+	_assert(GM._is_guardian_protected(protected), "Low-HP titan in first half is guardian-protected")
+	GM._lucifer_pulse(lucifer)
+	_assert(protected["alive"], "Execute does NOT kill a guardian-protected enemy")
+	_assert_near(protected["hp"], protected["max_hp"] * 0.05, 0.01, "Protected enemy takes no pulse damage either")
+	_assert(not exposed["alive"], "Execute still kills an unprotected enemy below threshold")
+
+	# Once the Sentinel is gone, the formerly-protected enemy can be executed.
+	sentinel["alive"] = false
+	GM.clear_alive_type_cache()
+	GM._lucifer_pulse(lucifer)
+	_assert(not protected["alive"], "Execute works again after the Sentinel dies")
+
+	GM.reset_state()
+
+# ═══════════════════════════════════════════════════════
+# DICE AOE vs GUARDIAN PROTECTION TESTS
+# _damage_all_percent (Hellstorm / Small Spark) must respect the Holy
+# Sentinel's shield like every other damage path. The Sentinel itself is
+# never protected, so dice remain a valid counter to it.
+# ═══════════════════════════════════════════════════════
+func _run_dice_aoe_guardian_tests() -> void:
+	print("[Dice AoE vs Guardian]")
+	GM.reset_state()
+	GM.wave = 1
+
+	var sentinel := GM.create_enemy("holy_sentinel")
+	sentinel["path_index"] = 1
+	GM.enemies.append(sentinel)
+	var sentinel_hp: float = sentinel["hp"]
+
+	var protected := GM.create_enemy("crusader")
+	protected["path_index"] = 1  # first half → protected
+	GM.enemies.append(protected)
+	var protected_hp: float = protected["hp"]
+
+	var exposed := GM.create_enemy("crusader")
+	exposed["path_index"] = Config.path_pixels.size() - 1
+	GM.enemies.append(exposed)
+	var exposed_hp: float = exposed["hp"]
+	GM.clear_alive_type_cache()
+
+	GM._damage_all_percent(Config.DICE_AOE_DAMAGE_25, Config.DICE_AOE_FLASH_25)
+	_assert_near(protected["hp"], protected_hp, 0.001, "Protected enemy takes no dice AoE damage")
+	_assert_near(protected["flash_timer"], Config.GUARDIAN_FLASH_DURATION, 0.001, "Protected enemy gets the guardian block flash")
+	_assert_lt(exposed["hp"], exposed_hp, "Unprotected enemy takes dice AoE damage")
+	_assert_lt(sentinel["hp"], sentinel_hp, "The Sentinel itself still takes dice AoE damage")
+
+	# Without a sentinel, everyone takes damage (regression on the normal path).
+	GM.reset_state()
+	GM.wave = 1
+	var plain := GM.create_enemy("crusader")
+	plain["path_index"] = 1
+	GM.enemies.append(plain)
+	GM.clear_alive_type_cache()
+	var plain_hp: float = plain["hp"]
+	GM._damage_all_percent(Config.DICE_AOE_DAMAGE_10, Config.DICE_AOE_FLASH_10)
+	_assert_lt(plain["hp"], plain_hp, "No Sentinel → dice AoE damages normally")
+
+	GM.reset_state()
+
+# ═══════════════════════════════════════════════════════
+# COST HELPER TESTS
+# upgrade_cost() / sell_refund() are the single source of truth shared by the
+# actions (upgrade_tower / sell_tower) and the HUD button labels.
+# ═══════════════════════════════════════════════════════
+func _run_cost_helper_tests() -> void:
+	print("[Cost Helpers]")
+	GM.reset_state()
+
+	var tower := GM.create_tower("bone_marksman", 3, 3)
+	var data: Dictionary = Config.TOWER_DATA["bone_marksman"]
+
+	_assert_eq(GM.upgrade_cost(tower), roundi(data["upgrade_cost"]), "Level 1 upgrade cost = base upgrade_cost")
+	_assert_eq(GM.sell_refund(tower), roundi(data["cost"] * Config.SELL_REFUND), "Level 1 sell refund = cost * SELL_REFUND")
+
+	tower["level"] = 2
+	_assert_eq(GM.upgrade_cost(tower), roundi(data["upgrade_cost"] * Config.UPGRADE_COST_SCALING), "Level 2 upgrade cost scales by UPGRADE_COST_SCALING")
+	_assert_eq(GM.sell_refund(tower), roundi(data["cost"] * Config.SELL_REFUND * 2), "Level 2 sell refund scales by level")
+	tower["level"] = 1
+
+	# upgrade_tower charges exactly upgrade_cost().
+	GM.sins = GM.upgrade_cost(tower)
+	_assert(GM.upgrade_tower(tower), "Upgrade succeeds with exactly enough sins")
+	_assert_eq(GM.sins, 0, "Upgrade charged exactly upgrade_cost()")
+	_assert_eq(tower["level"], 2, "Upgrade raised tower level")
+
+	# sell_tower credits exactly sell_refund().
+	GM.towers.append(tower)
+	var expected_refund: int = GM.sell_refund(tower)
+	var sins_before: int = GM.sins
+	GM.sell_tower(tower)
+	_assert_eq(GM.sins, sins_before + expected_refund, "Sell credited exactly sell_refund()")
+	_assert_eq(GM.towers.size(), 0, "Sold tower removed from towers list")
+
+	GM.reset_state()
+
+# ═══════════════════════════════════════════════════════
+# PATH HALF TESTS
+# Config.path_half is precomputed once at load and is the single definition of
+# the Holy Sentinel's protected zone boundary.
+# ═══════════════════════════════════════════════════════
+func _run_path_half_tests() -> void:
+	print("[Path Half]")
+
+	@warning_ignore("integer_division")
+	var expected: int = Config.path_pixels.size() / 2
+	_assert_eq(Config.path_half, expected, "path_half = path_pixels.size() / 2")
+	_assert_gt(float(Config.path_half), 0.0, "path_half is positive")
+	_assert_lt(float(Config.path_half), float(Config.path_pixels.size()), "path_half is inside the path")
+
+	# Boundary behavior: index path_half-1 is protected, index path_half is not.
+	GM.reset_state()
+	GM.wave = 1
+	var sentinel := GM.create_enemy("holy_sentinel")
+	GM.enemies.append(sentinel)
+	GM.clear_alive_type_cache()
+
+	var edge := GM.create_enemy("crusader")
+	edge["path_index"] = Config.path_half - 1
+	_assert(GM._is_guardian_protected(edge), "Enemy at path_half - 1 is protected")
+	edge["path_index"] = Config.path_half
+	_assert(not GM._is_guardian_protected(edge), "Enemy at path_half is NOT protected")
+
+	GM.reset_state()
+
+# ═══════════════════════════════════════════════════════
+# TOWER PLACE AUDIO TESTS
+# Tower placement now has audible feedback: a procedural "thunk" generator
+# (no asset file shipped) registered with a combat-surviving priority.
+# ═══════════════════════════════════════════════════════
+func _run_tower_place_audio_tests() -> void:
+	print("[Tower Place Audio]")
+
+	var place := Audio._make_tower_place()
+	_assert(place != null, "tower_place generator returns a stream")
+	_assert(place is AudioStreamWAV, "tower_place is an AudioStreamWAV")
+	_assert_gt(float(place.data.size()), 0.0, "tower_place has non-empty sample data")
+	_assert_eq(place.mix_rate, Audio.SAMPLE_RATE, "tower_place mix rate matches manager")
+	_assert_eq(place.format, AudioStreamWAV.FORMAT_16_BITS, "tower_place is 16-bit")
+
+	_assert(Audio._get_stream("tower_place") != null, "tower_place resolves to a playable stream")
+	_assert_eq(Audio.SFX_PRIORITY.get("tower_place", 1), 3, "tower_place priority is 3 (survives busy combat)")
+
+# ═══════════════════════════════════════════════════════
+# LOCALE TOWER DESC TESTS
+# Every tower name AND description in TOWER_DATA must have a Chinese
+# translation. Guards against the desc strings drifting after a redesign
+# (which previously left zh players with untranslated English tooltips).
+# ═══════════════════════════════════════════════════════
+func _run_locale_tower_desc_tests() -> void:
+	print("[Locale Tower Descriptions]")
+
+	for type in Config.TOWER_DATA:
+		var data: Dictionary = Config.TOWER_DATA[type]
+		_assert(Locale._zh.has(data["name"]), "zh translation exists for tower name: " + str(data["name"]))
+		_assert(Locale._zh.has(data["desc"]), "zh translation exists for tower desc: " + str(type))
+
+	# Enemy names should be covered too.
+	for etype in Config.ENEMY_DATA:
+		var edata: Dictionary = Config.ENEMY_DATA[etype]
+		_assert(Locale._zh.has(edata["name"]), "zh translation exists for enemy name: " + str(edata["name"]))

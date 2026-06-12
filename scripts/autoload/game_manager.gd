@@ -303,15 +303,26 @@ func _best_cone_facing(tx: float, ty: float, cone_len: float, half_angle: float)
 			best_ang = ang
 	return best_ang
 
+## Sins cost to upgrade this tower from its current level. Shared by the
+## upgrade action and the HUD button label so the two can never drift apart.
+func upgrade_cost(tower: Dictionary) -> int:
+	var data: Dictionary = Config.TOWER_DATA[tower["type"]]
+	return roundi(data["upgrade_cost"] * pow(Config.UPGRADE_COST_SCALING, tower["level"] - 1))
+
+## Sins refunded when selling this tower at its current level. Shared by
+## sell_tower and the HUD sell-button label.
+func sell_refund(tower: Dictionary) -> int:
+	var data: Dictionary = Config.TOWER_DATA[tower["type"]]
+	return roundi(data["cost"] * Config.SELL_REFUND * tower["level"])
+
 func upgrade_tower(tower: Dictionary) -> bool:
 	if tower["level"] >= Config.MAX_TOWER_LEVEL:
 		return false
-	var data: Dictionary = Config.TOWER_DATA[tower["type"]]
-	var cost: int = roundi(data["upgrade_cost"] * pow(Config.UPGRADE_COST_SCALING, tower["level"] - 1))
-	if not spend(cost):
+	if not spend(upgrade_cost(tower)):
 		return false
 	_apply_tower_levelup(tower)
 	notify(Locale.tf("tower_upgraded", {"name": Locale.t(tower["name"]), "level": tower["level"]}), tower["color"])
+	Audio.play_sfx("ui_select")
 	return true
 
 ## Apply one level-up's stat scaling to a tower. Shared by the paid upgrade and
@@ -323,9 +334,7 @@ func _apply_tower_levelup(tower: Dictionary) -> void:
 	tower["attack_speed"] *= Config.UPGRADE_SPEED_MULT
 
 func sell_tower(tower: Dictionary) -> void:
-	var data: Dictionary = Config.TOWER_DATA[tower["type"]]
-	var refund: int = roundi(data["cost"] * Config.SELL_REFUND * tower["level"])
-	earn(refund)
+	earn(sell_refund(tower))
 	for i in range(towers.size() - 1, -1, -1):
 		if towers[i]["id"] == tower["id"]:
 			towers.remove_at(i)
@@ -420,9 +429,7 @@ func _is_guardian_protected(enemy: Dictionary) -> bool:
 		return false
 	if not _has_alive_type("holy_sentinel"):
 		return false
-	@warning_ignore("integer_division")
-	var half: int = Config.path_pixels.size() / 2
-	return enemy.get("path_index", 0) < half
+	return enemy.get("path_index", 0) < Config.path_half
 
 func _michael_shield(michael: Dictionary) -> void:
 	michael["ability_timer"] = Config.MICHAEL_SHIELD_COOLDOWN
@@ -980,8 +987,12 @@ func _lucifer_pulse(tower: Dictionary) -> void:
 	for e in enemies:
 		if e["alive"]:
 			combat_hit(e, base_dmg, tower)
-			# REDESIGN: execute — kill any enemy surviving pulse below threshold HP
-			if e["alive"] and threshold > 0 and e["hp"] <= e["max_hp"] * threshold:
+			# REDESIGN: execute — kill any enemy surviving pulse below threshold HP.
+			# Guardian-protected enemies are exempt: combat_hit already no-ops on
+			# them, so without this check the execute would kill a low-HP enemy
+			# straight through the Holy Sentinel's shield (e.g. one whittled down
+			# by burn DoT), bypassing the protection every other damage path honors.
+			if e["alive"] and threshold > 0 and e["hp"] <= e["max_hp"] * threshold and not _is_guardian_protected(e):
 				stats["lucifer_executes"] = stats.get("lucifer_executes", 0) + 1
 				combat_kill(e, tower)
 			# Only spawn hit flash for enemies still alive (dead ones already got death FX)
@@ -1266,6 +1277,13 @@ func complete_wave() -> void:
 func _damage_all_percent(pct: float, flash_time: float) -> void:
 	for e in enemies:
 		if e["alive"]:
+			# Respect Holy Sentinel protection — every other damage path
+			# (single-target, cone, Lucifer pulse, relic AoE) honors it, so the
+			# dice AoE shouldn't punch through the shield either. The Sentinel
+			# itself is never protected, so dice remain a counter to it.
+			if _is_guardian_protected(e):
+				e["flash_timer"] = Config.GUARDIAN_FLASH_DURATION
+				continue
 			var dmg: float = e["max_hp"] * pct
 			e["hp"] -= dmg
 			e["flash_timer"] = flash_time

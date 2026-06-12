@@ -46,6 +46,7 @@ const SFX_PRIORITY := {
 	"dice_roll":      7,
 	"pact_accept":    6,
 	"hades_buff":     3,
+	"tower_place":    3,  # build confirmation — should survive busy combat
 	"enemy_death":    2,
 	"ui_click":       2,
 	"ui_select":      2,
@@ -326,6 +327,9 @@ func _generate_fallback_sounds() -> void:
 	# without a fallback a missing file left those actions silent.
 	if not _streams.has("pact_accept"):
 		_proc_sounds["pact_accept"] = _make_pact_accept()
+	# Tower placement thunk — no asset file shipped, always procedural.
+	if not _streams.has("tower_place"):
+		_proc_sounds["tower_place"] = _make_tower_place()
 	# Ambient music — always procedural for now (Kenney has no gameplay-loop music)
 	_proc_sounds["music"] = _make_music()
 
@@ -477,6 +481,29 @@ func _make_pact_accept() -> AudioStreamWAV:
 			s += sin(t * freqs[ni] * 2.0 * TAU) * 0.08   # octave shimmer
 			s += sin(t * freqs[ni] * 0.5 * TAU) * 0.12   # sub layer for weight
 			_pack(buf, offset + i, _saturate(s * env * 0.7))
+	return _make_wav(buf)
+
+func _make_tower_place() -> AudioStreamWAV:
+	# Heavy stone "thunk" + short rising shimmer — a tower slamming into the
+	# ground and powering up. Gives keyboard/mouse placement tactile feedback
+	# (placement was previously the only major player action with no sound).
+	var n := _n_samples(0.22)
+	var buf := PackedByteArray()
+	buf.resize(n * 2)
+	var lpf := 0.0
+	for i in range(n):
+		var t := float(i) / SAMPLE_RATE
+		var frac := float(i) / n
+		# Thunk: low sine dropping 110→45 Hz, decaying fast
+		var thunk_env := maxf(0.0, 1.0 - frac * 2.2)
+		var thunk := sin(t * lerpf(110.0, 45.0, minf(frac * 2.0, 1.0)) * TAU) * 0.5 * thunk_env
+		# Impact noise burst in the first 30ms, low-pass filtered
+		var raw := _noise(i) * maxf(0.0, 1.0 - t / 0.03) * 0.3
+		lpf += 0.2 * (raw - lpf)
+		# Power-up shimmer: quiet rising tone 330→660 Hz in the tail
+		var shim_env := clampf((frac - 0.35) / 0.65, 0.0, 1.0) * (1.0 - frac)
+		var shim := sin(t * lerpf(330.0, 660.0, frac) * TAU) * 0.08 * shim_env
+		_pack(buf, i, _saturate((thunk + lpf + shim) * 1.2) * 0.4)
 	return _make_wav(buf)
 
 func _make_wave_start() -> AudioStreamWAV:

@@ -627,6 +627,10 @@ var MAP_PATH: Array[Vector2i] = [
 
 var path_set: Dictionary = {}
 var path_pixels: Array[Vector2] = []
+# Midpoint index of the path — precomputed once at load. The Holy Sentinel's
+# protection check runs per enemy per tower per frame, so it shouldn't redo
+# this division (and the games rules shouldn't have two definitions of "half").
+var path_half: int = 0
 
 func _ready() -> void:
 	_init_path()
@@ -652,6 +656,8 @@ func _init_path() -> void:
 			cell.x * TILE_SIZE + TILE_SIZE / 2.0,
 			cell.y * TILE_SIZE + TILE_SIZE / 2.0
 		))
+	@warning_ignore("integer_division")
+	path_half = path_pixels.size() / 2
 
 func tile_key(col: int, row: int) -> String:
 	return str(col) + "," + str(row)
