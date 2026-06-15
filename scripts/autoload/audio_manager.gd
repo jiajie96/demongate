@@ -14,6 +14,11 @@ extends Node
 const SAMPLE_RATE := 22050
 const MAX_SFX_PLAYERS := 16
 
+# Safety ceiling for a per-play SFX volume (dB). The caller-supplied vol_db plus a
+# per-sound offset is clamped to this so an accidental large positive value can't
+# blow out the mix / clip. +6 dB still allows deliberate emphasis above unity.
+const SFX_MAX_VOLUME_DB := 6.0
+
 # SFX file paths (nullable — fall back to procedural if missing).
 # Multiple paths = random variant.
 const SFX_FILES := {
@@ -135,12 +140,17 @@ func play_sfx(sound_name: String, vol_db: float = 0.0) -> void:
 	if slot < 0:
 		return  # all slots occupied by higher-priority sounds
 
-	var final_vol: float = vol_db + SFX_VOLUME_OFFSET.get(sound_name, 0.0)
+	var final_vol: float = clamp_sfx_volume(vol_db + SFX_VOLUME_OFFSET.get(sound_name, 0.0))
 	var player := _sfx_players[slot]
 	player.stream = stream
 	player.volume_db = final_vol
 	player.play()
 	_sfx_active_priority[slot] = priority
+
+## Clamp an effective SFX volume (dB) to the safe ceiling. Pure helper so the
+## mixing math stays testable without instantiating the audio pool.
+func clamp_sfx_volume(vol_db: float) -> float:
+	return minf(vol_db, SFX_MAX_VOLUME_DB)
 
 func play_shoot(tower_type: String) -> void:
 	play_sfx("shoot_" + tower_type)

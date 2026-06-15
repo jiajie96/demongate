@@ -147,6 +147,10 @@ var _templates: Dictionary = {
 		"en": "Free tower! ({count} left)",
 		"zh": "免费建塔！(剩余{count})",
 	},
+	"unique_tower_limit": {
+		"en": "Only one {name} allowed!",
+		"zh": "只能拥有一个{name}！",
+	},
 	"legendary_upgrade": {
 		"en": "Legendary! {name} upgraded to Lv.{level}!",
 		"zh": "传说！{name} 升级到等级{level}！",

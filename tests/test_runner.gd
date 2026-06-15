@@ -182,6 +182,12 @@ func _ready() -> void:
 	_run_path_half_tests()
 	_run_tower_place_audio_tests()
 	_run_locale_tower_desc_tests()
+	_run_valid_tower_helper_tests()
+	_run_active_tower_type_tests()
+	_run_divine_curse_dps_target_tests()
+	_run_cleric_heal_startup_tests()
+	_run_sfx_volume_clamp_tests()
+	_run_unique_tower_limit_locale_tests()
 
 	print("")
 	print("=== Results: %d/%d passed ===" % [_passed, _total])
@@ -1799,11 +1805,14 @@ func _run_cleric_heal_tick_tests() -> void:
 	GM.wave = 3
 	var cleric := GM.create_enemy("temple_cleric")
 	_assert(cleric.has("heal_tick_timer"), "Cleric has heal_tick_timer field")
-	_assert_near(cleric["heal_tick_timer"], 0.0, 0.01, "Heal tick timer starts at 0")
+	# Clerics now spawn with the heal tick on cooldown (startup delay) so they
+	# don't fire a free heal on the first frame after spawning.
+	_assert_near(cleric["heal_tick_timer"], Config.CLERIC_HEAL_TICK, 0.01, "Heal tick timer starts on cooldown")
 
-	# Non-cleric also has the field (all enemies get it)
+	# Non-cleric also has the field (all enemies get it), starting at 0
 	var scout := GM.create_enemy("seraph_scout")
 	_assert(scout.has("heal_tick_timer"), "Scout has heal_tick_timer field")
+	_assert_near(scout["heal_tick_timer"], 0.0, 0.01, "Non-cleric heal tick timer starts at 0")
 
 	GM.reset_state()
 
@@ -1905,9 +1914,10 @@ func _run_heal_tick_timer_tests() -> void:
 	GM.reset_state()
 	GM.wave = 3
 
-	# Create a cleric and verify heal_tick_timer behavior
+	# Create a cleric and verify heal_tick_timer behavior. Clerics start on a
+	# cooldown (startup delay) rather than at 0, so the first heal is deferred.
 	var cleric := GM.create_enemy("temple_cleric")
-	_assert_near(cleric["heal_tick_timer"], 0.0, 0.01, "Cleric heal_tick_timer starts at 0")
+	_assert_near(cleric["heal_tick_timer"], Config.CLERIC_HEAL_TICK, 0.01, "Cleric heal_tick_timer starts on cooldown")
 
 	# After setting negative, a tick should fire and reset
 	cleric["heal_tick_timer"] = -0.1
@@ -5001,3 +5011,147 @@ func _run_locale_tower_desc_tests() -> void:
 	for etype in Config.ENEMY_DATA:
 		var edata: Dictionary = Config.ENEMY_DATA[etype]
 		_assert(Locale._zh.has(edata["name"]), "zh translation exists for enemy name: " + str(edata["name"]))
+
+# ═══════════════════════════════════════════════════════
+# VALID TOWER HELPER TESTS
+# ═══════════════════════════════════════════════════════
+func _run_valid_tower_helper_tests() -> void:
+	print("[Valid Tower Helper]")
+
+	_assert(not GM._valid_tower(null), "_valid_tower(null) is false")
+	_assert(not GM._valid_tower(42), "_valid_tower(non-dict) is false")
+	_assert(not GM._valid_tower("tower"), "_valid_tower(string) is false")
+	GM.reset_state()
+	var t := GM.create_tower("bone_marksman", 3, 3)
+	_assert(GM._valid_tower(t), "_valid_tower(real tower dict) is true")
+	_assert(GM._valid_tower({}), "_valid_tower(empty dict) is true (it is a Dictionary)")
+
+	# Regression: AoE/dice damage passes null as the source tower — calc_damage and
+	# combat_hit must not crash and must still deal damage with a null tower.
+	GM.reset_state()
+	var e := GM.create_enemy("crusader")
+	GM.enemies.append(e)
+	var hp_before: float = e["hp"]
+	GM.combat_hit(e, 5.0, null)
+	_assert_lt(e["hp"], hp_before, "combat_hit with null tower still deals damage")
+	var dmg_null: float = GM.calc_damage(10.0, null, e)
+	_assert_gt(dmg_null, 0.0, "calc_damage with null tower returns positive damage")
+
+	GM.reset_state()
+
+# ═══════════════════════════════════════════════════════
+# ACTIVE TOWER TYPE TESTS
+# ═══════════════════════════════════════════════════════
+func _run_active_tower_type_tests() -> void:
+	print("[Active Tower Type]")
+
+	GM.reset_state()
+	_assert(not GM.has_active_tower_type("cocytus"), "No towers -> has_active_tower_type false")
+
+	var coc := GM.create_tower("cocytus", 3, 3)
+	GM.towers.append(coc)
+	_assert(GM.has_active_tower_type("cocytus"), "Active Cocytus detected")
+	_assert(not GM.has_active_tower_type("hades"), "Different type not falsely detected")
+
+	# A disabled tower should NOT count as active
+	coc["is_disabled"] = true
+	_assert(not GM.has_active_tower_type("cocytus"), "Disabled Cocytus not counted as active")
+	# ...but has_tower_type (existence) still reports it
+	_assert(GM.has_tower_type("cocytus"), "has_tower_type still finds disabled tower")
+
+	GM.reset_state()
+
+# ═══════════════════════════════════════════════════════
+# DIVINE CURSE DPS TARGET TESTS
+# ═══════════════════════════════════════════════════════
+func _run_divine_curse_dps_target_tests() -> void:
+	print("[Divine Curse DPS Target]")
+
+	GM.reset_state()
+	_assert(GM.strongest_tower_by_dps() == null, "strongest_tower_by_dps() is null with no towers")
+
+	# Build two towers where the higher per-hit damage tower has LOWER DPS than a
+	# faster tower — the curse should pick by DPS (damage×mult×speed), not raw damage.
+	var slow_heavy := GM.create_tower("bone_marksman", 3, 3)
+	slow_heavy["damage"] = 20.0
+	slow_heavy["attack_speed"] = 0.5   # DPS = 20 * 1 * 0.5 = 10
+	GM.towers.append(slow_heavy)
+
+	var fast_light := GM.create_tower("bone_marksman", 5, 5)
+	fast_light["damage"] = 5.0
+	fast_light["attack_speed"] = 4.0   # DPS = 5 * 1 * 4 = 20
+	GM.towers.append(fast_light)
+
+	var best = GM.strongest_tower_by_dps()
+	_assert(best != null and best["id"] == fast_light["id"], "Highest-DPS tower selected over higher raw-damage tower")
+	_assert(best["damage"] * best["damage_mult"] * best["attack_speed"] == 20.0, "Selected tower DPS is 20")
+
+	GM.reset_state()
+
+# ═══════════════════════════════════════════════════════
+# CLERIC HEAL STARTUP DELAY TESTS
+# ═══════════════════════════════════════════════════════
+func _run_cleric_heal_startup_tests() -> void:
+	print("[Cleric Heal Startup Delay]")
+
+	GM.reset_state()
+	var cleric := GM.create_enemy("temple_cleric")
+	_assert_near(cleric["heal_tick_timer"], Config.CLERIC_HEAL_TICK, 0.001,
+		"Temple Cleric spawns with heal tick on cooldown (no instant heal)")
+
+	# Non-cleric enemies keep heal_tick_timer at 0
+	var crusader := GM.create_enemy("crusader")
+	_assert_eq(crusader["heal_tick_timer"], 0.0, "Non-cleric enemy heal_tick_timer is 0")
+
+	# A wounded ally should NOT be healed on the very first update frame (timer > 0)
+	GM.reset_state()
+	var c2 := GM.create_enemy("temple_cleric")
+	c2["spawn_timer"] = 0.0
+	GM.enemies.append(c2)
+	var ally := GM.create_enemy("crusader")
+	ally["spawn_timer"] = 0.0
+	ally["x"] = c2["x"]
+	ally["y"] = c2["y"]
+	ally["hp"] = ally["max_hp"] * 0.5
+	GM.enemies.append(ally)
+	var ally_hp_before: float = ally["hp"]
+	GM.update_enemies(0.1)  # less than CLERIC_HEAL_TICK, so no heal yet
+	_assert_eq(ally["hp"], ally_hp_before, "No heal before first tick interval elapses")
+
+	GM.reset_state()
+
+# ═══════════════════════════════════════════════════════
+# SFX VOLUME CLAMP TESTS
+# ═══════════════════════════════════════════════════════
+func _run_sfx_volume_clamp_tests() -> void:
+	print("[SFX Volume Clamp]")
+
+	_assert_eq(Audio.clamp_sfx_volume(0.0), 0.0, "0 dB passes through unchanged")
+	_assert_eq(Audio.clamp_sfx_volume(-12.0), -12.0, "Negative dB passes through unchanged")
+	_assert_eq(Audio.clamp_sfx_volume(Audio.SFX_MAX_VOLUME_DB), Audio.SFX_MAX_VOLUME_DB, "Exactly at ceiling unchanged")
+	_assert_eq(Audio.clamp_sfx_volume(100.0), Audio.SFX_MAX_VOLUME_DB, "Excessive dB clamped to ceiling")
+	_assert_lte(Audio.clamp_sfx_volume(50.0), Audio.SFX_MAX_VOLUME_DB, "Clamp never exceeds ceiling")
+	_assert_gt(Audio.SFX_MAX_VOLUME_DB, 0.0, "SFX_MAX_VOLUME_DB allows above-unity emphasis")
+
+# ═══════════════════════════════════════════════════════
+# UNIQUE TOWER LIMIT LOCALE TESTS
+# ═══════════════════════════════════════════════════════
+func _run_unique_tower_limit_locale_tests() -> void:
+	print("[Unique Tower Limit Locale]")
+
+	_assert(Locale._templates.has("unique_tower_limit"), "unique_tower_limit template exists")
+	var tmpl: Dictionary = Locale._templates["unique_tower_limit"]
+	_assert(tmpl.has("en"), "unique_tower_limit has en")
+	_assert(tmpl.has("zh"), "unique_tower_limit has zh")
+
+	# The {name} placeholder must be substituted for the actual tower name.
+	Locale.current_lang = "en"
+	var msg_en: String = Locale.tf("unique_tower_limit", {"name": "Lucifer"})
+	_assert(msg_en.find("Lucifer") >= 0, "en message contains tower name")
+	_assert(msg_en.find("{name}") < 0, "en message has no leftover placeholder")
+
+	Locale.current_lang = "zh"
+	var msg_zh: String = Locale.tf("unique_tower_limit", {"name": "路西法"})
+	_assert(msg_zh.find("路西法") >= 0, "zh message contains tower name")
+	_assert(msg_zh.find("{name}") < 0, "zh message has no leftover placeholder")
+	Locale.current_lang = "en"

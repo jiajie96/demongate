@@ -2651,7 +2651,7 @@ func _handle_left_click(pos: Vector2) -> void:
 			var data: Dictionary = Config.TOWER_DATA[GM.selected_tower_type]
 			# Unique towers: only 1 allowed on the field (e.g., Lucifer)
 			if data.get("unique", false) and GM.has_tower_type(GM.selected_tower_type):
-				GM.notify(Locale.t("Only one Lucifer allowed!"), Config.COLOR_NOTIFY_GOLD)
+				GM.notify(Locale.tf("unique_tower_limit", {"name": Locale.t(data["name"])}), Config.COLOR_NOTIFY_GOLD)
 				return
 
 			var cost: int = data["cost"]

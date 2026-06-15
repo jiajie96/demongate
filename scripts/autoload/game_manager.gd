@@ -352,6 +352,34 @@ func has_tower_type(type: String) -> bool:
 			return true
 	return false
 
+## True if at least one tower of `type` exists AND is currently active (not disabled).
+## Used to skip per-frame work that only matters when such a tower can actually fire
+## (e.g. only build the Hades-corruption cache when an active Cocytus is on the field).
+func has_active_tower_type(type: String) -> bool:
+	for t in towers:
+		if t["type"] == type and not t["is_disabled"]:
+			return true
+	return false
+
+## Shared guard for the "is this a real tower Dictionary?" check that combat code
+## repeats everywhere. AoE/dice/relic damage passes `null` as the source tower, and
+## a defensive `is Dictionary` keeps us safe if a caller ever passes something odd.
+func _valid_tower(tower) -> bool:
+	return tower != null and tower is Dictionary
+
+## Highest-DPS tower currently on the field (damage × damage_mult × attack_speed),
+## or null if there are none. Single definition of "best tower" shared by the
+## Divine Curse relic (disables it) and any other code that needs the strongest.
+func strongest_tower_by_dps():
+	var best = null
+	var best_dps := -1.0
+	for t in towers:
+		var dps: float = t["damage"] * t["damage_mult"] * t["attack_speed"]
+		if dps > best_dps:
+			best_dps = dps
+			best = t
+	return best
+
 func is_buildable(col: int, row: int) -> bool:
 	if col < 0 or col >= Config.GRID_COLS or row < 0 or row >= Config.GRID_ROWS:
 		return false
@@ -380,6 +408,13 @@ func create_enemy(type: String) -> Dictionary:
 		"archangel_michael": ability_start = Config.MICHAEL_SHIELD_COOLDOWN
 		"zeus": ability_start = Config.ZEUS_LIGHTNING_COOLDOWN
 		"archangel_raphael": ability_start = Config.RAPHAEL_HEAL_COOLDOWN
+	# Temple Clerics also start on a cooldown so they don't fire a free heal on the
+	# very first frame after spawning — same reaction-window reasoning as the
+	# ability enemies above. heal_rate is per-second, so the first tick lands one
+	# CLERIC_HEAL_TICK after arrival.
+	var heal_tick_start := 0.0
+	if type == "temple_cleric":
+		heal_tick_start = Config.CLERIC_HEAL_TICK
 	return {
 		"id": _next_id,
 		"type": type,
@@ -407,7 +442,7 @@ func create_enemy(type: String) -> Dictionary:
 		"burn_timer": 0.0,
 		"burn_source": null,
 		"frost_timer": 0.0,
-		"heal_tick_timer": 0.0,
+		"heal_tick_timer": heal_tick_start,
 	}
 
 func _has_alive_type(etype: String) -> bool:
@@ -803,7 +838,7 @@ func calc_damage(base_dmg: float, tower, enemy: Dictionary) -> float:
 		dmg *= Config.DOUBLE_DAMAGE_MULT
 	if tower_weaken_mult < 1.0:
 		dmg *= tower_weaken_mult
-	if tower != null and tower is Dictionary:
+	if _valid_tower(tower):
 		dmg *= tower.get("damage_mult", 1.0)
 	if enemy.get("shield", 0.0) > 0:
 		dmg *= (1.0 - enemy["shield"])
@@ -827,7 +862,7 @@ func combat_hit(enemy: Dictionary, base_dmg: float, tower) -> void:
 
 	# Track damage for overview and global stats
 	stats["total_damage_dealt"] = stats.get("total_damage_dealt", 0.0) + dmg
-	if tower != null and tower is Dictionary:
+	if _valid_tower(tower):
 		tower["total_damage"] = tower.get("total_damage", 0.0) + dmg
 
 	# Hit spark + floating damage number — pick the effect flavor that matches
@@ -835,7 +870,7 @@ func combat_hit(enemy: Dictionary, base_dmg: float, tower) -> void:
 	# green burst; every other tower falls back to the warm orange hit_spark.
 	var spark_col := Config.COLOR_FX_HIT_SPARK
 	var hit_fx := "hit_spark"
-	if tower != null and tower is Dictionary:
+	if _valid_tower(tower):
 		spark_col = tower.get("color", spark_col)
 		if tower.get("type", "") == "soul_reaper":
 			hit_fx = "soul_hit"
@@ -845,12 +880,12 @@ func combat_hit(enemy: Dictionary, base_dmg: float, tower) -> void:
 	add_dmg_number(nx, enemy["y"] - enemy.get("radius", 8.0) - 4, dmg, spark_col)
 
 	# Apply slow from towers with slow_power (legacy path; NEC uses aura now)
-	if tower != null and tower is Dictionary and tower.get("slow_power", 0.0) > 0:
+	if _valid_tower(tower) and tower.get("slow_power", 0.0) > 0:
 		enemy["slow_amount"] = tower["slow_power"]
 		enemy["slow_timer"] = Config.SLOW_DEBUFF_DURATION
 
 	# REDESIGN: MAG burn stacks on hit — track source tower for kill credit
-	if tower != null and tower is Dictionary and tower.get("type", "") == "inferno_warlock":
+	if _valid_tower(tower) and tower.get("type", "") == "inferno_warlock":
 		_apply_burn(enemy, tower)
 
 	if enemy["hp"] <= 0:
@@ -874,9 +909,9 @@ func combat_kill(enemy: Dictionary, tower) -> void:
 	stats["enemies_killed"] += 1
 	if enemy.get("is_boss", false):
 		stats["boss_kills"] = stats.get("boss_kills", 0) + 1
-	if tower != null and tower is Dictionary:
+	if _valid_tower(tower):
 		tower["kill_count"] = tower.get("kill_count", 0) + 1
-	earn_from_kill(enemy["type"], tower != null and tower is Dictionary and tower.get("is_aoe", false))
+	earn_from_kill(enemy["type"], _valid_tower(tower) and tower.get("is_aoe", false))
 
 	# Feed the Fallen Hero pool — kills accumulate toward spawning allied heroes
 	add_to_hero_pool(1)
@@ -904,10 +939,13 @@ func tower_speed_multiplier(tower: Dictionary) -> float:
 	return m
 
 func update_towers(dt: float) -> void:
-	# Pre-cache active Hades towers for Cocytus corruption check (avoid per-cone rebuild)
+	# Pre-cache active Hades towers for Cocytus corruption check (avoid per-cone rebuild).
+	# The list is only ever consumed by an active Cocytus cone, so skip building it
+	# entirely when no Cocytus is on the field — saves a full towers scan every frame
+	# in the common case where the player hasn't bought one.
 	var _cached_hades_list: Array = []
 	var _hades_corruption: float = Config.TOWER_DATA["hades"].get("corruption_mult", 1.0)
-	if _hades_corruption > 1.0:
+	if _hades_corruption > 1.0 and has_active_tower_type("cocytus"):
 		for h in towers:
 			if h["type"] == "hades" and not h["is_disabled"]:
 				_cached_hades_list.append(h)
@@ -1379,11 +1417,12 @@ func drop_relic(rx: float, ry: float) -> void:
 				nearest["damage_mult"] += Config.TOWER_BLESSING_BUFF
 				notify(Locale.tf("tower_buff", {"name": Locale.t(nearest["name"])}), Config.COLOR_NOTIFY_POSITIVE)
 		"curse":
-			if towers.size() > 0:
-				var strongest: Dictionary = towers[0]
-				for t in towers:
-					if t["damage"] * t["damage_mult"] > strongest["damage"] * strongest["damage_mult"]:
-						strongest = t
+			# Disable the highest-DPS tower, using the same damage×mult×speed
+			# "best tower" measure as free_upgrade_best_tower(). The old check
+			# ignored attack_speed, so a slow heavy hitter could be cursed over
+			# a faster tower that was actually doing more damage.
+			var strongest = strongest_tower_by_dps()
+			if strongest != null:
 				strongest["is_disabled"] = true
 				strongest["disable_timer"] = Config.DIVINE_CURSE_DURATION
 				notify(Locale.tf("tower_cursed", {"name": Locale.t(strongest["name"])}), Config.COLOR_NOTIFY_DANGER)
