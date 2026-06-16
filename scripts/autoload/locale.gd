@@ -163,6 +163,17 @@ var _templates: Dictionary = {
 		"en": "Pandora grants {amount} Sins!",
 		"zh": "潘多拉赐予{amount}罪恶值！",
 	},
+	"soul_surge": {
+		"en": "Soul Surge! +{amount} to the Fallen Hero pool!",
+		"zh": "灵魂涌动！堕落英雄进度 +{amount}！",
+	},
+	# Targeting-mode labels — used by the tower's Target button so the priority
+	# reads in the player's language instead of a raw English mode name.
+	"targeting_closest": {"en": "Closest", "zh": "最近"},
+	"targeting_first": {"en": "First", "zh": "最前"},
+	"targeting_last": {"en": "Last", "zh": "最后"},
+	"targeting_strongest": {"en": "Strongest", "zh": "最强"},
+	"targeting_weakest": {"en": "Weakest", "zh": "最弱"},
 }
 
 # ═══════════════════════════════════════════════════════
@@ -293,6 +304,7 @@ var _zh: Dictionary = {
 	"Tower Blessing": "塔防祝福",
 	"Corruption Wave": "腐化之波",
 	"Time Warp": "时间扭曲",
+	"Soul Surge": "灵魂涌动",
 	"Legendary Blueprint": "传说蓝图",
 	"Divine Curse": "神圣诅咒",
 	"Trojan Relic": "特洛伊遗物",

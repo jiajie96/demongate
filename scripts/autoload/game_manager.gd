@@ -500,10 +500,21 @@ func _zeus_lightning(zeus: Dictionary) -> void:
 
 func _raphael_heal(raphael: Dictionary) -> void:
 	raphael["ability_timer"] = Config.RAPHAEL_HEAL_COOLDOWN
+	# Heal is range-limited: only enemies within heal_range of Raphael are eligible.
+	# This gives the player counterplay (focus or out-position Raphael to deny heals)
+	# instead of an unavoidable global heal of the most-wounded enemy anywhere.
+	var heal_r: float = Config.ENEMY_DATA["archangel_raphael"].get("heal_range", Config.RAPHAEL_HEAL_RANGE)
+	var heal_r2: float = heal_r * heal_r
+	var rx: float = raphael["x"]
+	var ry: float = raphael["y"]
 	var best = null
 	var best_missing := 0.0
 	for e in enemies:
 		if not e["alive"] or e["type"] == "archangel_raphael":
+			continue
+		var hdx: float = e["x"] - rx
+		var hdy: float = e["y"] - ry
+		if hdx * hdx + hdy * hdy > heal_r2:
 			continue
 		var missing: float = e["max_hp"] - e["hp"]
 		if missing > best_missing:
@@ -983,12 +994,14 @@ func update_towers(dt: float) -> void:
 
 		# Lucifer global pulse: damage ALL enemies + execute threshold
 		if t["is_global"]:
-			var pulse_speed: float = t["attack_speed"] * tower_speed_multiplier(t)
 			t["cooldown"] -= dt
 			if t["cooldown"] > 0:
 				continue
 			if enemies.size() == 0:
 				continue
+			# Compute the firing rate only once we know the pulse actually fires —
+			# no need to run the speed-multiplier math on every cooldown frame.
+			var pulse_speed: float = t["attack_speed"] * tower_speed_multiplier(t)
 			t["cooldown"] = 1.0 / pulse_speed
 			t["fire_flash"] = Config.TOWER_FIRE_FLASH
 			_lucifer_pulse(t)
@@ -999,7 +1012,6 @@ func update_towers(dt: float) -> void:
 			_cocytus_cone(t, dt, _cached_hades_list, _hades_corruption)
 			continue
 
-		var effective_speed: float = t["attack_speed"] * tower_speed_multiplier(t)
 		t["cooldown"] -= dt
 		if t["cooldown"] > 0:
 			continue
@@ -1009,6 +1021,10 @@ func update_towers(dt: float) -> void:
 		if target == null:
 			continue
 
+		# Only compute the effective firing rate when the tower has a target and is
+		# off cooldown — i.e. only on frames it actually shoots. Towers idling on
+		# cooldown (the common case) skip the speed-multiplier math entirely.
+		var effective_speed: float = t["attack_speed"] * tower_speed_multiplier(t)
 		t["cooldown"] = 1.0 / effective_speed
 		t["fire_flash"] = Config.TOWER_FIRE_FLASH
 		projectiles.append(create_projectile(t, target))
@@ -1403,6 +1419,13 @@ func drop_relic(rx: float, ry: float) -> void:
 			var amt: int = Config.SIN_CACHE_MIN + randi() % Config.SIN_CACHE_RANGE
 			earn(amt)
 			notify(Locale.tf("sins_gained", {"amount": amt}), Config.COLOR_NOTIFY_SINS)
+		"soul_surge":
+			# Pour a chunk of "souls" into the Fallen Hero pool. add_to_hero_pool
+			# handles threshold rollover, so a well-timed Soul Surge can immediately
+			# summon a Fallen Hero mid-fight.
+			var surge: int = int(loot.get("value", Config.SOUL_SURGE_POOL))
+			notify(Locale.tf("soul_surge", {"amount": surge}), Config.COLOR_NOTIFY_POSITIVE)
+			add_to_hero_pool(surge)
 		"tower_buff":
 			var nearest = null
 			var best_dist_sq := INF
@@ -1669,10 +1692,41 @@ func format_time(seconds: float) -> String:
 	var secs := total_s % 60
 	return "%d:%02d" % [mins, secs]
 
+## Format a large cumulative value (total damage, total core damage, etc.) with
+## k/M suffixes for compact end-screen display. Single source of truth shared by
+## the HUD's stat readouts — previously HUD had its own copy that printed "2.0k"
+## for whole thousands; this strips the trailing ".0" so it reads "2k" / "3M",
+## matching format_damage/format_kills.
+func format_large(value: float) -> String:
+	if value >= 1000000.0:
+		return _strip_dot_zero(snappedf(value / 1000000.0, 0.1)) + "M"
+	if value >= 1000.0:
+		return _strip_dot_zero(snappedf(value / 1000.0, 0.1)) + "k"
+	return str(roundi(value))
+
+## "2.0" -> "2", "2.5" -> "2.5". Shared trailing-zero strip for the k/M suffixers.
+func _strip_dot_zero(k: float) -> String:
+	if k == floorf(k):
+		return str(int(k))
+	return str(k)
+
+## Localized, capitalized label for a targeting mode (e.g. "closest" -> "Closest"
+## / "最近"). Falls back to a capitalized raw mode name for unknown modes so the
+## HUD never shows a leftover template key. Keeps targeting UI readable in zh.
+func targeting_mode_label(mode: String) -> String:
+	var key := "targeting_" + mode
+	if Locale._templates.has(key):
+		return Locale.tf(key)
+	return mode.capitalize()
+
 # ═══════════════════════════════════════════════════════
 # UTILITY
 # ═══════════════════════════════════════════════════════
 func _weighted_pick(table: Array) -> Dictionary:
+	# Guard the empty case up front — indexing table[size()-1] on an empty array
+	# would be an out-of-bounds crash. Callers get a harmless empty dict instead.
+	if table.is_empty():
+		return {}
 	var total_weight := 0.0
 	for item in table:
 		total_weight += item["weight"]

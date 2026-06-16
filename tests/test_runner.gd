@@ -188,6 +188,11 @@ func _ready() -> void:
 	_run_cleric_heal_startup_tests()
 	_run_sfx_volume_clamp_tests()
 	_run_unique_tower_limit_locale_tests()
+	_run_format_large_tests()
+	_run_targeting_mode_label_tests()
+	_run_raphael_heal_range_tests()
+	_run_soul_surge_relic_tests()
+	_run_weighted_pick_empty_tests()
 
 	print("")
 	print("=== Results: %d/%d passed ===" % [_passed, _total])
@@ -289,7 +294,7 @@ func _run_config_tests() -> void:
 	_assert(not Config.has_method("ROULETTE_SEGMENTS") or true, "Roulette removed")
 	_assert_eq(Config.DICE_OUTCOMES.size(), 6, "6 dice outcomes (1-6)")
 	_assert_eq(Config.DICE_OUTCOMES_EARLY.size(), 6, "6 early dice outcomes (1-6)")
-	_assert_eq(Config.RELIC_LOOT.size(), 9, "9 relic loot types")
+	_assert_eq(Config.RELIC_LOOT.size(), 10, "10 relic loot types")
 
 	# Tower data integrity
 	for type in Config.TOWER_DATA:
@@ -5155,3 +5160,144 @@ func _run_unique_tower_limit_locale_tests() -> void:
 	_assert(msg_zh.find("路西法") >= 0, "zh message contains tower name")
 	_assert(msg_zh.find("{name}") < 0, "zh message has no leftover placeholder")
 	Locale.current_lang = "en"
+
+# ═══════════════════════════════════════════════════════
+# FORMAT LARGE TESTS — shared k/M stat formatter
+# ═══════════════════════════════════════════════════════
+func _run_format_large_tests() -> void:
+	print("[Format Large]")
+
+	# Sub-1000 values pass through as plain rounded integers
+	_assert_eq(GM.format_large(0.0), "0", "0 -> '0'")
+	_assert_eq(GM.format_large(42.4), "42", "42.4 -> '42' (rounded)")
+	_assert_eq(GM.format_large(999.0), "999", "999 -> '999' (no suffix)")
+
+	# Thousands: whole-thousands strip the trailing '.0', fractions keep one decimal
+	_assert_eq(GM.format_large(1000.0), "1k", "1000 -> '1k' (stripped, not '1.0k')")
+	_assert_eq(GM.format_large(2000.0), "2k", "2000 -> '2k' (regression: old HUD copy gave '2.0k')")
+	_assert_eq(GM.format_large(1500.0), "1.5k", "1500 -> '1.5k'")
+	_assert_eq(GM.format_large(12340.0), "12.3k", "12340 -> '12.3k'")
+
+	# Millions: same strip rule with the M suffix
+	_assert_eq(GM.format_large(1000000.0), "1M", "1,000,000 -> '1M'")
+	_assert_eq(GM.format_large(2500000.0), "2.5M", "2,500,000 -> '2.5M'")
+
+	# Boundary: just under a million stays in k-range
+	_assert(GM.format_large(999999.0).ends_with("k"), "999,999 still uses 'k' suffix")
+
+# ═══════════════════════════════════════════════════════
+# TARGETING MODE LABEL TESTS — localized priority labels
+# ═══════════════════════════════════════════════════════
+func _run_targeting_mode_label_tests() -> void:
+	print("[Targeting Mode Label]")
+
+	Locale.current_lang = "en"
+	# Every real targeting mode resolves to a non-empty, placeholder-free label
+	for mode in GM.TARGETING_MODES:
+		var label: String = GM.targeting_mode_label(mode)
+		_assert(label.length() > 0, "en label for '" + mode + "' is non-empty")
+		_assert(label.find("targeting_") < 0, "en label for '" + mode + "' is not the raw template key")
+	_assert_eq(GM.targeting_mode_label("closest"), "Closest", "en closest label is 'Closest'")
+
+	# zh labels differ from the English ones (actually translated, not echoed)
+	Locale.current_lang = "zh"
+	_assert_ne(GM.targeting_mode_label("closest"), "Closest", "zh closest label is translated")
+	_assert_eq(GM.targeting_mode_label("strongest"), "最强", "zh strongest label is '最强'")
+	Locale.current_lang = "en"
+
+	# Unknown modes fall back to a capitalized raw name (no crash, no leftover key)
+	_assert_eq(GM.targeting_mode_label("banana"), "Banana", "unknown mode falls back to capitalized name")
+
+# ═══════════════════════════════════════════════════════
+# RAPHAEL HEAL RANGE TESTS — heal is now range-limited
+# ═══════════════════════════════════════════════════════
+func _run_raphael_heal_range_tests() -> void:
+	print("[Raphael Heal Range]")
+
+	_assert_gt(Config.RAPHAEL_HEAL_RANGE, 0.0, "RAPHAEL_HEAL_RANGE > 0")
+	_assert(Config.ENEMY_DATA["archangel_raphael"].has("heal_range"), "Raphael has heal_range field")
+	_assert_eq(Config.ENEMY_DATA["archangel_raphael"]["heal_range"], Config.RAPHAEL_HEAL_RANGE, "Raphael heal_range matches constant")
+
+	# An ally INSIDE heal range is healed
+	GM.reset_state()
+	GM.wave = 1
+	var raph := GM.create_enemy("archangel_raphael")
+	raph["x"] = 300.0; raph["y"] = 300.0
+	raph["ability_timer"] = 0.0
+	GM.enemies.append(raph)
+	var near := GM.create_enemy("war_titan")
+	near["x"] = 300.0 + Config.RAPHAEL_HEAL_RANGE * 0.5
+	near["y"] = 300.0
+	near["hp"] = near["max_hp"] * 0.5
+	GM.enemies.append(near)
+	var near_before: float = near["hp"]
+	GM._raphael_heal(raph)
+	_assert_gt(near["hp"], near_before, "Ally within heal range is healed")
+
+	# An ally OUTSIDE heal range is NOT healed, even if it's the most wounded
+	GM.reset_state()
+	GM.wave = 1
+	var raph2 := GM.create_enemy("archangel_raphael")
+	raph2["x"] = 300.0; raph2["y"] = 300.0
+	raph2["ability_timer"] = 0.0
+	GM.enemies.append(raph2)
+	var far := GM.create_enemy("war_titan")
+	far["x"] = 300.0 + Config.RAPHAEL_HEAL_RANGE + 80.0  # well beyond range
+	far["y"] = 300.0
+	far["hp"] = far["max_hp"] * 0.1  # heavily wounded
+	GM.enemies.append(far)
+	var far_before: float = far["hp"]
+	GM._raphael_heal(raph2)
+	_assert_eq(far["hp"], far_before, "Ally beyond heal range is NOT healed (counterplay)")
+
+	GM.reset_state()
+
+# ═══════════════════════════════════════════════════════
+# SOUL SURGE RELIC TESTS — new content + loot integrity
+# ═══════════════════════════════════════════════════════
+func _run_soul_surge_relic_tests() -> void:
+	print("[Soul Surge Relic]")
+
+	# Loot table integrity: weights still sum to 100 after adding Soul Surge
+	var total := 0
+	var found_surge := false
+	var found_handler_types := {}
+	for loot in Config.RELIC_LOOT:
+		total += int(loot["weight"])
+		found_handler_types[loot["type"]] = true
+		if loot["name"] == "Soul Surge":
+			found_surge = true
+			_assert_eq(loot["type"], "soul_surge", "Soul Surge relic has 'soul_surge' type")
+			_assert_eq(int(loot["value"]), Config.SOUL_SURGE_POOL, "Soul Surge value matches SOUL_SURGE_POOL")
+	_assert(found_surge, "Soul Surge relic exists in RELIC_LOOT")
+	_assert_eq(total, 100, "Relic weights still sum to 100 after adding Soul Surge")
+	_assert_gt(Config.SOUL_SURGE_POOL, 0.0, "SOUL_SURGE_POOL > 0")
+
+	# Effect: dropping a Soul Surge feeds the Fallen Hero pool by SOUL_SURGE_POOL
+	GM.reset_state()
+	var pool_before: int = GM.fallen_hero_pool
+	GM.add_to_hero_pool(Config.SOUL_SURGE_POOL)
+	_assert_eq(GM.fallen_hero_pool, pool_before + Config.SOUL_SURGE_POOL, "Soul Surge adds SOUL_SURGE_POOL to hero pool")
+
+	# Threshold rollover: a surge large enough should spawn a Fallen Hero
+	GM.reset_state()
+	GM.fallen_hero_pool = Config.HERO_THRESHOLD_FIRST - 1  # one short of the first hero
+	var heroes_before: int = GM.fallen_heroes_spawned
+	GM.add_to_hero_pool(Config.SOUL_SURGE_POOL)
+	_assert_gt(float(GM.fallen_heroes_spawned), float(heroes_before), "A surge across the threshold spawns a Fallen Hero")
+
+	GM.reset_state()
+
+# ═══════════════════════════════════════════════════════
+# WEIGHTED PICK EMPTY-TABLE TESTS — crash guard
+# ═══════════════════════════════════════════════════════
+func _run_weighted_pick_empty_tests() -> void:
+	print("[Weighted Pick Empty Guard]")
+
+	# Empty table must return an empty dict, not crash on table[-1]
+	var picked: Dictionary = GM._weighted_pick([])
+	_assert(picked.is_empty(), "Empty loot table returns empty dict (no out-of-bounds)")
+
+	# Non-empty table still returns a valid entry
+	var single: Dictionary = GM._weighted_pick([{"name": "Only", "weight": 5, "type": "x", "value": 0}])
+	_assert_eq(single.get("name", ""), "Only", "Single-entry table returns that entry")

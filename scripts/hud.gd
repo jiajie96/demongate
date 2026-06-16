@@ -864,7 +864,7 @@ func _process(_dt: float) -> void:
 		btn_sell.text = Locale.tf("sell_refund", {"cost": GM.format_cost(GM.sell_refund(tw))})
 
 		var mode: String = tw.get("targeting_mode", "closest")
-		btn_targeting.text = Locale.t("Target") + ": " + mode.capitalize()
+		btn_targeting.text = Locale.t("Target") + ": " + GM.targeting_mode_label(mode)
 		# Only towers that actually select targets show the targeting control.
 		# Global (Lucifer), beam-cone (Cocytus) and support (Hades) all ignore it.
 		btn_targeting.visible = GM.uses_targeting(tw)
@@ -1053,11 +1053,9 @@ func _tower_button_text(data: Dictionary, show_details: bool = false) -> String:
 	})
 
 func _format_large_number(value: float) -> String:
-	if value >= 1000000:
-		return str(snappedf(value / 1000000.0, 0.1)) + "M"
-	elif value >= 1000:
-		return str(snappedf(value / 1000.0, 0.1)) + "k"
-	return str(roundi(value))
+	# Delegate to the shared GM helper so HUD stat readouts use one consistent
+	# k/M format (with trailing ".0" stripped) instead of a divergent local copy.
+	return GM.format_large(value)
 
 func _build_wave_preview(wave_idx: int) -> String:
 	var wave_def: Dictionary = Config.WAVE_DATA[wave_idx]

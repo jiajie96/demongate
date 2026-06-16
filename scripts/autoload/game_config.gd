@@ -49,6 +49,11 @@ const ZEUS_DISABLE_DURATION := 2.0       # seconds towers stay disabled
 const ZEUS_MAX_TARGETS := 2              # max towers hit per lightning
 const RAPHAEL_HEAL_COOLDOWN := 6.0       # seconds between heals
 const RAPHAEL_HEAL_PERCENT := 0.12       # heals 12% of ally's max HP
+# Raphael's heal is now range-limited rather than global. A global "always heals
+# the single most-wounded enemy anywhere on the map" had zero counterplay; gating
+# it to a generous radius lets the player deny heals by focusing or out-positioning
+# Raphael, while still covering several path tiles (TILE_SIZE=48, so ~4 tiles).
+const RAPHAEL_HEAL_RANGE := 200.0        # pixels — only enemies within this heal
 
 # Effect durations — visual feedback timers
 const FX_HIT_SPARK_DURATION := 0.2       # single-target hit spark
@@ -312,6 +317,11 @@ const SIN_CACHE_RANGE := 100            # random range added to min (0..99)
 # Legendary Blueprint fallback — sins granted when all towers are maxed
 const LEGENDARY_FALLBACK_SINS := 80     # consolation prize
 
+# Soul Surge relic — instantly feeds the Fallen Hero pool. Synergizes with the
+# kill-economy: a mid-fight drop can tip the pool over its threshold and spawn an
+# allied Fallen Hero on the spot, rewarding aggressive clears.
+const SOUL_SURGE_POOL := 75             # kills-equivalent added to the hero pool
+
 # Pandora's True Gift — sins option reward
 const PANDORA_SINS_REWARD := 100        # "Pandora grants N Sins!"
 
@@ -519,7 +529,7 @@ var ENEMY_DATA := {
 	"holy_sentinel": {"name": "Holy Sentinel", "hp": 65.0, "speed": 38.0, "core_dmg": 8, "is_boss": false, "color": Color(0.6, 0.8, 1.0), "radius": 10.0, "sin_reward": 25, "relic_drop": RELIC_DROP_SPECIAL},
 	"archangel_michael": {"name": "Archangel Michael", "hp": 200.0, "speed": 35.0, "core_dmg": 25, "is_boss": true, "color": Color(1.0, 0.95, 0.8), "radius": 12.0, "sin_reward": 25, "relic_drop": RELIC_DROP_BOSS},
 	"zeus": {"name": "Zeus", "hp": 80.0, "speed": 45.0, "core_dmg": 12, "is_boss": false, "color": Color(0.7, 0.8, 1.0), "radius": 10.0, "sin_reward": 18, "relic_drop": RELIC_DROP_SPECIAL},
-	"archangel_raphael": {"name": "Archangel Raphael", "hp": 70.0, "speed": 40.0, "core_dmg": 8, "is_boss": false, "color": Color(0.5, 0.95, 0.6), "radius": 9.0, "sin_reward": 20, "relic_drop": RELIC_DROP_SPECIAL},
+	"archangel_raphael": {"name": "Archangel Raphael", "hp": 70.0, "speed": 40.0, "core_dmg": 8, "is_boss": false, "color": Color(0.5, 0.95, 0.6), "radius": 9.0, "sin_reward": 20, "relic_drop": RELIC_DROP_SPECIAL, "heal_range": RAPHAEL_HEAL_RANGE},
 }
 
 # ═══════════════════════════════════════════════════════
@@ -583,11 +593,12 @@ func get_dice_outcome(total: int, current_wave: int) -> Dictionary:
 
 
 var RELIC_LOOT := [
-	{"name": "Hellfire Bomb", "weight": 31, "type": "aoe", "value": 50},
-	{"name": "Sin Cache", "weight": 27, "type": "random_sins", "value": 100},
+	{"name": "Hellfire Bomb", "weight": 28, "type": "aoe", "value": 50},
+	{"name": "Sin Cache", "weight": 24, "type": "random_sins", "value": 100},
 	{"name": "Tower Blessing", "weight": 15, "type": "tower_buff", "value": 0.25},
 	{"name": "Corruption Wave", "weight": 10, "type": "mass_corrupt", "value": 0.3},
 	{"name": "Time Warp", "weight": 7, "type": "rewind", "value": 5},
+	{"name": "Soul Surge", "weight": 6, "type": "soul_surge", "value": SOUL_SURGE_POOL},
 	{"name": "Legendary Blueprint", "weight": 3, "type": "legendary", "value": 0},
 	{"name": "Divine Curse", "weight": 3, "type": "curse", "value": 2},
 	{"name": "Trojan Relic", "weight": 2, "type": "trap", "value": 2},
