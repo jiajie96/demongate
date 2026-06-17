@@ -29,6 +29,12 @@ func toggle_language() -> void:
 func lang_display() -> String:
 	return "中文" if current_lang == "zh" else "English"
 
+## Public check for whether a tf() template key is defined. Lets other systems
+## (e.g. GM.targeting_mode_label) choose between a template and a fallback without
+## reaching into the private _templates dictionary.
+func has_template(key: String) -> bool:
+	return _templates.has(key)
+
 # ═══════════════════════════════════════════════════════
 # TEMPLATE STRINGS (keyed by identifier)
 # ═══════════════════════════════════════════════════════

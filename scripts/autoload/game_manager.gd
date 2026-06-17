@@ -193,7 +193,7 @@ func earn_from_kill(enemy_type: String, was_aoe: bool) -> void:
 		scaled_reward = roundi(scaled_reward * Config.BOSS_KILL_BONUS_MULT)
 	earn(scaled_reward)
 	if was_aoe:
-		earn(1)
+		earn(Config.AOE_KILL_BONUS)
 
 func can_afford(cost: int) -> bool:
 	return sins >= cost
@@ -367,14 +367,23 @@ func has_active_tower_type(type: String) -> bool:
 func _valid_tower(tower) -> bool:
 	return tower != null and tower is Dictionary
 
-## Highest-DPS tower currently on the field (damage × damage_mult × attack_speed),
-## or null if there are none. Single definition of "best tower" shared by the
-## Divine Curse relic (disables it) and any other code that needs the strongest.
+## Intrinsic DPS of a single tower: damage × damage_mult × attack_speed. This is
+## the tower's *baseline* strength and deliberately excludes transient global/Hades
+## speed buffs — "which tower is strongest" should be a stable property, not flip
+## every time a Hades pulse fires. Single source of truth for the "best tower"
+## measure shared by strongest_tower_by_dps (Divine Curse) and free_upgrade_best_tower
+## (Legendary Blueprint) so the two can never disagree on what "strongest" means.
+func tower_dps(tower: Dictionary) -> float:
+	return tower["damage"] * tower.get("damage_mult", 1.0) * tower["attack_speed"]
+
+## Highest-DPS tower currently on the field, or null if there are none. Single
+## definition of "best tower" shared by the Divine Curse relic (disables it) and
+## any other code that needs the strongest.
 func strongest_tower_by_dps():
 	var best = null
 	var best_dps := -1.0
 	for t in towers:
-		var dps: float = t["damage"] * t["damage_mult"] * t["attack_speed"]
+		var dps: float = tower_dps(t)
 		if dps > best_dps:
 			best_dps = dps
 			best = t
@@ -529,13 +538,16 @@ func _raphael_heal(raphael: Dictionary) -> void:
 func update_enemies(dt: float) -> void:
 	var path_px: Array[Vector2] = Config.path_pixels
 	var has_commander := _has_alive_type("archangel_marshal")
-	# REDESIGN: cache NEC aura slow sources for movement step
-	var nec_towers: Array = []
+	# REDESIGN: cache NEC aura slow sources for movement step. Precompute each
+	# source's squared range up front so the per-enemy aura check below doesn't
+	# recompute range*range for every (enemy × NEC tower) pair every frame.
+	var nec_sources: Array = []  # [{x, y, r2}, ...]
 	var nec_aura_slow: float = 0.0
 	for t in towers:
 		if t["type"] == "soul_reaper" and not t["is_disabled"]:
-			nec_towers.append(t)
-	if nec_towers.size() > 0:
+			var nr: float = t["range"]
+			nec_sources.append({"x": t["x"], "y": t["y"], "r2": nr * nr})
+	if nec_sources.size() > 0:
 		nec_aura_slow = Config.TOWER_DATA["soul_reaper"].get("aura_slow", 0.0)
 
 	# Cache burn DPS lookup outside the per-enemy loop
@@ -640,10 +652,10 @@ func update_enemies(dt: float) -> void:
 			spd *= (1.0 - e["slow_amount"])
 		# REDESIGN: NEC passive aura slow — any enemy in NEC range
 		if nec_aura_slow > 0:
-			for nt in nec_towers:
-				var ndx: float = e["x"] - nt["x"]
-				var ndy: float = e["y"] - nt["y"]
-				if ndx * ndx + ndy * ndy <= nt["range"] * nt["range"]:
+			for ns in nec_sources:
+				var ndx: float = e["x"] - ns["x"]
+				var ndy: float = e["y"] - ns["y"]
+				if ndx * ndx + ndy * ndy <= ns["r2"]:
 					spd *= (1.0 - nec_aura_slow)
 					break
 		# REDESIGN: COC frost slow — while enemy has active frost_timer
@@ -1479,7 +1491,7 @@ func free_upgrade_best_tower() -> bool:
 	var best_val := -1.0
 	for t in towers:
 		if t["level"] < Config.MAX_TOWER_LEVEL:
-			var val: float = t["damage"] * t["damage_mult"] * t["attack_speed"]
+			var val: float = tower_dps(t)
 			if val > best_val:
 				best_val = val
 				best_tower = t
@@ -1663,25 +1675,25 @@ func format_damage(value: float) -> String:
 	if value >= 1000.0:
 		# Compact thousands. Whole-number results drop the trailing ".0"
 		# ("1k" not "1.0k"); fractional results keep one decimal ("1.5k").
-		var k: float = snappedf(value / 1000.0, 0.1)
-		if k == floorf(k):
-			return str(int(k)) + "k"
-		return str(k) + "k"
+		# Shares _strip_dot_zero with format_kills/format_large so the three
+		# suffixers can't drift apart on rounding behavior.
+		return _strip_dot_zero(snappedf(value / 1000.0, 0.1)) + "k"
 	if value < 1.0 and value > 0.0:
 		# Round half-up to one decimal. The epsilon guards against float
 		# representation underflow (e.g. 0.15 stored as 0.1499999 → "0.2").
 		return str(snappedf(value + 0.0001, 0.1))
 	return str(roundi(value))
 
-## Format kill counts with "k" suffix for compact display.
-## Mirrors format_damage's k-strip: whole-thousand counts drop the trailing
-## ".0" ("1k" not "1.0k") while fractional counts keep one decimal ("2.5k").
+## Format kill counts with k/M suffixes for compact display. Mirrors
+## format_damage/format_large via the shared _strip_dot_zero helper: whole-unit
+## counts drop the trailing ".0" ("1k" not "1.0k") while fractional counts keep
+## one decimal ("2.5k"). Gains an "M" suffix for very high counts so a marathon
+## run reads "1.2M" instead of an unwieldy "1234.5k".
 func format_kills(value: int) -> String:
+	if value >= 1000000:
+		return _strip_dot_zero(snappedf(float(value) / 1000000.0, 0.1)) + "M"
 	if value >= 1000:
-		var k: float = snappedf(float(value) / 1000.0, 0.1)
-		if k == floorf(k):
-			return str(int(k)) + "k"
-		return str(k) + "k"
+		return _strip_dot_zero(snappedf(float(value) / 1000.0, 0.1)) + "k"
 	return str(value)
 
 ## Format game_time (seconds float) into a human-readable mm:ss string.
@@ -1715,7 +1727,7 @@ func _strip_dot_zero(k: float) -> String:
 ## HUD never shows a leftover template key. Keeps targeting UI readable in zh.
 func targeting_mode_label(mode: String) -> String:
 	var key := "targeting_" + mode
-	if Locale._templates.has(key):
+	if Locale.has_template(key):
 		return Locale.tf(key)
 	return mode.capitalize()
 

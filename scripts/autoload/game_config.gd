@@ -88,6 +88,11 @@ const CLERIC_HEAL_TICK := 0.5            # seconds between heal ticks
 # Boss kill bonus multiplier — boss kills grant extra sins on top of scaled reward
 const BOSS_KILL_BONUS_MULT := 1.5        # 50% extra sins from bosses
 
+# Flat bonus Sins for an AoE/splash kill — a small incentive to favor crowd-clear
+# towers/effects. Extracted from the inline `earn(1)` literal in earn_from_kill so
+# the AoE clear incentive is named and tunable in one place.
+const AOE_KILL_BONUS := 1
+
 # Relic explosion radius
 const RELIC_AOE_RADIUS := 80.0           # pixel radius for Hellfire Bomb relic
 

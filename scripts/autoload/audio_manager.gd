@@ -160,15 +160,18 @@ func start_music() -> void:
 	# update_music_for_wave() to switch tiers.
 	update_music_for_wave(1)
 
-func update_music_for_wave(wave: int) -> void:
-	var key: String
+## Pure wave→track-key mapping. Extracted from update_music_for_wave so the tier
+## thresholds can be unit-tested without instantiating the audio pool or touching
+## playback state. update_music_for_wave delegates here, then plays the result.
+func music_tier_for_wave(wave: int) -> String:
 	if wave >= MUSIC_TIER_PEAK:
-		key = "gameplay_peak"
-	elif wave >= MUSIC_TIER_MID:
-		key = "gameplay_mid"
-	else:
-		key = "gameplay_calm"
-	_play_music_track(key)
+		return "gameplay_peak"
+	if wave >= MUSIC_TIER_MID:
+		return "gameplay_mid"
+	return "gameplay_calm"
+
+func update_music_for_wave(wave: int) -> void:
+	_play_music_track(music_tier_for_wave(wave))
 
 func stop_music() -> void:
 	_music_player.stop()

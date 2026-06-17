@@ -193,6 +193,12 @@ func _ready() -> void:
 	_run_raphael_heal_range_tests()
 	_run_soul_surge_relic_tests()
 	_run_weighted_pick_empty_tests()
+	_run_tower_dps_helper_tests()
+	_run_aoe_kill_bonus_tests()
+	_run_format_kills_million_tests()
+	_run_nec_aura_slow_tests()
+	_run_locale_has_template_tests()
+	_run_music_tier_tests()
 
 	print("")
 	print("=== Results: %d/%d passed ===" % [_passed, _total])
@@ -5301,3 +5307,140 @@ func _run_weighted_pick_empty_tests() -> void:
 	# Non-empty table still returns a valid entry
 	var single: Dictionary = GM._weighted_pick([{"name": "Only", "weight": 5, "type": "x", "value": 0}])
 	_assert_eq(single.get("name", ""), "Only", "Single-entry table returns that entry")
+
+# ═══════════════════════════════════════════════════════
+# TOWER DPS HELPER TESTS — shared intrinsic-DPS measure
+# ═══════════════════════════════════════════════════════
+func _run_tower_dps_helper_tests() -> void:
+	print("[Tower DPS Helper]")
+
+	GM.reset_state()
+	var t := GM.create_tower("bone_marksman", 4, 4)
+	t["damage"] = 10.0
+	t["attack_speed"] = 2.0
+	t["damage_mult"] = 1.5
+	# 10 * 1.5 * 2.0 = 30
+	_assert_near(GM.tower_dps(t), 30.0, 0.001, "tower_dps = damage * mult * attack_speed")
+
+	# strongest_tower_by_dps must agree with tower_dps on which tower is strongest
+	GM.reset_state()
+	var a := GM.create_tower("bone_marksman", 2, 2)
+	a["damage"] = 4.0; a["attack_speed"] = 2.0   # dps 8
+	GM.towers.append(a)
+	var b := GM.create_tower("bone_marksman", 6, 6)
+	b["damage"] = 3.0; b["attack_speed"] = 5.0   # dps 15
+	GM.towers.append(b)
+	var best = GM.strongest_tower_by_dps()
+	_assert(best != null and best["id"] == b["id"], "strongest_tower_by_dps picks the higher tower_dps")
+	_assert_near(GM.tower_dps(best), 15.0, 0.001, "strongest tower's tower_dps matches expected 15")
+
+	# free_upgrade_best_tower should pick the same intrinsic-DPS leader (both maxable)
+	GM.reset_state()
+	var lo := GM.create_tower("bone_marksman", 3, 3)
+	lo["damage"] = 2.0; lo["attack_speed"] = 1.0  # dps 2
+	GM.towers.append(lo)
+	var hi := GM.create_tower("bone_marksman", 7, 7)
+	hi["damage"] = 9.0; hi["attack_speed"] = 1.0  # dps 9
+	GM.towers.append(hi)
+	var hi_level_before: int = hi["level"]
+	_assert(GM.free_upgrade_best_tower(), "free_upgrade_best_tower upgrades a non-max tower")
+	_assert_gt(float(hi["level"]), float(hi_level_before), "Highest tower_dps tower received the free upgrade")
+	GM.reset_state()
+
+# ═══════════════════════════════════════════════════════
+# AOE KILL BONUS TESTS — named flat bonus for splash kills
+# ═══════════════════════════════════════════════════════
+func _run_aoe_kill_bonus_tests() -> void:
+	print("[AoE Kill Bonus]")
+
+	_assert_gt(float(Config.AOE_KILL_BONUS), 0.0, "AOE_KILL_BONUS is a positive incentive")
+
+	# A non-AoE kill grants only the scaled reward; an AoE kill grants exactly
+	# AOE_KILL_BONUS more for the same enemy at the same wave.
+	GM.reset_state()
+	var before_normal: int = GM.sins
+	GM.earn_from_kill("seraph_scout", false)
+	var normal_gain: int = GM.sins - before_normal
+
+	GM.reset_state()
+	var before_aoe: int = GM.sins
+	GM.earn_from_kill("seraph_scout", true)
+	var aoe_gain: int = GM.sins - before_aoe
+
+	_assert_eq(aoe_gain - normal_gain, Config.AOE_KILL_BONUS, "AoE kill grants exactly AOE_KILL_BONUS extra Sins")
+	GM.reset_state()
+
+# ═══════════════════════════════════════════════════════
+# FORMAT KILLS MILLION TESTS — M suffix parity with format_large
+# ═══════════════════════════════════════════════════════
+func _run_format_kills_million_tests() -> void:
+	print("[Format Kills Million]")
+
+	# Below a million still uses the k suffix (regression guard for existing behavior)
+	_assert_eq(GM.format_kills(500000), "500k", "500000 kills -> 500k")
+	# Whole millions strip the trailing ".0"
+	_assert_eq(GM.format_kills(1000000), "1M", "1000000 kills -> 1M (no .0)")
+	# Fractional millions keep one decimal
+	_assert_eq(GM.format_kills(1200000), "1.2M", "1200000 kills -> 1.2M")
+	_assert_eq(GM.format_kills(2500000), "2.5M", "2500000 kills -> 2.5M")
+	# Small counts unaffected
+	_assert_eq(GM.format_kills(7), "7", "Small counts pass through unchanged")
+
+# ═══════════════════════════════════════════════════════
+# NEC AURA SLOW TESTS — soul_reaper passive slow (range precompute)
+# ═══════════════════════════════════════════════════════
+func _run_nec_aura_slow_tests() -> void:
+	print("[NEC Aura Slow]")
+
+	var aura: float = Config.TOWER_DATA["soul_reaper"].get("aura_slow", 0.0)
+	_assert_gt(aura, 0.0, "soul_reaper defines a positive aura_slow")
+
+	# Place a Soul Reaper, drop an enemy squarely on top of it, and step movement.
+	# The aura should slow it: it must travel less than its unslowed speed * dt.
+	GM.reset_state()
+	GM.wave = 1
+	var nec := GM.create_tower("soul_reaper", 5, 5)
+	GM.towers.append(nec)
+
+	var e := GM.create_enemy("seraph_scout")
+	e["x"] = nec["x"]
+	e["y"] = nec["y"]
+	e["spawn_timer"] = 0.0
+	e["path_index"] = 0
+	var base_speed: float = e["speed"]
+	GM.enemies.append(e)
+
+	var start_x: float = e["x"]
+	var start_y: float = e["y"]
+	var dt := 0.1
+	GM.update_enemies(dt)
+	var moved: float = sqrt(pow(e["x"] - start_x, 2) + pow(e["y"] - start_y, 2))
+	var unslowed_dist: float = base_speed * dt
+	_assert_lt(moved, unslowed_dist, "Enemy inside NEC aura moves slower than unslowed speed")
+	_assert_gt(moved, 0.0, "Enemy inside NEC aura still moves (not frozen)")
+	GM.reset_state()
+
+# ═══════════════════════════════════════════════════════
+# LOCALE HAS_TEMPLATE TESTS — public template-existence check
+# ═══════════════════════════════════════════════════════
+func _run_locale_has_template_tests() -> void:
+	print("[Locale has_template]")
+
+	_assert(Locale.has_template("wave_progress"), "has_template true for a known key")
+	_assert(not Locale.has_template("definitely_not_a_real_template_key_xyz"), "has_template false for an unknown key")
+	# targeting_mode_label relies on has_template — real modes resolve, junk falls back
+	_assert_ne(GM.targeting_mode_label("closest"), "", "targeting_mode_label('closest') is non-empty")
+	_assert_eq(GM.targeting_mode_label("zzz_unknown"), "zzz_unknown".capitalize(), "Unknown mode falls back to capitalized raw name")
+
+# ═══════════════════════════════════════════════════════
+# MUSIC TIER TESTS — pure wave->track mapping
+# ═══════════════════════════════════════════════════════
+func _run_music_tier_tests() -> void:
+	print("[Music Tier For Wave]")
+
+	_assert_eq(Audio.music_tier_for_wave(1), "gameplay_calm", "Wave 1 -> calm")
+	_assert_eq(Audio.music_tier_for_wave(Audio.MUSIC_TIER_MID - 1), "gameplay_calm", "Just below MID -> calm")
+	_assert_eq(Audio.music_tier_for_wave(Audio.MUSIC_TIER_MID), "gameplay_mid", "At MID threshold -> mid")
+	_assert_eq(Audio.music_tier_for_wave(Audio.MUSIC_TIER_PEAK - 1), "gameplay_mid", "Just below PEAK -> mid")
+	_assert_eq(Audio.music_tier_for_wave(Audio.MUSIC_TIER_PEAK), "gameplay_peak", "At PEAK threshold -> peak")
+	_assert_eq(Audio.music_tier_for_wave(20), "gameplay_peak", "Late wave -> peak")

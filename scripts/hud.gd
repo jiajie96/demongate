@@ -886,9 +886,9 @@ func _process(_dt: float) -> void:
 		btn_dice_roll.text = Locale.t("ROLL THE DICE")
 
 	# End screen stats
-	var _dmg_str := _format_large_number(GM.stats.get("total_damage_dealt", 0.0))
+	var _dmg_str := GM.format_large(GM.stats.get("total_damage_dealt", 0.0))
 	var _boss_kills: int = GM.stats.get("boss_kills", 0)
-	var _core_dmg_str := _format_large_number(GM.stats.get("total_core_damage", 0.0))
+	var _core_dmg_str := GM.format_large(GM.stats.get("total_core_damage", 0.0))
 	if GM.phase == "gameover":
 		go_stats_label.text = Locale.tf("gameover_stats", {"wave": GM.wave, "kills": GM.stats["enemies_killed"], "towers": GM.stats["towers_placed"], "sins": GM.stats["total_sins_earned"], "dmg": _dmg_str, "bosses": _boss_kills, "core_dmg": _core_dmg_str})
 	elif GM.phase == "victory":
@@ -1051,11 +1051,6 @@ func _tower_button_text(data: Dictionary, show_details: bool = false) -> String:
 		"name": Locale.t(data["name"]),
 		"cost": GM.format_cost(data["cost"]),
 	})
-
-func _format_large_number(value: float) -> String:
-	# Delegate to the shared GM helper so HUD stat readouts use one consistent
-	# k/M format (with trailing ".0" stripped) instead of a divergent local copy.
-	return GM.format_large(value)
 
 func _build_wave_preview(wave_idx: int) -> String:
 	var wave_def: Dictionary = Config.WAVE_DATA[wave_idx]
