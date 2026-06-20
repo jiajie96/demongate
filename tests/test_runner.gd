@@ -199,6 +199,11 @@ func _ready() -> void:
 	_run_nec_aura_slow_tests()
 	_run_locale_has_template_tests()
 	_run_music_tier_tests()
+	_run_vital_surge_relic_tests()
+	_run_enemy_defense_multiplier_tests()
+	_run_dice_sides_constant_tests()
+	_run_dice_tax_stat_tests()
+	_run_dice_disable_no_shorten_tests()
 
 	print("")
 	print("=== Results: %d/%d passed ===" % [_passed, _total])
@@ -300,7 +305,7 @@ func _run_config_tests() -> void:
 	_assert(not Config.has_method("ROULETTE_SEGMENTS") or true, "Roulette removed")
 	_assert_eq(Config.DICE_OUTCOMES.size(), 6, "6 dice outcomes (1-6)")
 	_assert_eq(Config.DICE_OUTCOMES_EARLY.size(), 6, "6 early dice outcomes (1-6)")
-	_assert_eq(Config.RELIC_LOOT.size(), 10, "10 relic loot types")
+	_assert_eq(Config.RELIC_LOOT.size(), 11, "11 relic loot types")
 
 	# Tower data integrity
 	for type in Config.TOWER_DATA:
@@ -5444,3 +5449,124 @@ func _run_music_tier_tests() -> void:
 	_assert_eq(Audio.music_tier_for_wave(Audio.MUSIC_TIER_PEAK - 1), "gameplay_mid", "Just below PEAK -> mid")
 	_assert_eq(Audio.music_tier_for_wave(Audio.MUSIC_TIER_PEAK), "gameplay_peak", "At PEAK threshold -> peak")
 	_assert_eq(Audio.music_tier_for_wave(20), "gameplay_peak", "Late wave -> peak")
+
+
+func _run_vital_surge_relic_tests() -> void:
+	print("[Vital Surge Relic]")
+
+	# Loot-table integrity: the relic exists with the expected type/value and the
+	# weights still sum to 100 after it was added.
+	var total := 0
+	var found := false
+	for loot in Config.RELIC_LOOT:
+		total += int(loot["weight"])
+		if loot["name"] == "Vital Surge":
+			found = true
+			_assert_eq(loot["type"], "core_heal", "Vital Surge relic has 'core_heal' type")
+			_assert_eq(int(loot["value"]), Config.VITAL_SURGE_HEAL, "Vital Surge value matches VITAL_SURGE_HEAL")
+	_assert(found, "Vital Surge relic exists in RELIC_LOOT")
+	_assert_eq(total, 100, "Relic weights still sum to 100 after adding Vital Surge")
+	_assert_gt(float(Config.VITAL_SURGE_HEAL), 0.0, "VITAL_SURGE_HEAL > 0")
+
+	# Every relic type must have a handler in drop_relic, so 'core_heal' must be
+	# one Locale also recognizes (notification template present).
+	_assert(Locale.has_template("core_healed"), "core_healed locale template exists")
+
+	# Effect: force the loot table to only Vital Surge so drop_relic deterministically
+	# exercises the core_heal branch.
+	var saved: Array = Config.RELIC_LOOT
+	Config.RELIC_LOOT = [{"name": "Vital Surge", "weight": 1, "type": "core_heal", "value": Config.VITAL_SURGE_HEAL}]
+
+	GM.reset_state()
+	GM.core_hp = 10.0
+	GM.drop_relic(0.0, 0.0)
+	_assert_near(GM.core_hp, 10.0 + float(Config.VITAL_SURGE_HEAL), 0.01, "Vital Surge heals core by VITAL_SURGE_HEAL")
+
+	# Clamp: healing near full HP can never exceed core_max_hp.
+	GM.core_hp = GM.core_max_hp - 5.0
+	GM.drop_relic(0.0, 0.0)
+	_assert_near(GM.core_hp, GM.core_max_hp, 0.01, "Vital Surge clamps core_hp to core_max_hp")
+	_assert_lte(GM.core_hp, GM.core_max_hp, "core_hp never exceeds max after overheal")
+
+	Config.RELIC_LOOT = saved
+
+
+func _run_enemy_defense_multiplier_tests() -> void:
+	print("[Enemy Defense Multiplier]")
+
+	GM.reset_state()  # no archangel_marshal alive -> commander aura inactive
+	GM.clear_alive_type_cache()
+
+	# Bare enemy: no shield, no buff, no commander -> full damage (multiplier 1.0)
+	var plain := {"type": "crusader", "shield": 0.0, "shield_buff": false}
+	_assert_near(GM.enemy_defense_multiplier(plain), 1.0, 0.001, "No mitigation -> multiplier 1.0")
+
+	# Own shield: 40% shield -> 60% damage through
+	var shielded := {"type": "holy_sentinel", "shield": 0.4, "shield_buff": false}
+	_assert_near(GM.enemy_defense_multiplier(shielded), 0.6, 0.001, "40% shield -> 0.6 multiplier")
+
+	# Michael's shield_buff applies SHIELD_BUFF_REDUCTION
+	var buffed := {"type": "crusader", "shield": 0.0, "shield_buff": true}
+	_assert_near(GM.enemy_defense_multiplier(buffed), Config.SHIELD_BUFF_REDUCTION, 0.001, "shield_buff -> SHIELD_BUFF_REDUCTION")
+
+	# Combined shield + buff stack multiplicatively
+	var both := {"type": "crusader", "shield": 0.4, "shield_buff": true}
+	_assert_near(GM.enemy_defense_multiplier(both), 0.6 * Config.SHIELD_BUFF_REDUCTION, 0.001, "shield and buff stack multiplicatively")
+
+	# Commander aura: with an archangel_marshal alive, other enemies get COMMANDER_DAMAGE_REDUCTION
+	GM.reset_state()
+	GM.enemies.append(GM.create_enemy("archangel_marshal"))
+	GM.clear_alive_type_cache()
+	var ally := {"type": "crusader", "shield": 0.0, "shield_buff": false}
+	_assert_near(GM.enemy_defense_multiplier(ally), Config.COMMANDER_DAMAGE_REDUCTION, 0.001, "Commander aura reduces ally damage")
+	# The commander itself is exempt from its own aura
+	var marshal := {"type": "archangel_marshal", "shield": 0.0, "shield_buff": false}
+	_assert_near(GM.enemy_defense_multiplier(marshal), 1.0, 0.001, "Commander does not buff itself")
+	GM.reset_state()
+	GM.clear_alive_type_cache()
+
+
+func _run_dice_sides_constant_tests() -> void:
+	print("[Dice Sides Constant]")
+
+	_assert_eq(Config.DICE_SIDES, 6, "DICE_SIDES is 6")
+	# Both outcome tables must define a face for every possible roll 1..DICE_SIDES,
+	# otherwise roll_dice could index a missing key.
+	for face in range(1, Config.DICE_SIDES + 1):
+		_assert(Config.DICE_OUTCOMES.has(face), "DICE_OUTCOMES has face %d" % face)
+		_assert(Config.DICE_OUTCOMES_EARLY.has(face), "DICE_OUTCOMES_EARLY has face %d" % face)
+	_assert_eq(Config.DICE_OUTCOMES.size(), Config.DICE_SIDES, "DICE_OUTCOMES count matches DICE_SIDES")
+
+
+func _run_dice_tax_stat_tests() -> void:
+	print("[Dice Tax Stat]")
+
+	GM.reset_state()
+	_assert(GM.stats.has("sins_taxed"), "stats initializes sins_taxed")
+	_assert_eq(int(GM.stats["sins_taxed"]), 0, "sins_taxed starts at 0")
+	_assert_gt(Config.DICE_TAX_PERCENT, 0.0, "DICE_TAX_PERCENT > 0")
+	_assert_lt(Config.DICE_TAX_PERCENT, 1.0, "DICE_TAX_PERCENT < 1 (never wipes the whole purse)")
+	_assert(Locale.has_template("sins_taxed"), "sins_taxed locale template exists")
+
+
+func _run_dice_disable_no_shorten_tests() -> void:
+	print("[Dice Disable No-Shorten]")
+
+	GM.reset_state()
+	var t := GM.create_tower("bone_marksman", 3, 3)
+	GM.towers.append(t)
+
+	# A fresh disable sets the full duration.
+	GM._disable_all_towers(Config.DICE_DISABLE_DURATION)
+	_assert(t["is_disabled"], "Tower is disabled after _disable_all_towers")
+	_assert_near(t["disable_timer"], Config.DICE_DISABLE_DURATION, 0.001, "Disable timer set to duration")
+
+	# A longer disable already running must not be shortened by the 3s dice disable.
+	t["disable_timer"] = 8.0
+	GM._disable_all_towers(Config.DICE_DISABLE_DURATION)
+	_assert_near(t["disable_timer"], 8.0, 0.001, "Shorter dice disable does not shorten a longer existing disable")
+
+	# A longer requested duration does extend it.
+	GM._disable_all_towers(12.0)
+	_assert_near(t["disable_timer"], 12.0, 0.001, "Longer disable extends the timer")
+	GM.reset_state()

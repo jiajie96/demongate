@@ -173,6 +173,14 @@ var _templates: Dictionary = {
 		"en": "Soul Surge! +{amount} to the Fallen Hero pool!",
 		"zh": "灵魂涌动！堕落英雄进度 +{amount}！",
 	},
+	"core_healed": {
+		"en": "Vital Surge! Hell's Core +{amount} HP!",
+		"zh": "生命涌动！地狱核心 +{amount} 生命！",
+	},
+	"sins_taxed": {
+		"en": "Devil's Tax! -{amount} Sins",
+		"zh": "魔鬼税！-{amount}罪恶值",
+	},
 	# Targeting-mode labels — used by the tower's Target button so the priority
 	# reads in the player's language instead of a raw English mode name.
 	"targeting_closest": {"en": "Closest", "zh": "最近"},

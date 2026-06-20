@@ -12,6 +12,10 @@ const GAME_HEIGHT := TILE_SIZE * GRID_ROWS  # 576
 const CORE_MAX_HP := 100.0
 const MAX_WAVES := 20
 const DICE_MAX_USES := 2
+# Number of faces on Devil's Dice. Extracted from the inline `randi() % 6 + 1`
+# in roll_dice so the die size lives next to DICE_MAX_USES and the DICE_OUTCOMES
+# tables (also keyed 1..6) can't silently disagree with the roll range.
+const DICE_SIDES := 6
 
 const BETWEEN_WAVE_DELAY := 8.0
 const FIRST_WAVE_DELAY := 3.0
@@ -330,6 +334,11 @@ const SOUL_SURGE_POOL := 75             # kills-equivalent added to the hero poo
 # Pandora's True Gift — sins option reward
 const PANDORA_SINS_REWARD := 100        # "Pandora grants N Sins!"
 
+# Vital Surge relic — repairs Hell's Core. The reverse-morality fiction: the demon
+# patches the wound the Divine Army has been carving into the Core. A defensive
+# drop that rewards survival in long fights, complementing the all-offense relics.
+const VITAL_SURGE_HEAL := 25            # Core HP restored (clamped to core_max_hp)
+
 # Special enemy types — used for spawn ordering and relic drop rates.
 # Bosses (is_boss=true, e.g. archangel_michael) are auto-special via
 # is_special_enemy() and must NOT be duplicated here.
@@ -598,10 +607,11 @@ func get_dice_outcome(total: int, current_wave: int) -> Dictionary:
 
 
 var RELIC_LOOT := [
-	{"name": "Hellfire Bomb", "weight": 28, "type": "aoe", "value": 50},
-	{"name": "Sin Cache", "weight": 24, "type": "random_sins", "value": 100},
-	{"name": "Tower Blessing", "weight": 15, "type": "tower_buff", "value": 0.25},
+	{"name": "Hellfire Bomb", "weight": 24, "type": "aoe", "value": 50},
+	{"name": "Sin Cache", "weight": 22, "type": "random_sins", "value": 100},
+	{"name": "Tower Blessing", "weight": 13, "type": "tower_buff", "value": 0.25},
 	{"name": "Corruption Wave", "weight": 10, "type": "mass_corrupt", "value": 0.3},
+	{"name": "Vital Surge", "weight": 8, "type": "core_heal", "value": VITAL_SURGE_HEAL},
 	{"name": "Time Warp", "weight": 7, "type": "rewind", "value": 5},
 	{"name": "Soul Surge", "weight": 6, "type": "soul_surge", "value": SOUL_SURGE_POOL},
 	{"name": "Legendary Blueprint", "weight": 3, "type": "legendary", "value": 0},

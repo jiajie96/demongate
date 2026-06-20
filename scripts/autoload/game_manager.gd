@@ -134,7 +134,7 @@ func reset_state() -> void:
 	fast_enemy_waves = 0
 	fallen_hero_pool = 0
 	fallen_heroes_spawned = 0
-	stats = {"enemies_killed": 0, "towers_placed": 0, "towers_sold": 0, "total_sins_earned": 0, "total_damage_dealt": 0.0, "pacts_accepted": 0, "pacts_offered": 0, "fallen_heroes": 0, "waves_survived": 0, "boss_kills": 0, "total_core_damage": 0.0, "relics_collected": 0, "lucifer_executes": 0, "dice_rolls": 0, "highest_wave": 0, "total_game_time": 0.0}
+	stats = {"enemies_killed": 0, "towers_placed": 0, "towers_sold": 0, "total_sins_earned": 0, "total_damage_dealt": 0.0, "pacts_accepted": 0, "pacts_offered": 0, "fallen_heroes": 0, "waves_survived": 0, "boss_kills": 0, "total_core_damage": 0.0, "relics_collected": 0, "lucifer_executes": 0, "dice_rolls": 0, "highest_wave": 0, "total_game_time": 0.0, "sins_taxed": 0}
 	occupied_tiles.clear()
 	notifications.clear()
 	game_time = 0.0
@@ -855,6 +855,23 @@ func in_radius(cx: float, cy: float, radius: float) -> Array:
 # ═══════════════════════════════════════════════════════
 # COMBAT
 # ═══════════════════════════════════════════════════════
+## Combined defensive multiplier an enemy applies to incoming damage: its own
+## shield, Michael's shield_buff, and the Archangel Marshal commander aura. Single
+## source of truth shared by calc_damage (single-target/AoE, with a 1.0 floor) and
+## the Cocytus cone (fractional per-tick, no floor) so the two damage paths can
+## never drift on how much an enemy mitigates — and a future defensive modifier
+## only has to be added here once.
+func enemy_defense_multiplier(enemy: Dictionary) -> float:
+	var m := 1.0
+	if enemy.get("shield", 0.0) > 0:
+		m *= (1.0 - enemy["shield"])
+	if enemy.get("shield_buff", false):
+		m *= Config.SHIELD_BUFF_REDUCTION
+	# Archangel Commander aura: damage reduction for allies
+	if _has_alive_type("archangel_marshal") and enemy.get("type", "") != "archangel_marshal":
+		m *= Config.COMMANDER_DAMAGE_REDUCTION
+	return m
+
 func calc_damage(base_dmg: float, tower, enemy: Dictionary) -> float:
 	var dmg := base_dmg
 	if double_damage > 0:
@@ -863,13 +880,7 @@ func calc_damage(base_dmg: float, tower, enemy: Dictionary) -> float:
 		dmg *= tower_weaken_mult
 	if _valid_tower(tower):
 		dmg *= tower.get("damage_mult", 1.0)
-	if enemy.get("shield", 0.0) > 0:
-		dmg *= (1.0 - enemy["shield"])
-	if enemy.get("shield_buff", false):
-		dmg *= Config.SHIELD_BUFF_REDUCTION
-	# Archangel Commander aura: damage reduction for allies
-	if _has_alive_type("archangel_marshal") and enemy.get("type", "") != "archangel_marshal":
-		dmg *= Config.COMMANDER_DAMAGE_REDUCTION
+	dmg *= enemy_defense_multiplier(enemy)
 	return maxf(1.0, dmg)
 
 func combat_hit(enemy: Dictionary, base_dmg: float, tower) -> void:
@@ -1099,12 +1110,12 @@ func _cocytus_cone(tower: Dictionary, dt: float, hades_list: Array = [], corrupt
 	var cl2: float = tower["range"] * tower["range"]
 	var half_angle: float = Config.TOWER_DATA[tower["type"]]["cone_half_angle"]
 	var cos_half: float = cos(half_angle)
+	var cos_half_sq: float = cos_half * cos_half
 	# REDESIGN: oscillating sweep — ±15° around set facing, synced to draw
 	var sweep: float = sin(game_time * Config.COCYTUS_SWEEP_SPEED) * Config.COCYTUS_SWEEP_ANGLE
 	var eff_facing: float = tower["facing_angle"] + sweep
 	var fx: float = cos(eff_facing)
 	var fy: float = sin(eff_facing)
-	var has_cmd := _has_alive_type("archangel_marshal")
 	var _hades_list: Array = hades_list
 	var _hit_any := false
 	for e in enemies:
@@ -1118,19 +1129,15 @@ func _cocytus_cone(tower: Dictionary, dt: float, hades_list: Array = [], corrupt
 		var dot: float = dx * fx + dy * fy
 		if dot <= 0:
 			continue
-		if dot * dot < cos_half * cos_half * d2:
+		if dot * dot < cos_half_sq * d2:
 			continue
 		if _is_guardian_protected(e):
 			e["flash_timer"] = Config.GUARDIAN_FLASH_DURATION
 			continue
 		# Apply raw damage — NO 1.0 floor (cone is fractional per tick)
-		var tick_dmg: float = cone_dps * dt
-		if e.get("shield", 0.0) > 0:
-			tick_dmg *= (1.0 - e["shield"])
-		if e.get("shield_buff", false):
-			tick_dmg *= Config.SHIELD_BUFF_REDUCTION
-		if has_cmd and e.get("type", "") != "archangel_marshal":
-			tick_dmg *= Config.COMMANDER_DAMAGE_REDUCTION
+		# Shares enemy_defense_multiplier with calc_damage so shield / shield_buff /
+		# commander mitigation stays identical across damage paths.
+		var tick_dmg: float = cone_dps * dt * enemy_defense_multiplier(e)
 		if _hades_list.size() > 0:
 			for h in _hades_list:
 				var dxh: float = e["x"] - h["x"]
@@ -1366,7 +1373,7 @@ func roll_dice() -> Dictionary:
 	dice_uses_left -= 1
 	stats["dice_rolls"] = stats.get("dice_rolls", 0) + 1
 
-	var d1: int = randi() % 6 + 1
+	var d1: int = randi() % Config.DICE_SIDES + 1
 	var total: int = d1
 	var outcome: Dictionary = Config.get_dice_outcome(total, wave)
 
@@ -1399,12 +1406,14 @@ func roll_dice() -> Dictionary:
 		"slow_towers":
 			_apply_speed_buff(Config.DICE_SLOW_FACTOR, Config.DICE_SLOW_DURATION)
 		"disable_3s":
-			for t in towers:
-				t["is_disabled"] = true
-				t["disable_timer"] = Config.DICE_DISABLE_DURATION
+			_disable_all_towers(Config.DICE_DISABLE_DURATION)
 		"tax_sins":
 			var lost: int = roundi(sins * Config.DICE_TAX_PERCENT)
 			sins -= lost
+			stats["sins_taxed"] = stats.get("sins_taxed", 0) + lost
+			# Surface the exact loss — the generic outcome notify only shows the
+			# roll, so without this the player never learns how many Sins vanished.
+			notify(Locale.tf("sins_taxed", {"amount": lost}), Config.COLOR_NOTIFY_DANGER)
 
 	return dice_result
 
@@ -1438,6 +1447,15 @@ func drop_relic(rx: float, ry: float) -> void:
 			var surge: int = int(loot.get("value", Config.SOUL_SURGE_POOL))
 			notify(Locale.tf("soul_surge", {"amount": surge}), Config.COLOR_NOTIFY_POSITIVE)
 			add_to_hero_pool(surge)
+		"core_heal":
+			# Vital Surge — repair Hell's Core. Report the HP actually restored
+			# (capped at core_max_hp) so an overheal near full HP doesn't promise
+			# the full value when only a sliver was missing.
+			var heal_amt: float = float(loot.get("value", Config.VITAL_SURGE_HEAL))
+			var before: float = core_hp
+			core_hp = minf(core_hp + heal_amt, core_max_hp)
+			var restored: int = int(round(core_hp - before))
+			notify(Locale.tf("core_healed", {"amount": restored}), Config.COLOR_NOTIFY_POSITIVE)
 		"tower_buff":
 			var nearest = null
 			var best_dist_sq := INF
@@ -1668,6 +1686,15 @@ func _apply_speed_buff(factor: float, duration: float) -> void:
 	temp_speed_buff = factor
 	speed_buff_factor = factor
 	speed_buff_timer = duration
+
+## Disable every tower for at least `duration` seconds. Uses maxf so a short
+## disable (e.g. the 3s Tremor dice roll) can never SHORTEN a longer disable
+## already in flight (e.g. an 8s Divine Curse) — a negative event must not
+## accidentally rescue a tower the player is still being punished on.
+func _disable_all_towers(duration: float) -> void:
+	for t in towers:
+		t["is_disabled"] = true
+		t["disable_timer"] = maxf(t.get("disable_timer", 0.0), duration)
 
 ## Format large damage values with "k" suffix for compact display.
 ## Sub-1 values show one decimal place so Cocytus tick damage doesn't read "0".
