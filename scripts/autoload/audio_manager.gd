@@ -19,6 +19,13 @@ const MAX_SFX_PLAYERS := 16
 # blow out the mix / clip. +6 dB still allows deliberate emphasis above unity.
 const SFX_MAX_VOLUME_DB := 6.0
 
+# Safety floor for a per-play SFX volume (dB). Bounds the low end so an accidentally
+# large negative caller vol_db stacked on a per-sound offset can't sink to ~-inf dB
+# (effectively muting the cue, or feeding a degenerate value to the mixer). -40 dB is
+# far below every configured offset (the quietest is -12), so it never alters current
+# levels — it only catches pathological inputs.
+const SFX_MIN_VOLUME_DB := -40.0
+
 # SFX file paths (nullable — fall back to procedural if missing).
 # Multiple paths = random variant.
 const SFX_FILES := {
@@ -147,10 +154,11 @@ func play_sfx(sound_name: String, vol_db: float = 0.0) -> void:
 	player.play()
 	_sfx_active_priority[slot] = priority
 
-## Clamp an effective SFX volume (dB) to the safe ceiling. Pure helper so the
-## mixing math stays testable without instantiating the audio pool.
+## Clamp an effective SFX volume (dB) into the safe [floor, ceiling] band. Pure helper
+## so the mixing math stays testable without instantiating the audio pool. The ceiling
+## guards against clipping; the floor guards against a pathological near-mute value.
 func clamp_sfx_volume(vol_db: float) -> float:
-	return minf(vol_db, SFX_MAX_VOLUME_DB)
+	return clampf(vol_db, SFX_MIN_VOLUME_DB, SFX_MAX_VOLUME_DB)
 
 func play_shoot(tower_type: String) -> void:
 	play_sfx("shoot_" + tower_type)

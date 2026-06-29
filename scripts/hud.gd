@@ -757,7 +757,7 @@ func _process(_dt: float) -> void:
 	hp_bar.value = GM.core_hp
 	hp_label.text = Locale.tf("hells_core", {"hp": roundi(GM.core_hp), "max": roundi(GM.core_max_hp)})
 	wave_label.text = Locale.tf("wave_progress", {"wave": GM.wave, "max": Config.MAX_WAVES})
-	enemies_label.text = Locale.tf("enemies_count", {"count": GM.enemies.size()})
+	enemies_label.text = Locale.tf("enemies_count", {"count": GM.enemies_remaining(), "total": GM.wave_enemies_total})
 
 	# Speed button highlight
 	var spd_vals := [0.5, 1.0, 2.0]

@@ -204,6 +204,30 @@ func _ready() -> void:
 	_run_dice_sides_constant_tests()
 	_run_dice_tax_stat_tests()
 	_run_dice_disable_no_shorten_tests()
+	# Recover five test suites that were defined but never wired into the runner —
+	# their assertions had been silently sitting out of the suite.
+	_run_build_spawn_constants_tests()
+	_run_relic_drop_constants_tests()
+	_run_dice_aoe_flash_constants_tests()
+	_run_banner_and_cheat_constants_tests()
+	_run_overview_panel_constants_tests()
+	_run_dmg_number_jitter_tests()
+	_run_enemies_remaining_tests()
+	_run_wave_count_helper_tests()
+	_run_wave_enemy_count_tests()
+	_run_enemy_data_integrity_tests()
+	_run_tower_data_integrity_tests()
+	_run_demonic_pact_integrity_tests()
+	_run_relic_loot_integrity_tests()
+	_run_wave_threat_tests()
+	_run_wave_enemies_total_tests()
+	_run_hero_pool_rollover_tests()
+	_run_combat_hit_constants_tests()
+	_run_calc_damage_suite_tests()
+	_run_new_locale_templates_tests()
+	_run_sfx_volume_floor_tests()
+	_run_hero_pool_per_kill_tests()
+	_run_wave_threat_pacing_tests()
 
 	print("")
 	print("=== Results: %d/%d passed ===" % [_passed, _total])
@@ -4256,7 +4280,13 @@ func _run_format_time_tests() -> void:
 	_assert_eq(GM.format_time(60.0), "1:00", "format_time(60) = 1:00")
 	_assert_eq(GM.format_time(125.7), "2:05", "format_time(125.7) = 2:05")
 	_assert_eq(GM.format_time(600.0), "10:00", "format_time(600) = 10:00")
-	_assert_eq(GM.format_time(3661.0), "61:01", "format_time(3661) = 61:01")
+	_assert_eq(GM.format_time(3599.0), "59:59", "format_time(3599) = 59:59 (just under an hour)")
+	# At/over an hour the clock rolls into an h:mm:ss field instead of overflowing minutes.
+	_assert_eq(GM.format_time(3600.0), "1:00:00", "format_time(3600) = 1:00:00")
+	_assert_eq(GM.format_time(3661.0), "1:01:01", "format_time(3661) = 1:01:01")
+	_assert_eq(GM.format_time(7325.0), "2:02:05", "format_time(7325) = 2:02:05")
+	# Negative input is floored to zero rather than printing a garbage clock.
+	_assert_eq(GM.format_time(-5.0), "0:00", "format_time(-5) floors to 0:00")
 
 # ═══════════════════════════════════════════════════════
 # TOTAL GAME TIME STAT TESTS
@@ -5570,3 +5600,350 @@ func _run_dice_disable_no_shorten_tests() -> void:
 	GM._disable_all_towers(12.0)
 	_assert_near(t["disable_timer"], 12.0, 0.001, "Longer disable extends the timer")
 	GM.reset_state()
+
+
+func _run_dmg_number_jitter_tests() -> void:
+	print("[Damage Number Jitter]")
+
+	# Constants exist and are sane: a positive multiplier and a positive band width.
+	_assert_gt(Config.DMG_NUM_JITTER_FACTOR, 0.0, "DMG_NUM_JITTER_FACTOR > 0")
+	_assert_gt(Config.DMG_NUM_JITTER_SPAN, 0.0, "DMG_NUM_JITTER_SPAN > 0")
+
+	# The horizontal offset applied to floating damage numbers must always land
+	# inside the symmetric band [-SPAN/2, SPAN/2). fmod's result is in [0, SPAN),
+	# so subtracting SPAN/2 keeps numbers readably clustered around the enemy.
+	var half: float = Config.DMG_NUM_JITTER_SPAN * 0.5
+	for dmg in [0.5, 1.0, 7.0, 13.3, 99.9, 250.0, 1234.5]:
+		var off: float = fmod(dmg * Config.DMG_NUM_JITTER_FACTOR, Config.DMG_NUM_JITTER_SPAN) - half
+		_assert_gte(off, -half, "Jitter offset >= -half for dmg " + str(dmg))
+		_assert_lt(off, half, "Jitter offset < +half for dmg " + str(dmg))
+
+
+func _run_enemies_remaining_tests() -> void:
+	print("[Enemies Remaining]")
+
+	GM.reset_state()
+	# Fresh state: nothing alive, nothing queued.
+	_assert_eq(GM.enemies_remaining(), 0, "No enemies remaining on a fresh reset")
+
+	# Two alive on the field + three queued to spawn = five remaining.
+	GM.enemies.append(GM.create_enemy("seraph_scout"))
+	GM.enemies.append(GM.create_enemy("crusader"))
+	GM.spawn_queue.append("seraph_scout")
+	GM.spawn_queue.append("seraph_scout")
+	GM.spawn_queue.append("war_titan")
+	_assert_eq(GM.enemies_remaining(), 5, "Counts alive enemies plus the spawn queue")
+
+	# A dead-but-not-yet-culled corpse must NOT inflate the remaining count.
+	var corpse := GM.create_enemy("crusader")
+	corpse["alive"] = false
+	GM.enemies.append(corpse)
+	_assert_eq(GM.enemies_remaining(), 5, "Dead enemies are excluded from remaining")
+
+	GM.reset_state()
+
+
+func _run_wave_count_helper_tests() -> void:
+	print("[Wave Count Helper]")
+
+	_assert_eq(Config.wave_count(), Config.WAVE_DATA.size(), "wave_count matches WAVE_DATA size")
+	# Invariant: the victory check fires at MAX_WAVES, so there must be exactly that
+	# many waves defined — a mismatch would either strand a wave or end early.
+	_assert_eq(Config.wave_count(), Config.MAX_WAVES, "wave_count equals MAX_WAVES")
+
+
+func _run_wave_enemy_count_tests() -> void:
+	print("[Wave Enemy Count]")
+
+	# Wave 1 (index 0) is three Seraph Scouts.
+	_assert_eq(Config.wave_enemy_count(0), 3, "Wave 1 has 3 enemies")
+
+	# Out-of-range indices return 0 rather than crashing.
+	_assert_eq(Config.wave_enemy_count(-1), 0, "Negative index returns 0")
+	_assert_eq(Config.wave_enemy_count(9999), 0, "Past-end index returns 0")
+
+	# Every real wave should schedule at least one enemy, and the helper must agree
+	# with a hand sum of that wave's group counts.
+	for i in range(Config.WAVE_DATA.size()):
+		var manual := 0
+		for entry in Config.WAVE_DATA[i]["enemies"]:
+			manual += int(entry["count"])
+		_assert_eq(Config.wave_enemy_count(i), manual, "wave_enemy_count matches manual sum for wave " + str(i + 1))
+		_assert_gt(float(Config.wave_enemy_count(i)), 0.0, "Wave " + str(i + 1) + " schedules at least one enemy")
+
+
+func _run_enemy_data_integrity_tests() -> void:
+	print("[Enemy Data Integrity]")
+
+	var required := ["name", "hp", "speed", "core_dmg", "is_boss", "color", "radius", "sin_reward"]
+	for etype in Config.ENEMY_DATA:
+		var e: Dictionary = Config.ENEMY_DATA[etype]
+		for key in required:
+			_assert(e.has(key), etype + " has required key '" + key + "'")
+		_assert_gt(float(e["hp"]), 0.0, etype + " has positive hp")
+		_assert_gt(float(e["speed"]), 0.0, etype + " has positive speed")
+		_assert_gt(float(e["radius"]), 0.0, etype + " has positive radius")
+		_assert_gt(float(e["core_dmg"]), 0.0, etype + " deals positive core damage")
+		_assert_gt(float(e["sin_reward"]), 0.0, etype + " grants positive sins")
+		# Relic drop rate, when present, must be a valid probability.
+		var drop: float = float(e.get("relic_drop", 0.0))
+		_assert_gte(drop, 0.0, etype + " relic_drop >= 0")
+		_assert_lte(drop, 1.0, etype + " relic_drop <= 1")
+
+
+func _run_tower_data_integrity_tests() -> void:
+	print("[Tower Data Integrity]")
+
+	var required := ["name", "desc", "damage", "range", "attack_speed", "cost", "upgrade_cost", "color", "symbol"]
+	for ttype in Config.TOWER_DATA:
+		var t: Dictionary = Config.TOWER_DATA[ttype]
+		for key in required:
+			_assert(t.has(key), ttype + " has required key '" + key + "'")
+		_assert_gt(float(t["damage"]), 0.0, ttype + " has positive damage")
+		_assert_gt(float(t["range"]), 0.0, ttype + " has positive range")
+		_assert_gt(float(t["cost"]), 0.0, ttype + " has positive cost")
+		_assert_gt(float(t["upgrade_cost"]), 0.0, ttype + " has positive upgrade cost")
+		# attack_speed is 0 only for pure-support towers (Hades); everyone else fires.
+		if not t.get("is_support", false):
+			_assert_gt(float(t["attack_speed"]), 0.0, ttype + " has positive attack speed")
+
+
+func _run_demonic_pact_integrity_tests() -> void:
+	print("[Demonic Pact Integrity]")
+
+	# The configured pool size should match the number of pacts actually defined,
+	# or maybe_offer_pact could draw fewer/garbage entries.
+	_assert_eq(Config.DEMONIC_PACTS.size(), Config.PACT_POOL_SIZE, "DEMONIC_PACTS size matches PACT_POOL_SIZE")
+
+	var required := ["name", "benefit", "benefit_desc", "cost", "cost_desc", "b_val", "b_dur", "c_val"]
+	var seen := {}
+	for pact in Config.DEMONIC_PACTS:
+		for key in required:
+			_assert(pact.has(key), "Pact '" + str(pact.get("name", "?")) + "' has key '" + key + "'")
+		var nm := str(pact["name"])
+		_assert(not seen.has(nm), "Pact name '" + nm + "' is unique")
+		seen[nm] = true
+		_assert(not str(pact["benefit_desc"]).is_empty(), nm + " has a non-empty benefit description")
+		_assert(not str(pact["cost_desc"]).is_empty(), nm + " has a non-empty cost description")
+
+
+func _run_relic_loot_integrity_tests() -> void:
+	print("[Relic Loot Integrity]")
+
+	# Every relic type in the loot table must have a matching handler branch in
+	# drop_relic — an unhandled type would silently do nothing when it drops.
+	var handled := ["aoe", "random_sins", "soul_surge", "core_heal", "tower_buff", "curse", "mass_corrupt", "rewind", "legendary", "choice", "trap"]
+	var total := 0
+	var names := {}
+	for loot in Config.RELIC_LOOT:
+		_assert(loot.has("name") and loot.has("weight") and loot.has("type"), "Relic entry has name/weight/type")
+		_assert(handled.has(str(loot["type"])), "Relic type '" + str(loot["type"]) + "' has a drop_relic handler")
+		_assert_gt(float(loot["weight"]), 0.0, str(loot["name"]) + " has positive weight")
+		var nm := str(loot["name"])
+		_assert(not names.has(nm), "Relic name '" + nm + "' is unique")
+		names[nm] = true
+		total += int(loot["weight"])
+	_assert_eq(total, 100, "Relic weights sum to 100")
+
+
+func _run_wave_threat_tests() -> void:
+	print("[Wave Threat]")
+
+	# Wave 1 (index 0): 3 Seraph Scouts × 3 core_dmg = 9.
+	_assert_eq(Config.wave_threat(0), 3 * 3, "Wave 1 threat = 3 scouts × 3 core_dmg = 9")
+
+	# Out-of-range indices return 0 rather than crashing.
+	_assert_eq(Config.wave_threat(-1), 0, "Negative index returns 0 threat")
+	_assert_eq(Config.wave_threat(9999), 0, "Past-end index returns 0 threat")
+
+	# Every real wave must agree with a hand sum of count × core_dmg and carry
+	# strictly positive threat (every enemy deals positive core damage).
+	for i in range(Config.WAVE_DATA.size()):
+		var manual := 0
+		for entry in Config.WAVE_DATA[i]["enemies"]:
+			var edata: Dictionary = Config.ENEMY_DATA[entry["type"]]
+			manual += int(entry["count"]) * int(edata["core_dmg"])
+		_assert_eq(Config.wave_threat(i), manual, "wave_threat matches manual sum for wave " + str(i + 1))
+		_assert_gt(float(Config.wave_threat(i)), 0.0, "Wave " + str(i + 1) + " has positive threat")
+
+
+func _run_wave_enemies_total_tests() -> void:
+	print("[Wave Enemies Total]")
+
+	GM.reset_state()
+	# Fresh reset clears the snapshot.
+	_assert_eq(GM.wave_enemies_total, 0, "wave_enemies_total is 0 after reset")
+
+	# After start_wave it equals the full spawn queue, which equals wave_enemy_count.
+	GM.wave = 0
+	GM.start_wave()
+	_assert_eq(GM.wave_enemies_total, GM.spawn_queue.size(), "Snapshot equals full spawn queue")
+	_assert_eq(GM.wave_enemies_total, Config.wave_enemy_count(0), "Snapshot equals wave_enemy_count for wave 1")
+
+	# Remaining can never exceed the snapshotted total (corpses/dead don't inflate it).
+	_assert_lte(float(GM.enemies_remaining()), float(GM.wave_enemies_total), "remaining <= total at wave start")
+
+	# Pact extras are injected before the snapshot, so they're counted too.
+	GM.reset_state()
+	GM.wave = 4
+	GM.pact_extra_enemies = 3
+	GM.start_wave()
+	_assert_eq(GM.wave_enemies_total, Config.wave_enemy_count(4) + 3, "Pact extras are included in the total")
+
+	GM.reset_state()
+
+
+func _run_hero_pool_rollover_tests() -> void:
+	print("[Hero Pool Rollover]")
+
+	# A single deposit that crosses TWO thresholds at once must spawn TWO heroes,
+	# not one, and the overflow above the second threshold must remain in the pool.
+	# Thresholds: first=HERO_THRESHOLD_FIRST, second=HERO_THRESHOLD_SECOND.
+	GM.reset_state()
+	var big: int = Config.HERO_THRESHOLD_FIRST + Config.HERO_THRESHOLD_SECOND + 10
+	GM.add_to_hero_pool(big)
+	_assert_eq(GM.fallen_heroes_spawned, 2, "Deposit across two thresholds spawns two heroes")
+	_assert_eq(GM.fallen_hero_pool, 10, "Overflow above the second threshold stays in the pool")
+	_assert_eq(GM.stats["fallen_heroes"], 2, "fallen_heroes stat counts both spawns")
+
+	# A deposit short of the first threshold spawns nothing and banks the full amount.
+	GM.reset_state()
+	GM.add_to_hero_pool(Config.HERO_THRESHOLD_FIRST - 1)
+	_assert_eq(GM.fallen_heroes_spawned, 0, "Below first threshold spawns no hero")
+	_assert_eq(GM.fallen_hero_pool, Config.HERO_THRESHOLD_FIRST - 1, "Sub-threshold amount is banked")
+
+	# Exactly hitting the threshold spawns one and zeroes the pool.
+	GM.add_to_hero_pool(1)
+	_assert_eq(GM.fallen_heroes_spawned, 1, "Hitting threshold exactly spawns one hero")
+	_assert_eq(GM.fallen_hero_pool, 0, "Pool is empty after an exact-threshold spawn")
+
+	GM.reset_state()
+
+
+func _run_combat_hit_constants_tests() -> void:
+	print("[Combat Hit Constants]")
+
+	# Spark radius is a positive on-screen size.
+	_assert_gt(Config.FX_HIT_SPARK_RADIUS, 0.0, "FX_HIT_SPARK_RADIUS is positive")
+	# The damage number floats ABOVE the enemy, so the y-offset must be positive
+	# (it is subtracted from the enemy y in combat_hit).
+	_assert_gt(Config.DMG_NUM_Y_OFFSET, 0.0, "DMG_NUM_Y_OFFSET is positive")
+	# Fallback radius must be a sane positive default for enemies missing "radius".
+	_assert_gt(Config.DMG_NUM_DEFAULT_ENEMY_RADIUS, 0.0, "DMG_NUM_DEFAULT_ENEMY_RADIUS is positive")
+
+
+func _run_calc_damage_suite_tests() -> void:
+	print("[Calc Damage Suite]")
+
+	GM.reset_state()
+	GM.clear_alive_type_cache()
+	var enemy := {"type": "crusader", "shield": 0.0, "shield_buff": false}
+
+	# Baseline: no modifiers -> base damage passes through.
+	GM.double_damage = 0
+	GM.tower_weaken_mult = 1.0
+	_assert_near(GM.calc_damage(10.0, null, enemy), 10.0, 0.001, "No modifiers -> base damage")
+
+	# Double damage multiplies by DOUBLE_DAMAGE_MULT.
+	GM.double_damage = 1
+	_assert_near(GM.calc_damage(10.0, null, enemy), 10.0 * Config.DOUBLE_DAMAGE_MULT, 0.001, "double_damage scales by DOUBLE_DAMAGE_MULT")
+
+	# Double damage AND weaken stack multiplicatively.
+	GM.tower_weaken_mult = Config.TOWER_WEAKEN_MULT
+	_assert_near(GM.calc_damage(10.0, null, enemy), 10.0 * Config.DOUBLE_DAMAGE_MULT * Config.TOWER_WEAKEN_MULT, 0.001, "double_damage and weaken stack")
+
+	# Damage never drops below the 1.0 floor even with heavy mitigation + tiny base.
+	GM.double_damage = 0
+	GM.tower_weaken_mult = 1.0
+	var fortified := {"type": "holy_sentinel", "shield": 0.99, "shield_buff": true}
+	_assert_gte(GM.calc_damage(0.1, null, fortified), 1.0, "calc_damage floors at 1.0")
+
+	# A tower's damage_mult is applied for a valid tower source.
+	var t := GM.create_tower("bone_marksman", 5, 5)
+	t["damage_mult"] = 2.0
+	_assert_near(GM.calc_damage(10.0, t, enemy), 20.0, 0.001, "tower damage_mult is applied")
+
+	GM.reset_state()
+	GM.clear_alive_type_cache()
+
+
+func _run_new_locale_templates_tests() -> void:
+	print("[New Locale Templates]")
+
+	var saved := Locale.current_lang
+
+	# Both new/updated templates must exist and substitute cleanly with no leftover braces.
+	for lang in ["en", "zh"]:
+		Locale.current_lang = lang
+		var ec := Locale.tf("enemies_count", {"count": 3, "total": 12})
+		_assert(ec.find("3") >= 0 and ec.find("12") >= 0, "enemies_count shows count and total (" + lang + ")")
+		_assert(ec.find("{") < 0, "enemies_count has no leftover placeholder (" + lang + ")")
+		var wt := Locale.tf("wave_threat_notify", {"threat": 42})
+		_assert(wt.find("42") >= 0, "wave_threat_notify shows the threat value (" + lang + ")")
+		_assert(wt.find("{") < 0, "wave_threat_notify has no leftover placeholder (" + lang + ")")
+
+	_assert(Locale.has_template("wave_threat_notify"), "wave_threat_notify is a registered template")
+
+	Locale.current_lang = saved
+
+
+func _run_sfx_volume_floor_tests() -> void:
+	print("[SFX Volume Floor]")
+
+	# Ceiling still clamps loud values.
+	_assert_near(Audio.clamp_sfx_volume(100.0), Audio.SFX_MAX_VOLUME_DB, 0.001, "Loud value clamps to ceiling")
+	# Floor now clamps pathologically quiet values instead of passing them through.
+	_assert_near(Audio.clamp_sfx_volume(-999.0), Audio.SFX_MIN_VOLUME_DB, 0.001, "Very quiet value clamps to floor")
+	# Values inside the band pass through unchanged.
+	_assert_near(Audio.clamp_sfx_volume(-12.0), -12.0, 0.001, "In-band value is unchanged")
+	# Floor sits safely below the quietest configured offset so normal play is untouched.
+	_assert_lt(Audio.SFX_MIN_VOLUME_DB, -12.0, "Floor is below the quietest configured offset")
+	_assert_lt(Audio.SFX_MIN_VOLUME_DB, Audio.SFX_MAX_VOLUME_DB, "Floor is below the ceiling")
+
+
+func _run_hero_pool_per_kill_tests() -> void:
+	print("[Hero Pool Per Kill]")
+
+	_assert_gt(float(Config.HERO_POOL_PER_KILL), 0.0, "HERO_POOL_PER_KILL is positive")
+
+	# combat_kill must feed the pool by exactly HERO_POOL_PER_KILL per kill.
+	# Force the seraph_scout's relic drop to 0 for this check so a random Soul Surge
+	# relic (which also feeds the pool) can't make the delta flaky; restore after.
+	GM.reset_state()
+	GM.clear_alive_type_cache()
+	var saved_drop: float = float(Config.ENEMY_DATA["seraph_scout"]["relic_drop"])
+	Config.ENEMY_DATA["seraph_scout"]["relic_drop"] = 0.0
+	var e := GM.create_enemy("seraph_scout")
+	e["hp"] = 1.0
+	GM.enemies.append(e)
+	var before: int = GM.fallen_hero_pool
+	GM.combat_kill(e, null)
+	_assert_eq(GM.fallen_hero_pool - before, Config.HERO_POOL_PER_KILL, "One kill adds HERO_POOL_PER_KILL to the pool")
+	Config.ENEMY_DATA["seraph_scout"]["relic_drop"] = saved_drop
+
+	GM.reset_state()
+	GM.clear_alive_type_cache()
+
+
+func _run_wave_threat_pacing_tests() -> void:
+	print("[Wave Threat Pacing]")
+
+	# The final wave should be the scariest run of the game: its threat must exceed
+	# the opening wave by a wide margin (a guard against accidental wave-data edits
+	# that flatten the difficulty curve).
+	var first: int = Config.wave_threat(0)
+	var last: int = Config.wave_threat(Config.WAVE_DATA.size() - 1)
+	_assert_gt(float(last), float(first) * 5.0, "Final wave threat dwarfs the opening wave")
+
+	# Overall trend across thirds of the campaign should rise (early < mid < late),
+	# even if individual adjacent waves dip for pacing.
+	var n := Config.WAVE_DATA.size()
+	@warning_ignore("integer_division")
+	var third := n / 3
+	var early := 0
+	var late := 0
+	for i in range(third):
+		early += Config.wave_threat(i)
+	for i in range(n - third, n):
+		late += Config.wave_threat(i)
+	_assert_gt(float(late), float(early), "Late-game waves carry more total threat than early-game")

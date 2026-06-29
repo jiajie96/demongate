@@ -36,6 +36,10 @@ var spawn_queue: Array = []
 var spawn_timer: float = 0.0
 var between_wave_timer: float = 0.0
 var wave_desc: String = ""
+# Total enemies scheduled for the CURRENT wave — snapshotted in start_wave once the
+# spawn queue (including specials and any Demonic-Pact extras) is fully built. Lets
+# the HUD show an honest "remaining / total" readout instead of a bare remaining count.
+var wave_enemies_total: int = 0
 
 var dice_uses_left: int = 2
 
@@ -119,6 +123,7 @@ func reset_state() -> void:
 	wave_active = false
 	spawn_queue.clear()
 	spawn_timer = 0.0
+	wave_enemies_total = 0
 	between_wave_timer = Config.FIRST_WAVE_DELAY
 	wave_desc = "Prepare your defenses!"  # translated at display point
 	dice_uses_left = Config.DICE_MAX_USES
@@ -209,8 +214,15 @@ func total_sins() -> int:
 
 func add_to_hero_pool(amount: int) -> void:
 	fallen_hero_pool += amount
-	var threshold := hero_threshold()
-	if fallen_hero_pool >= threshold:
+	# Drain the pool with a WHILE, not an IF: a single large deposit (a Soul Surge
+	# relic, or a future bigger reward) can cross more than one threshold at once.
+	# The old single-if spawned just one hero and silently discarded the overflow
+	# above one threshold; this spawns every hero the deposit actually earned.
+	# Guard against a non-positive threshold so a misconfig can't spin forever.
+	while true:
+		var threshold := hero_threshold()
+		if threshold <= 0 or fallen_hero_pool < threshold:
+			break
 		fallen_hero_pool -= threshold
 		fallen_heroes_spawned += 1
 		stats["fallen_heroes"] = stats.get("fallen_heroes", 0) + 1
@@ -467,6 +479,18 @@ func _has_alive_type(etype: String) -> bool:
 
 func clear_alive_type_cache() -> void:
 	_alive_type_cache.clear()
+
+## Enemies the player still has to deal with this wave: those alive on the field
+## PLUS those still queued to spawn. The HUD previously showed only enemies.size()
+## (on-field, including not-yet-culled corpses), which under-counts a wave whose
+## bulk hasn't spawned yet — a wave of 20 read "3" while 17 waited in the queue.
+## This gives an honest "remaining" count for the HUD readout.
+func enemies_remaining() -> int:
+	var count: int = spawn_queue.size()
+	for e in enemies:
+		if e.get("alive", false):
+			count += 1
+	return count
 
 func _is_guardian_protected(enemy: Dictionary) -> bool:
 	if enemy["type"] == "holy_sentinel":
@@ -908,10 +932,11 @@ func combat_hit(enemy: Dictionary, base_dmg: float, tower) -> void:
 		spark_col = tower.get("color", spark_col)
 		if tower.get("type", "") == "soul_reaper":
 			hit_fx = "soul_hit"
-	add_effect(hit_fx, enemy["x"], enemy["y"], 6.0, spark_col)
+	add_effect(hit_fx, enemy["x"], enemy["y"], Config.FX_HIT_SPARK_RADIUS, spark_col)
 	# Offset damage numbers slightly randomly so they don't stack
-	var nx: float = enemy["x"] + (fmod(dmg * 7.3, 16.0) - 8.0)
-	add_dmg_number(nx, enemy["y"] - enemy.get("radius", 8.0) - 4, dmg, spark_col)
+	var nx: float = enemy["x"] + (fmod(dmg * Config.DMG_NUM_JITTER_FACTOR, Config.DMG_NUM_JITTER_SPAN) - Config.DMG_NUM_JITTER_SPAN * 0.5)
+	var ny: float = enemy["y"] - enemy.get("radius", Config.DMG_NUM_DEFAULT_ENEMY_RADIUS) - Config.DMG_NUM_Y_OFFSET
+	add_dmg_number(nx, ny, dmg, spark_col)
 
 	# Apply slow from towers with slow_power (legacy path; NEC uses aura now)
 	if _valid_tower(tower) and tower.get("slow_power", 0.0) > 0:
@@ -948,7 +973,7 @@ func combat_kill(enemy: Dictionary, tower) -> void:
 	earn_from_kill(enemy["type"], _valid_tower(tower) and tower.get("is_aoe", false))
 
 	# Feed the Fallen Hero pool — kills accumulate toward spawning allied heroes
-	add_to_hero_pool(1)
+	add_to_hero_pool(Config.HERO_POOL_PER_KILL)
 
 	if should_drop_relic(enemy["type"]):
 		drop_relic(enemy["x"], enemy["y"])
@@ -1268,8 +1293,14 @@ func start_wave() -> void:
 			spawn_queue.append("war_titan")
 		pact_extra_enemies = 0
 	spawn_timer = Config.WAVE_SPAWN_DELAY
+	# Snapshot the full scheduled count (regulars + specials + pact extras) so the
+	# HUD can show "remaining / total" for this wave.
+	wave_enemies_total = spawn_queue.size()
 
 	notify(Locale.tf("wave_start_notify", {"wave": wave, "desc": Locale.t(wave_desc)}), Config.COLOR_NOTIFY_GOLD)
+	# Surface the wave's worst-case threat (total Core HP at risk if everything leaks)
+	# so the player can gauge how dangerous a wave is before committing to a roll/pact.
+	notify(Locale.tf("wave_threat_notify", {"threat": Config.wave_threat(wave - 1)}), Config.COLOR_NOTIFY_NEGATIVE)
 	# Cinematic wave announcement — snapshot the wave + desc so the banner
 	# draws a stable label even if mid-fade state mutates. Boss waves flag
 	# themselves for a red-tinted banner; the game_world renders the card.
@@ -1723,12 +1754,19 @@ func format_kills(value: int) -> String:
 		return _strip_dot_zero(snappedf(float(value) / 1000.0, 0.1)) + "k"
 	return str(value)
 
-## Format game_time (seconds float) into a human-readable mm:ss string.
+## Format game_time (seconds float) into a human-readable clock string. Under an
+## hour it reads "m:ss"; a marathon run (>= 1h) rolls over to "h:mm:ss" instead of
+## an unbounded minutes field ("75:00" used to mean 1h15m — now it reads "1:15:00").
+## Negative inputs are floored to 0 so a stray negative can't print a garbage clock.
 func format_time(seconds: float) -> String:
-	var total_s := int(seconds)
+	var total_s := maxi(0, int(seconds))
 	@warning_ignore("integer_division")
-	var mins := total_s / 60
+	var hours := total_s / 3600
+	@warning_ignore("integer_division")
+	var mins := (total_s % 3600) / 60
 	var secs := total_s % 60
+	if hours > 0:
+		return "%d:%02d:%02d" % [hours, mins, secs]
 	return "%d:%02d" % [mins, secs]
 
 ## Format a large cumulative value (total damage, total core damage, etc.) with

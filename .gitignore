@@ -25,3 +25,6 @@ __pycache__/
 
 # Sandbox lock graveyard (stale git locks that cannot be unlinked on this mount)
 .lockgrave/
+
+# Local backup files
+*.bak

@@ -67,6 +67,18 @@ const FX_LUCIFER_WAVE_DURATION := 1.2    # Lucifer expanding ring
 const FX_LUCIFER_HIT_DURATION := 0.4     # per-enemy Lucifer hit flash (with delay)
 const FX_HADES_WAVE_DURATION := 0.6      # Hades corruption wave
 const FX_DMG_NUMBER_DURATION := 0.6      # floating damage number
+# Floating damage numbers are nudged horizontally by a deterministic pseudo-random
+# offset so multiple hits on the same enemy don't stack into an unreadable blob.
+# Extracted from the inline `fmod(dmg * 7.3, 16.0) - 8.0` in combat_hit so the
+# jitter band is named/tunable and the test suite can pin the offset range.
+const DMG_NUM_JITTER_FACTOR := 7.3       # dmg multiplier fed into fmod for the offset
+const DMG_NUM_JITTER_SPAN := 16.0        # full pixel width of the horizontal jitter band
+# Combat-hit visual placement — extracted from the inline literals in combat_hit so
+# the spark size and the damage-number vertical lift are named/tunable in one place
+# and the test suite can pin them rather than re-deriving the math from source.
+const FX_HIT_SPARK_RADIUS := 6.0         # pixel radius of the per-hit spark burst
+const DMG_NUM_Y_OFFSET := 4.0            # extra px the damage number floats above the HP bar
+const DMG_NUM_DEFAULT_ENEMY_RADIUS := 8.0  # fallback enemy radius when "radius" is absent
 const FX_FLASH_ON_HIT := 0.12            # white flash on enemy hit
 const FX_RELIC_DURATION := 0.8           # relic pickup burst
 const FX_AOE_DURATION := 0.5             # AoE splash ring
@@ -91,6 +103,10 @@ const CLERIC_HEAL_TICK := 0.5            # seconds between heal ticks
 
 # Boss kill bonus multiplier — boss kills grant extra sins on top of scaled reward
 const BOSS_KILL_BONUS_MULT := 1.5        # 50% extra sins from bosses
+
+# Fallen Hero pool gain per enemy killed. Extracted from the inline `add_to_hero_pool(1)`
+# in combat_kill so the kill→pool rate is named and the hero-pacing math has one knob.
+const HERO_POOL_PER_KILL := 1
 
 # Flat bonus Sins for an AoE/splash kill — a small incentive to favor crowd-clear
 # towers/effects. Extracted from the inline `earn(1)` literal in earn_from_kill so
@@ -739,4 +755,36 @@ func total_tower_kills(tower_list: Array) -> int:
 	var total := 0
 	for t in tower_list:
 		total += t.get("kill_count", 0)
+	return total
+
+## Number of defined waves. Single source of truth so callers don't reach into
+## WAVE_DATA.size() directly (and so the MAX_WAVES invariant has something to test
+## against — the two must agree or the victory check fires on the wrong wave).
+func wave_count() -> int:
+	return WAVE_DATA.size()
+
+## Total enemies scheduled in a wave (0-based index): sum of every group's count.
+## Pure data helper for "X enemies this wave" UI and wave-balance tests. Returns 0
+## for an out-of-range index rather than crashing.
+func wave_enemy_count(wave_index: int) -> int:
+	if wave_index < 0 or wave_index >= WAVE_DATA.size():
+		return 0
+	var total := 0
+	for entry in WAVE_DATA[wave_index]["enemies"]:
+		total += int(entry["count"])
+	return total
+
+## Total Core HP a wave can inflict if EVERY enemy leaks to the Core — the sum of
+## (count × that enemy's core_dmg) across the wave. This is the wave's worst-case
+## "threat", a single honest danger number for the HUD/banner so the player can
+## gauge how punishing a leak would be (a swarm of cheap scouts and a lone boss can
+## carry very different threat even at similar head-counts). Pure data helper;
+## returns 0 for an out-of-range index rather than crashing.
+func wave_threat(wave_index: int) -> int:
+	if wave_index < 0 or wave_index >= WAVE_DATA.size():
+		return 0
+	var total := 0
+	for entry in WAVE_DATA[wave_index]["enemies"]:
+		var edata: Dictionary = ENEMY_DATA.get(entry["type"], {})
+		total += int(entry["count"]) * int(edata.get("core_dmg", 0))
 	return total

@@ -48,8 +48,12 @@ var _templates: Dictionary = {
 		"zh": "第 {wave} / {max} 波",
 	},
 	"enemies_count": {
-		"en": "Enemies: {count}",
-		"zh": "敌人: {count}",
+		"en": "Enemies: {count} / {total}",
+		"zh": "敌人: {count} / {total}",
+	},
+	"wave_threat_notify": {
+		"en": "⚠ Threat: {threat} Core damage incoming",
+		"zh": "⚠ 威胁: {threat} 点核心伤害来袭",
 	},
 	"dice_count": {
 		"en": "Dice: {count} [D]",
