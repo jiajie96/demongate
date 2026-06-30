@@ -86,6 +86,11 @@ const FX_AOE_DURATION := 0.5             # AoE splash ring
 # Demonic Pact system — risky between-wave tradeoffs
 const PACT_OFFER_CHANCE := 0.35          # 35% chance a pact is offered between waves
 const PACT_OFFER_MIN_WAVE := 3           # pacts start appearing after this wave
+# Number of towers the Infernal Forge pact's "disable_random" cost knocks out.
+# Extracted from the inline `mini(2, ...)` in accept_pact so the count lives next
+# to the pact data and the cost_desc text ("2 random towers disabled for 8s")
+# can't silently disagree with how many are actually disabled.
+const PACT_DISABLE_COUNT := 2
 
 # Relic AoE scaling — base damage scales with wave so relics stay relevant
 const RELIC_AOE_BASE_DAMAGE := 50.0
@@ -141,7 +146,7 @@ const STARTING_SINS := 50
 const DICE_REPLENISH_PER_WAVE := 1       # gained each wave (capped at DICE_MAX_USES)
 
 # Pact variety — number of distinct pacts offered per random selection
-const PACT_POOL_SIZE := 6                # draw from all available pacts
+const PACT_POOL_SIZE := 7                # draw from all available pacts
 
 # Burn DoT kill credit — whether burn kills attribute to the tower that applied burn
 const BURN_CREDITS_TOWER := true         # track tower kill_count for burn deaths
@@ -647,6 +652,12 @@ var DEMONIC_PACTS := [
 	{"name": "Dark Resilience", "benefit": "core_heal", "benefit_desc": "Restore 20 Core HP", "cost": "sin_tax", "cost_desc": "Lose 25% of current Sins", "b_val": 20.0, "b_dur": 0, "c_val": 0.25},
 	{"name": "Chaos Pact", "benefit": "double_dmg", "benefit_desc": "Double damage for 1 wave", "cost": "extra_enemies", "cost_desc": "Next wave spawns 3 extra War Titans", "b_val": 1, "b_dur": 0, "c_val": 3},
 	{"name": "Abyssal Gambit", "benefit": "free_tower", "benefit_desc": "Next tower placement is free", "cost": "tower_weaken", "cost_desc": "All towers -15% damage for 3 waves", "b_val": 1, "b_dur": 0, "c_val": 3},
+	# Wrathful Bargain — the highest-tempo gamble in the pool: two full waves of
+	# doubled tower damage, paid for with a steep one-time Sin tax. Reuses the
+	# existing double_dmg benefit (b_val carries the wave count) and sin_tax cost
+	# handlers, so no new accept_pact branch is needed. Distinct from Chaos Pact
+	# (double_dmg + extra War Titans) by trading economy instead of extra threat.
+	{"name": "Wrathful Bargain", "benefit": "double_dmg", "benefit_desc": "Double damage for 2 waves", "cost": "sin_tax", "cost_desc": "Lose 30% of current Sins", "b_val": 2, "b_dur": 0, "c_val": 0.30},
 ]
 
 # ═══════════════════════════════════════════════════════

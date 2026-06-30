@@ -212,6 +212,18 @@ func spend(cost: int) -> bool:
 func total_sins() -> int:
 	return sins
 
+## Deduct `percent` (0..1) of the current Sins purse as a tax, record it in the
+## sins_taxed stat, and return the exact amount lost. Single source of truth shared
+## by the Devil's Tax dice roll and the Dark Resilience / Wrathful Bargain pacts so
+## the two tax paths can never drift on rounding or stat tracking. Floors at 0 so a
+## tax can never push the purse negative.
+func apply_sin_tax(percent: float) -> int:
+	var lost: int = roundi(sins * percent)
+	lost = clampi(lost, 0, sins)
+	sins -= lost
+	stats["sins_taxed"] = stats.get("sins_taxed", 0) + lost
+	return lost
+
 func add_to_hero_pool(amount: int) -> void:
 	fallen_hero_pool += amount
 	# Drain the pool with a WHILE, not an IF: a single large deposit (a Soul Surge
@@ -1439,9 +1451,7 @@ func roll_dice() -> Dictionary:
 		"disable_3s":
 			_disable_all_towers(Config.DICE_DISABLE_DURATION)
 		"tax_sins":
-			var lost: int = roundi(sins * Config.DICE_TAX_PERCENT)
-			sins -= lost
-			stats["sins_taxed"] = stats.get("sins_taxed", 0) + lost
+			var lost: int = apply_sin_tax(Config.DICE_TAX_PERCENT)
 			# Surface the exact loss — the generic outcome notify only shows the
 			# roll, so without this the player never learns how many Sins vanished.
 			notify(Locale.tf("sins_taxed", {"amount": lost}), Config.COLOR_NOTIFY_DANGER)
@@ -1610,15 +1620,18 @@ func accept_pact() -> void:
 				if not t["is_disabled"]:
 					candidates.append(t)
 			candidates.shuffle()
-			var count := mini(2, candidates.size())
+			var count := mini(Config.PACT_DISABLE_COUNT, candidates.size())
 			for j in range(count):
 				candidates[j]["is_disabled"] = true
 				candidates[j]["disable_timer"] = float(pact["c_val"])
 		"fast_enemies":
 			fast_enemy_waves += int(pact["c_val"])
 		"sin_tax":
-			var lost: int = roundi(sins * float(pact["c_val"]))
-			sins -= lost
+			# Route through the shared tax helper so the pact tax records the
+			# sins_taxed stat (it silently didn't before) and surfaces the exact
+			# loss, exactly like the Devil's Tax dice roll.
+			var lost: int = apply_sin_tax(float(pact["c_val"]))
+			notify(Locale.tf("sins_taxed", {"amount": lost}), Config.COLOR_NOTIFY_DANGER)
 		"extra_enemies":
 			pact_extra_enemies += int(pact["c_val"])
 		"tower_weaken":

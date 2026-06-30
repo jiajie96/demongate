@@ -228,6 +228,10 @@ func _ready() -> void:
 	_run_sfx_volume_floor_tests()
 	_run_hero_pool_per_kill_tests()
 	_run_wave_threat_pacing_tests()
+	_run_sin_tax_helper_tests()
+	_run_pact_sin_tax_stat_tests()
+	_run_wrathful_bargain_pact_tests()
+	_run_pact_disable_count_tests()
 
 	print("")
 	print("=== Results: %d/%d passed ===" % [_passed, _total])
@@ -1613,7 +1617,7 @@ func _run_fallen_hero_stat_tests() -> void:
 func _run_pact_config_tests() -> void:
 	print("[Pact Config]")
 
-	_assert_eq(Config.DEMONIC_PACTS.size(), 6, "6 demonic pacts defined")
+	_assert_eq(Config.DEMONIC_PACTS.size(), 7, "7 demonic pacts defined")
 
 	# Each pact has all required fields
 	var required_fields := ["name", "benefit", "benefit_desc", "cost", "cost_desc", "b_val", "b_dur", "c_val"]
@@ -5947,3 +5951,122 @@ func _run_wave_threat_pacing_tests() -> void:
 	for i in range(n - third, n):
 		late += Config.wave_threat(i)
 	_assert_gt(float(late), float(early), "Late-game waves carry more total threat than early-game")
+
+
+func _run_sin_tax_helper_tests() -> void:
+	print("[Sin Tax Helper]")
+
+	# Basic proportional deduction + stat tracking.
+	GM.reset_state()
+	GM.sins = 200
+	var lost: int = GM.apply_sin_tax(0.10)
+	_assert_eq(lost, 20, "apply_sin_tax(0.10) on 200 deducts 20")
+	_assert_eq(GM.sins, 180, "purse drops to 180 after a 10% tax")
+	_assert_eq(int(GM.stats["sins_taxed"]), 20, "sins_taxed stat records the 20 lost")
+
+	# A second tax accumulates into the same stat rather than overwriting it.
+	var lost2: int = GM.apply_sin_tax(0.50)
+	_assert_eq(lost2, 90, "apply_sin_tax(0.50) on 180 deducts 90")
+	_assert_eq(int(GM.stats["sins_taxed"]), 110, "sins_taxed accumulates across taxes (20 + 90)")
+
+	# The purse can never go negative even for a degenerate >100% percentage.
+	GM.reset_state()
+	GM.sins = 40
+	var lost3: int = GM.apply_sin_tax(2.0)
+	_assert_eq(lost3, 40, "a >100% tax is clamped to the available purse")
+	_assert_eq(GM.sins, 0, "purse floors at 0, never negative")
+
+	# Zero purse / zero percent are harmless no-ops.
+	GM.reset_state()
+	GM.sins = 0
+	_assert_eq(GM.apply_sin_tax(0.25), 0, "taxing an empty purse loses nothing")
+	GM.sins = 100
+	_assert_eq(GM.apply_sin_tax(0.0), 0, "a 0% tax loses nothing")
+	_assert_eq(GM.sins, 100, "0% tax leaves the purse untouched")
+
+	GM.reset_state()
+
+
+func _run_pact_sin_tax_stat_tests() -> void:
+	print("[Pact Sin Tax Stat]")
+
+	# Accepting a sin_tax pact must now record the loss in sins_taxed, exactly like
+	# the Devil's Tax dice roll — previously the pact path silently skipped the stat.
+	GM.reset_state()
+	GM.sins = 100
+	GM.pending_pact = {"name": "Tax Pact", "benefit": "flat_sins", "cost": "sin_tax",
+		"benefit_desc": "T", "cost_desc": "T", "b_val": 0, "b_dur": 0, "c_val": 0.25}
+	GM.accept_pact()
+	_assert_eq(int(GM.stats["sins_taxed"]), 25, "pact sin_tax records 25% of 100 in sins_taxed")
+	_assert_eq(GM.sins, 75, "pact sin_tax deducts 25 from the purse")
+	# The exact-loss notification template exists in both languages.
+	_assert(Locale.has_template("sins_taxed"), "sins_taxed template exists for the pact loss notify")
+
+	GM.reset_state()
+
+
+func _run_wrathful_bargain_pact_tests() -> void:
+	print("[Wrathful Bargain Pact]")
+
+	# The pact is defined and is the newest (last) entry so existing index-based
+	# tests stay valid.
+	var idx := Config.DEMONIC_PACTS.size() - 1
+	var pact: Dictionary = Config.DEMONIC_PACTS[idx]
+	_assert_eq(str(pact["name"]), "Wrathful Bargain", "newest pact is Wrathful Bargain")
+	_assert_eq(str(pact["benefit"]), "double_dmg", "Wrathful Bargain benefit is double_dmg")
+	_assert_eq(str(pact["cost"]), "sin_tax", "Wrathful Bargain cost is sin_tax")
+	_assert_eq(int(pact["b_val"]), 2, "Wrathful Bargain doubles damage for 2 waves")
+
+	# Accepting it sets a 2-wave double-damage window and taxes the purse.
+	GM.reset_state()
+	GM.sins = 200
+	GM.pending_pact = pact.duplicate()
+	GM.accept_pact()
+	_assert_eq(GM.double_damage, 2, "Wrathful Bargain sets double_damage to 2 waves")
+	_assert_eq(GM.sins, 140, "Wrathful Bargain taxes 30% of 200 (lose 60)")
+	_assert_eq(int(GM.stats["sins_taxed"]), 60, "Wrathful Bargain records 60 in sins_taxed")
+
+	# Localized name + descriptions resolve in zh (no leftover English fallthrough).
+	Locale.current_lang = "zh"
+	_assert_ne(Locale.t("Wrathful Bargain"), "Wrathful Bargain", "Wrathful Bargain name translated in zh")
+	_assert_ne(Locale.t("Double damage for 2 waves"), "Double damage for 2 waves", "benefit desc translated in zh")
+	_assert_ne(Locale.t("Lose 30% of current Sins"), "Lose 30% of current Sins", "cost desc translated in zh")
+	Locale.current_lang = "en"
+
+	GM.reset_state()
+
+
+func _run_pact_disable_count_tests() -> void:
+	print("[Pact Disable Count]")
+
+	_assert_eq(Config.PACT_DISABLE_COUNT, 2, "PACT_DISABLE_COUNT is 2")
+	_assert_eq(Config.DEMONIC_PACTS.size(), Config.PACT_POOL_SIZE, "DEMONIC_PACTS size matches PACT_POOL_SIZE (7)")
+
+	# disable_random disables exactly PACT_DISABLE_COUNT towers when enough exist.
+	GM.reset_state()
+	GM.wave = 5
+	var made: Array = []
+	for k in range(4):
+		var tw := GM.create_tower("bone_marksman", k + 2, 3)
+		GM.towers.append(tw)
+		made.append(tw)
+	GM.pending_pact = {"name": "Forge", "benefit": "tower_dmg_boost", "cost": "disable_random",
+		"benefit_desc": "T", "cost_desc": "T", "b_val": 0.2, "b_dur": 0, "c_val": 8.0}
+	GM.accept_pact()
+	var disabled := 0
+	for tw in made:
+		if tw["is_disabled"]:
+			disabled += 1
+	_assert_eq(disabled, Config.PACT_DISABLE_COUNT, "exactly PACT_DISABLE_COUNT towers disabled with 4 on field")
+
+	# With fewer towers than the count, it disables all available (never errors).
+	GM.reset_state()
+	GM.wave = 5
+	var solo := GM.create_tower("bone_marksman", 3, 3)
+	GM.towers.append(solo)
+	GM.pending_pact = {"name": "Forge", "benefit": "tower_dmg_boost", "cost": "disable_random",
+		"benefit_desc": "T", "cost_desc": "T", "b_val": 0.2, "b_dur": 0, "c_val": 8.0}
+	GM.accept_pact()
+	_assert(solo["is_disabled"], "lone tower is disabled (count clamps to available towers)")
+
+	GM.reset_state()

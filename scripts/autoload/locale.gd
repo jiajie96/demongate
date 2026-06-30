@@ -363,15 +363,18 @@ var _zh: Dictionary = {
 	"Restore 20 Core HP": "恢复20核心生命值",
 	"Lose 25% of current Sins": "失去当前25%的罪孽",
 	"Double damage for 1 wave": "1波内伤害翻倍",
+	"Double damage for 2 waves": "2波内伤害翻倍",
 	"Next wave spawns 3 extra War Titans": "下一波额外生成3个战争巨人",
 	"Next tower placement is free": "下一座塔免费放置",
 	"All towers -15% damage for 3 waves": "所有塔伤害-15%，持续3波",
+	"Lose 30% of current Sins": "失去当前30%的罪孽",
 	"Blood Tithe": "血之献祭",
 	"Infernal Forge": "地狱锻造",
 	"Soul Harvest": "灵魂收割",
 	"Dark Resilience": "黑暗韧性",
 	"Chaos Pact": "混沌契约",
 	"Abyssal Gambit": "深渊赌局",
+	"Wrathful Bargain": "暴怒交易",
 
 	# --- HUD buttons ---
 	"Upgrade": "升级",
