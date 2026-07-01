@@ -232,6 +232,11 @@ func _ready() -> void:
 	_run_pact_sin_tax_stat_tests()
 	_run_wrathful_bargain_pact_tests()
 	_run_pact_disable_count_tests()
+	_run_pact_of_avarice_tests()
+	_run_pact_count_helper_tests()
+	_run_enemies_total_display_tests()
+	_run_cocytus_cone_precompute_tests()
+	_run_spawn_interval_tests()
 
 	print("")
 	print("=== Results: %d/%d passed ===" % [_passed, _total])
@@ -1617,7 +1622,7 @@ func _run_fallen_hero_stat_tests() -> void:
 func _run_pact_config_tests() -> void:
 	print("[Pact Config]")
 
-	_assert_eq(Config.DEMONIC_PACTS.size(), 7, "7 demonic pacts defined")
+	_assert_eq(Config.DEMONIC_PACTS.size(), 8, "8 demonic pacts defined")
 
 	# Each pact has all required fields
 	var required_fields := ["name", "benefit", "benefit_desc", "cost", "cost_desc", "b_val", "b_dur", "c_val"]
@@ -6008,11 +6013,15 @@ func _run_pact_sin_tax_stat_tests() -> void:
 func _run_wrathful_bargain_pact_tests() -> void:
 	print("[Wrathful Bargain Pact]")
 
-	# The pact is defined and is the newest (last) entry so existing index-based
-	# tests stay valid.
-	var idx := Config.DEMONIC_PACTS.size() - 1
-	var pact: Dictionary = Config.DEMONIC_PACTS[idx]
-	_assert_eq(str(pact["name"]), "Wrathful Bargain", "newest pact is Wrathful Bargain")
+	# Look the pact up by name rather than assuming it's the last entry — later pacts
+	# (e.g. Pact of Avarice) may be appended after it.
+	var pact: Dictionary = {}
+	for p in Config.DEMONIC_PACTS:
+		if p["name"] == "Wrathful Bargain":
+			pact = p
+			break
+	_assert(not pact.is_empty(), "Wrathful Bargain pact is defined")
+	_assert_eq(str(pact["name"]), "Wrathful Bargain", "found pact is Wrathful Bargain")
 	_assert_eq(str(pact["benefit"]), "double_dmg", "Wrathful Bargain benefit is double_dmg")
 	_assert_eq(str(pact["cost"]), "sin_tax", "Wrathful Bargain cost is sin_tax")
 	_assert_eq(int(pact["b_val"]), 2, "Wrathful Bargain doubles damage for 2 waves")
@@ -6040,7 +6049,7 @@ func _run_pact_disable_count_tests() -> void:
 	print("[Pact Disable Count]")
 
 	_assert_eq(Config.PACT_DISABLE_COUNT, 2, "PACT_DISABLE_COUNT is 2")
-	_assert_eq(Config.DEMONIC_PACTS.size(), Config.PACT_POOL_SIZE, "DEMONIC_PACTS size matches PACT_POOL_SIZE (7)")
+	_assert_eq(Config.DEMONIC_PACTS.size(), Config.PACT_POOL_SIZE, "DEMONIC_PACTS size matches PACT_POOL_SIZE (8)")
 
 	# disable_random disables exactly PACT_DISABLE_COUNT towers when enough exist.
 	GM.reset_state()
@@ -6068,5 +6077,185 @@ func _run_pact_disable_count_tests() -> void:
 		"benefit_desc": "T", "cost_desc": "T", "b_val": 0.2, "b_dur": 0, "c_val": 8.0}
 	GM.accept_pact()
 	_assert(solo["is_disabled"], "lone tower is disabled (count clamps to available towers)")
+
+	GM.reset_state()
+
+
+# ═══════════════════════════════════════════════════════
+# PACT OF AVARICE TESTS (new content)
+# ═══════════════════════════════════════════════════════
+func _run_pact_of_avarice_tests() -> void:
+	print("[Pact of Avarice]")
+
+	# The pact is defined; look it up by name (index-independent).
+	var pact: Dictionary = {}
+	for p in Config.DEMONIC_PACTS:
+		if p["name"] == "Pact of Avarice":
+			pact = p
+			break
+	_assert(not pact.is_empty(), "Pact of Avarice is defined")
+	_assert_eq(str(pact["benefit"]), "sin_boost", "Avarice benefit is sin_boost")
+	_assert_eq(str(pact["cost"]), "core_dmg", "Avarice cost is core_dmg")
+	_assert_near(float(pact["b_val"]), 2.0, 0.001, "Avarice doubles Sin income (b_val 2.0)")
+	_assert_eq(int(pact["b_dur"]), 3, "Avarice income boost lasts 3 waves")
+	_assert_near(float(pact["c_val"]), 25.0, 0.001, "Avarice costs 25 Core HP")
+
+	# It is strictly greedier than Blood Tithe: bigger multiplier, longer, costlier.
+	var blood: Dictionary = {}
+	for p in Config.DEMONIC_PACTS:
+		if p["name"] == "Blood Tithe":
+			blood = p
+			break
+	_assert(not blood.is_empty(), "Blood Tithe still defined for comparison")
+	_assert_gt(float(pact["b_val"]), float(blood["b_val"]), "Avarice multiplier > Blood Tithe")
+	_assert_gt(float(pact["b_dur"]), float(blood["b_dur"]), "Avarice duration > Blood Tithe")
+	_assert_gt(float(pact["c_val"]), float(blood["c_val"]), "Avarice Core cost > Blood Tithe")
+
+	# Accepting it applies the income multiplier for the full duration and bleeds Core.
+	GM.reset_state()
+	GM.core_hp = 100.0
+	GM.core_max_hp = 100.0
+	GM.pending_pact = pact.duplicate()
+	GM.accept_pact()
+	_assert_near(GM.sin_multiplier, 2.0, 0.001, "Avarice sets sin_multiplier to 2.0")
+	_assert_eq(GM.sin_mult_waves, 3, "Avarice sets sin_mult_waves to 3")
+	_assert_near(GM.core_hp, 75.0, 0.001, "Avarice drains 25 Core HP (100 -> 75)")
+
+	# core_dmg never pushes the Core below 1 (shared with all core_dmg pacts).
+	GM.reset_state()
+	GM.core_hp = 10.0
+	GM.pending_pact = pact.duplicate()
+	GM.accept_pact()
+	_assert_gte(GM.core_hp, 1.0, "Avarice never kills the Core (floors at 1)")
+
+	# Localized name + descriptions resolve in zh (no leftover English fallthrough).
+	Locale.current_lang = "zh"
+	_assert_ne(Locale.t("Pact of Avarice"), "Pact of Avarice", "Avarice name translated in zh")
+	_assert_ne(Locale.t("Double Sin income for 3 waves"), "Double Sin income for 3 waves", "Avarice benefit desc translated in zh")
+	_assert_ne(Locale.t("Lose 25 Core HP"), "Lose 25 Core HP", "Avarice cost desc translated in zh")
+	Locale.current_lang = "en"
+
+	GM.reset_state()
+
+
+# ═══════════════════════════════════════════════════════
+# PACT COUNT HELPER TESTS
+# ═══════════════════════════════════════════════════════
+func _run_pact_count_helper_tests() -> void:
+	print("[Pact Count Helper]")
+
+	_assert_eq(GM.pact_count(), Config.DEMONIC_PACTS.size(), "pact_count() equals DEMONIC_PACTS size")
+	_assert_eq(GM.pact_count(), Config.PACT_POOL_SIZE, "pact_count() equals PACT_POOL_SIZE invariant")
+	_assert_gt(float(GM.pact_count()), 0.0, "pact pool is non-empty")
+
+	# maybe_offer_pact never crashes and never offers below the min wave.
+	GM.reset_state()
+	GM.wave = 1
+	GM.maybe_offer_pact()
+	_assert(GM.pending_pact.is_empty(), "No pact offered below PACT_OFFER_MIN_WAVE")
+
+	# With a guaranteed offer chance at a valid wave, a pact is drawn from the pool.
+	GM.reset_state()
+	GM.wave = Config.PACT_OFFER_MIN_WAVE + 1
+	var offered := false
+	# PACT_OFFER_CHANCE is probabilistic; try enough times to (near-certainly) hit one.
+	for _i in range(200):
+		GM.pending_pact = {}
+		GM.maybe_offer_pact()
+		if not GM.pending_pact.is_empty():
+			offered = true
+			break
+	_assert(offered, "A pact is eventually offered at a valid wave")
+
+	GM.reset_state()
+
+
+# ═══════════════════════════════════════════════════════
+# ENEMIES TOTAL DISPLAY TESTS (HUD readout)
+# ═══════════════════════════════════════════════════════
+func _run_enemies_total_display_tests() -> void:
+	print("[Enemies Total Display]")
+
+	# Before the first wave, preview wave 1's head-count (0-based index 0).
+	GM.reset_state()
+	_assert(not GM.wave_active, "fresh reset is not in an active wave")
+	_assert_eq(GM.enemies_total_display(), Config.wave_enemy_count(0), "Between waves previews next wave head-count")
+
+	# During an active wave it reports the snapshotted total (incl. specials/extras).
+	GM.wave = 0
+	GM.start_wave()
+	_assert(GM.wave_active, "start_wave activates the wave")
+	_assert_eq(GM.enemies_total_display(), GM.wave_enemies_total, "During a wave shows the snapshot total")
+
+	# After the last wave there is no upcoming wave, so the preview is 0.
+	GM.reset_state()
+	GM.wave = Config.MAX_WAVES
+	GM.wave_active = false
+	_assert_eq(GM.enemies_total_display(), 0, "No preview once every wave is cleared")
+
+	GM.reset_state()
+
+
+# ═══════════════════════════════════════════════════════
+# COCYTUS CONE PRECOMPUTE TESTS (perf)
+# ═══════════════════════════════════════════════════════
+func _run_cocytus_cone_precompute_tests() -> void:
+	print("[Cocytus Cone Precompute]")
+
+	GM.reset_state()
+	var coc := GM.create_tower("cocytus", 5, 5)
+
+	# create_tower caches the cone half-angle and its cos²(half) for the per-frame test.
+	_assert(coc.has("cone_half_angle"), "beam-cone tower caches cone_half_angle")
+	_assert(coc.has("cone_cos_half_sq"), "beam-cone tower caches cone_cos_half_sq")
+	var expected_half: float = Config.TOWER_DATA["cocytus"]["cone_half_angle"]
+	_assert_near(coc["cone_half_angle"], expected_half, 0.0001, "cached half-angle matches config")
+	_assert_near(coc["cone_cos_half_sq"], cos(expected_half) * cos(expected_half), 0.0001, "cached cos²(half) is correct")
+
+	# Non-cone towers don't carry the cone fields.
+	var arc := GM.create_tower("bone_marksman", 3, 3)
+	_assert(not arc.has("cone_cos_half_sq"), "non-cone tower has no cone_cos_half_sq")
+
+	# The cone still deals damage using the cached term (no crash, damage applied).
+	GM.towers.append(coc)
+	var e := GM.create_enemy("crusader")
+	# Place the enemy squarely inside the cone along its facing direction, mid-range.
+	var mid: float = coc["range"] * 0.5
+	e["x"] = coc["x"] + cos(coc["facing_angle"]) * mid
+	e["y"] = coc["y"] + sin(coc["facing_angle"]) * mid
+	GM.enemies.append(e)
+	var hp_before: float = e["hp"]
+	GM._cocytus_cone(coc, 0.1)
+	_assert_lt(e["hp"], hp_before, "cone damages an enemy inside it using cached cos²")
+
+	GM.reset_state()
+
+
+# ═══════════════════════════════════════════════════════
+# SPAWN INTERVAL CACHE TESTS (perf)
+# ═══════════════════════════════════════════════════════
+func _run_spawn_interval_tests() -> void:
+	print("[Spawn Interval Cache]")
+
+	GM.reset_state()
+	_assert_near(GM.spawn_interval, 0.0, 0.001, "spawn_interval is 0 after reset")
+
+	# start_wave snapshots the wave's configured interval.
+	GM.wave = 0
+	GM.start_wave()
+	_assert_near(GM.spawn_interval, float(Config.WAVE_DATA[0]["interval"]), 0.001, "spawn_interval matches wave 1 config")
+
+	# A later wave with a different interval snapshots that wave's value.
+	GM.reset_state()
+	GM.wave = 9  # start_wave increments to wave 10 (index 9)
+	GM.start_wave()
+	_assert_near(GM.spawn_interval, float(Config.WAVE_DATA[9]["interval"]), 0.001, "spawn_interval matches wave 10 config")
+
+	# After a spawn tick, spawn_timer is reset to the cached interval (not re-derived).
+	GM.spawn_timer = 0.0
+	var queued_before: int = GM.spawn_queue.size()
+	if queued_before > 0:
+		GM.update_waves(0.001)
+		_assert_near(GM.spawn_timer, GM.spawn_interval, 0.05, "spawn_timer refills from cached spawn_interval")
 
 	GM.reset_state()

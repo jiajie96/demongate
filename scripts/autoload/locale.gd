@@ -375,6 +375,9 @@ var _zh: Dictionary = {
 	"Chaos Pact": "混沌契约",
 	"Abyssal Gambit": "深渊赌局",
 	"Wrathful Bargain": "暴怒交易",
+	"Pact of Avarice": "贪婪契约",
+	"Double Sin income for 3 waves": "罪孽收入翻倍，持续3波",
+	"Lose 25 Core HP": "失去25核心生命值",
 
 	# --- HUD buttons ---
 	"Upgrade": "升级",

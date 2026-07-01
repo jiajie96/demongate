@@ -34,6 +34,11 @@ var hovered_grid: Vector2i = Vector2i(-1, -1)
 var wave_active: bool = false
 var spawn_queue: Array = []
 var spawn_timer: float = 0.0
+# Seconds between enemy spawns for the CURRENT wave. Snapshotted once in start_wave
+# so update_waves doesn't re-index Config.WAVE_DATA[wave - 1] on every single spawn
+# (the interval is constant for the whole wave). One dictionary lookup per wave
+# instead of one per enemy.
+var spawn_interval: float = 0.0
 var between_wave_timer: float = 0.0
 var wave_desc: String = ""
 # Total enemies scheduled for the CURRENT wave — snapshotted in start_wave once the
@@ -123,6 +128,7 @@ func reset_state() -> void:
 	wave_active = false
 	spawn_queue.clear()
 	spawn_timer = 0.0
+	spawn_interval = 0.0
 	wave_enemies_total = 0
 	between_wave_timer = Config.FIRST_WAVE_DELAY
 	wave_desc = "Prepare your defenses!"  # translated at display point
@@ -302,6 +308,13 @@ func create_tower(type: String, col: int, row: int) -> Dictionary:
 	if tower["is_beam_cone"]:
 		tower["facing_angle"] = _best_cone_facing(tower["x"], tower["y"],
 			data["range"], data["cone_half_angle"])
+		# Precompute the cone's half-angle and its cos²(half) once at creation. The
+		# per-frame _cocytus_cone hit test needs cos²(half_angle) for every enemy; the
+		# angle is a fixed tower constant, so recomputing cos() (plus a TOWER_DATA dict
+		# lookup) every frame was pure waste. Cache both here; the cone reads them.
+		var _cone_half: float = data["cone_half_angle"]
+		tower["cone_half_angle"] = _cone_half
+		tower["cone_cos_half_sq"] = cos(_cone_half) * cos(_cone_half)
 	return tower
 
 func _best_cone_facing(tx: float, ty: float, cone_len: float, half_angle: float) -> float:
@@ -503,6 +516,19 @@ func enemies_remaining() -> int:
 		if e.get("alive", false):
 			count += 1
 	return count
+
+## The "total" figure the HUD's enemy readout should show. During an active wave it's
+## the snapshotted count of everything scheduled (wave_enemies_total). Between waves the
+## snapshot still holds the wave that just ended, which reads as a stale "0 / 24"; instead
+## preview the NEXT wave's base head-count (Config.wave_enemy_count of the upcoming index)
+## so the player sees how big the incoming wave is before it starts. Returns 0 once every
+## wave is cleared (no upcoming wave to preview).
+func enemies_total_display() -> int:
+	if wave_active:
+		return wave_enemies_total
+	# `wave` is the last-started wave (0 before the first). The next wave is 0-based
+	# index `wave` into WAVE_DATA; wave_enemy_count returns 0 for an out-of-range index.
+	return Config.wave_enemy_count(wave)
 
 func _is_guardian_protected(enemy: Dictionary) -> bool:
 	if enemy["type"] == "holy_sentinel":
@@ -1145,9 +1171,10 @@ func _cocytus_cone(tower: Dictionary, dt: float, hades_list: Array = [], corrupt
 		return
 	var cone_dps: float = _calc_cocytus_dps(tower)
 	var cl2: float = tower["range"] * tower["range"]
-	var half_angle: float = Config.TOWER_DATA[tower["type"]]["cone_half_angle"]
-	var cos_half: float = cos(half_angle)
-	var cos_half_sq: float = cos_half * cos_half
+	# Use the values precomputed in create_tower (fall back to a live compute for any
+	# tower dict built before this field existed, e.g. older save state / tests).
+	var half_angle: float = tower.get("cone_half_angle", Config.TOWER_DATA[tower["type"]]["cone_half_angle"])
+	var cos_half_sq: float = tower.get("cone_cos_half_sq", cos(half_angle) * cos(half_angle))
 	# REDESIGN: oscillating sweep — ±15° around set facing, synced to draw
 	var sweep: float = sin(game_time * Config.COCYTUS_SWEEP_SPEED) * Config.COCYTUS_SWEEP_ANGLE
 	var eff_facing: float = tower["facing_angle"] + sweep
@@ -1305,6 +1332,9 @@ func start_wave() -> void:
 			spawn_queue.append("war_titan")
 		pact_extra_enemies = 0
 	spawn_timer = Config.WAVE_SPAWN_DELAY
+	# Snapshot this wave's spawn interval once — it's constant for the whole wave, so
+	# update_waves reads this cached value instead of re-indexing WAVE_DATA per enemy.
+	spawn_interval = float(wave_def["interval"])
 	# Snapshot the full scheduled count (regulars + specials + pact extras) so the
 	# HUD can show "remaining / total" for this wave.
 	wave_enemies_total = spawn_queue.size()
@@ -1340,8 +1370,7 @@ func update_waves(dt: float) -> void:
 		if spawn_timer <= 0 and spawn_queue.size() > 0:
 			var etype: String = spawn_queue.pop_front()
 			enemies.append(create_enemy(etype))
-			var wave_def: Dictionary = Config.WAVE_DATA[wave - 1]
-			spawn_timer = wave_def["interval"]
+			spawn_timer = spawn_interval
 
 		if spawn_queue.size() == 0 and enemies.size() == 0:
 			complete_wave()
@@ -1574,14 +1603,27 @@ func accept_pandora_choice(choice: int) -> void:
 # ═══════════════════════════════════════════════════════
 # DEMONIC PACTS — risky between-wave tradeoffs
 # ═══════════════════════════════════════════════════════
+## Number of distinct Demonic Pacts defined. Single source of truth so callers
+## don't reach into Config.DEMONIC_PACTS.size() directly, and so the PACT_POOL_SIZE
+## invariant has something to test against (the two must agree or maybe_offer_pact
+## would draw from a pool a different size than the config claims). Mirrors the
+## Config.wave_count() pattern.
+func pact_count() -> int:
+	return Config.DEMONIC_PACTS.size()
+
 func maybe_offer_pact() -> void:
 	if wave < Config.PACT_OFFER_MIN_WAVE:
 		return
 	if pending_pandora_choice or not pending_pact.is_empty():
 		return
+	# Empty-pool guard: indexing DEMONIC_PACTS[randi() % 0] would be a divide-by-zero
+	# crash. A misconfigured/empty pool now simply offers no pact instead of crashing,
+	# mirroring the defensive empty guard in _weighted_pick.
+	if pact_count() == 0:
+		return
 	if randf() > Config.PACT_OFFER_CHANCE:
 		return
-	var pact: Dictionary = Config.DEMONIC_PACTS[randi() % Config.DEMONIC_PACTS.size()]
+	var pact: Dictionary = Config.DEMONIC_PACTS[randi() % pact_count()]
 	pending_pact = pact.duplicate()
 	stats["pacts_offered"] = stats.get("pacts_offered", 0) + 1
 	notify(Locale.t("A Demonic Pact is offered..."), Config.COLOR_NOTIFY_PACT)

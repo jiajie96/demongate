@@ -146,7 +146,7 @@ const STARTING_SINS := 50
 const DICE_REPLENISH_PER_WAVE := 1       # gained each wave (capped at DICE_MAX_USES)
 
 # Pact variety — number of distinct pacts offered per random selection
-const PACT_POOL_SIZE := 7                # draw from all available pacts
+const PACT_POOL_SIZE := 8                # draw from all available pacts
 
 # Burn DoT kill credit — whether burn kills attribute to the tower that applied burn
 const BURN_CREDITS_TOWER := true         # track tower kill_count for burn deaths
@@ -658,6 +658,13 @@ var DEMONIC_PACTS := [
 	# handlers, so no new accept_pact branch is needed. Distinct from Chaos Pact
 	# (double_dmg + extra War Titans) by trading economy instead of extra threat.
 	{"name": "Wrathful Bargain", "benefit": "double_dmg", "benefit_desc": "Double damage for 2 waves", "cost": "sin_tax", "cost_desc": "Lose 30% of current Sins", "b_val": 2, "b_dur": 0, "c_val": 0.30},
+	# Pact of Avarice — the greed gamble. The strongest Sin-economy boost in the pool
+	# (double income for a full three waves) paid for in Core HP rather than Sins, so it
+	# reads as the mirror image of Blood Tithe: that pact trades a little Core (−15) for a
+	# modest income bump (×1.5 / 2 waves); this trades a lot of Core (−25) for a much
+	# bigger, longer bump (×2.0 / 3 waves). Reuses the existing sin_boost benefit and
+	# core_dmg cost handlers, so no new accept_pact branch is needed.
+	{"name": "Pact of Avarice", "benefit": "sin_boost", "benefit_desc": "Double Sin income for 3 waves", "cost": "core_dmg", "cost_desc": "Lose 25 Core HP", "b_val": 2.0, "b_dur": 3, "c_val": 25.0},
 ]
 
 # ═══════════════════════════════════════════════════════
