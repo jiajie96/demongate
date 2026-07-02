@@ -426,6 +426,22 @@ func strongest_tower_by_dps():
 			best = t
 	return best
 
+## Tower physically closest to a map point, or null if no towers exist. Single
+## source of truth for "nearest tower" proximity picks (e.g. the Tower Blessing
+## relic buffs whoever it lands next to) so callers don't re-roll their own
+## squared-distance loop. Compares squared distance — no sqrt needed for a min pick.
+func nearest_tower_to(x: float, y: float):
+	var nearest = null
+	var best_dist_sq := INF
+	for t in towers:
+		var dx: float = t["x"] - x
+		var dy: float = t["y"] - y
+		var d2: float = dx * dx + dy * dy
+		if d2 < best_dist_sq:
+			best_dist_sq = d2
+			nearest = t
+	return nearest
+
 func is_buildable(col: int, row: int) -> bool:
 	if col < 0 or col >= Config.GRID_COLS or row < 0 or row >= Config.GRID_ROWS:
 		return false
@@ -1349,13 +1365,9 @@ func start_wave() -> void:
 	wave_banner_timer = Config.WAVE_BANNER_DURATION
 	wave_banner_num = wave
 	wave_banner_desc = wave_desc
-	wave_banner_is_boss = false
-	for entry in wave_def["enemies"]:
-		var etype: String = entry["type"]
-		var edata: Dictionary = Config.ENEMY_DATA.get(etype, {})
-		if edata.get("is_boss", false):
-			wave_banner_is_boss = true
-			break
+	# Boss waves get a red-tinted banner. is_boss_wave is the pure mirror of the
+	# old inline scan, keeping "what counts as a boss wave" in one place (Config).
+	wave_banner_is_boss = Config.is_boss_wave(wave - 1)
 	Audio.play_sfx("wave_start")
 	shake(Config.SHAKE_WAVE_START_INTENSITY, Config.SHAKE_WAVE_START_DURATION)
 
@@ -1527,18 +1539,24 @@ func drop_relic(rx: float, ry: float) -> void:
 			var restored: int = int(round(core_hp - before))
 			notify(Locale.tf("core_healed", {"amount": restored}), Config.COLOR_NOTIFY_POSITIVE)
 		"tower_buff":
-			var nearest = null
-			var best_dist_sq := INF
-			for t in towers:
-				var dx: float = t["x"] - rx
-				var dy: float = t["y"] - ry
-				var d2: float = dx * dx + dy * dy
-				if d2 < best_dist_sq:
-					best_dist_sq = d2
-					nearest = t
+			var nearest = nearest_tower_to(rx, ry)
 			if nearest != null:
 				nearest["damage_mult"] += Config.TOWER_BLESSING_BUFF
 				notify(Locale.tf("tower_buff", {"name": Locale.t(nearest["name"])}), Config.COLOR_NOTIFY_POSITIVE)
+		"frenzy":
+			# Frenzy Totem — a short all-tower attack-speed burst. As a *positive*
+			# relic it must never feel like a downgrade, so it only applies if it
+			# beats the buff currently in flight: take the stronger factor and the
+			# longer remaining duration rather than clobbering an active Demonic
+			# Surge (1.8×) with the totem's milder 1.4×.
+			var frenzy_factor: float = float(loot.get("value", Config.FRENZY_TOTEM_SPEED))
+			var new_factor: float = frenzy_factor
+			var new_dur: float = Config.FRENZY_TOTEM_DURATION
+			if speed_buff_timer > 0.0:
+				new_factor = maxf(frenzy_factor, speed_buff_factor)
+				new_dur = maxf(Config.FRENZY_TOTEM_DURATION, speed_buff_timer)
+			_apply_speed_buff(new_factor, new_dur)
+			notify(Locale.tf("frenzy_totem", {"pct": roundi((frenzy_factor - 1.0) * 100.0)}), Config.COLOR_NOTIFY_POSITIVE)
 		"curse":
 			# Disable the highest-DPS tower, using the same damage×mult×speed
 			# "best tower" measure as free_upgrade_best_tower(). The old check

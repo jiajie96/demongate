@@ -352,6 +352,14 @@ const LEGENDARY_FALLBACK_SINS := 80     # consolation prize
 # allied Fallen Hero on the spot, rewarding aggressive clears.
 const SOUL_SURGE_POOL := 75             # kills-equivalent added to the hero pool
 
+# Frenzy Totem relic — a short, guaranteed burst of tower attack speed. Distinct
+# from the Demonic Surge dice roll (+80% / 15s): the totem is a milder, shorter
+# tempo spike that any enemy can drop, giving the relic pool a positive "go fast"
+# option alongside the damage/economy/defense drops. Reuses _apply_speed_buff, and
+# the drop handler guards against downgrading a stronger buff already in flight.
+const FRENZY_TOTEM_SPEED := 1.4         # +40% tower attack speed
+const FRENZY_TOTEM_DURATION := 8.0      # seconds the frenzy lasts
+
 # Pandora's True Gift — sins option reward
 const PANDORA_SINS_REWARD := 100        # "Pandora grants N Sins!"
 
@@ -628,11 +636,12 @@ func get_dice_outcome(total: int, current_wave: int) -> Dictionary:
 
 
 var RELIC_LOOT := [
-	{"name": "Hellfire Bomb", "weight": 24, "type": "aoe", "value": 50},
-	{"name": "Sin Cache", "weight": 22, "type": "random_sins", "value": 100},
+	{"name": "Hellfire Bomb", "weight": 20, "type": "aoe", "value": 50},
+	{"name": "Sin Cache", "weight": 19, "type": "random_sins", "value": 100},
 	{"name": "Tower Blessing", "weight": 13, "type": "tower_buff", "value": 0.25},
 	{"name": "Corruption Wave", "weight": 10, "type": "mass_corrupt", "value": 0.3},
 	{"name": "Vital Surge", "weight": 8, "type": "core_heal", "value": VITAL_SURGE_HEAL},
+	{"name": "Frenzy Totem", "weight": 7, "type": "frenzy", "value": FRENZY_TOTEM_SPEED},
 	{"name": "Time Warp", "weight": 7, "type": "rewind", "value": 5},
 	{"name": "Soul Surge", "weight": 6, "type": "soul_surge", "value": SOUL_SURGE_POOL},
 	{"name": "Legendary Blueprint", "weight": 3, "type": "legendary", "value": 0},
@@ -805,4 +814,40 @@ func wave_threat(wave_index: int) -> int:
 	for entry in WAVE_DATA[wave_index]["enemies"]:
 		var edata: Dictionary = ENEMY_DATA.get(entry["type"], {})
 		total += int(entry["count"]) * int(edata.get("core_dmg", 0))
+	return total
+
+## Number of "special" enemies (bosses + elite specials, per is_special_enemy) a
+## wave schedules. This is exactly the count start_wave() peels off into its
+## back-half "specials" bucket, so it's a pure, testable mirror of that spawn logic
+## and a handy "how many heavy hitters this wave" figure for UI. Returns 0 for an
+## out-of-range index.
+func wave_special_count(wave_index: int) -> int:
+	if wave_index < 0 or wave_index >= WAVE_DATA.size():
+		return 0
+	var total := 0
+	for entry in WAVE_DATA[wave_index]["enemies"]:
+		if is_special_enemy(entry["type"]):
+			total += int(entry["count"])
+	return total
+
+## True if a wave schedules at least one boss (is_boss) enemy. start_wave() runs
+## this exact check inline to red-tint the wave banner; exposing it as a pure helper
+## dedupes that loop and lets tests pin which waves are "boss waves" independently.
+## Returns false for an out-of-range index.
+func is_boss_wave(wave_index: int) -> bool:
+	if wave_index < 0 or wave_index >= WAVE_DATA.size():
+		return false
+	for entry in WAVE_DATA[wave_index]["enemies"]:
+		var edata: Dictionary = ENEMY_DATA.get(entry["type"], {})
+		if edata.get("is_boss", false):
+			return true
+	return false
+
+## Grand total of every enemy scheduled across ALL waves — the full size of the
+## Divine Army the player will face in a run. Pure sum of wave_enemy_count over
+## every wave; a single honest "campaign scale" figure for menus/stats.
+func total_scheduled_enemies() -> int:
+	var total := 0
+	for i in range(WAVE_DATA.size()):
+		total += wave_enemy_count(i)
 	return total

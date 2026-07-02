@@ -177,6 +177,10 @@ var _templates: Dictionary = {
 		"en": "Soul Surge! +{amount} to the Fallen Hero pool!",
 		"zh": "灵魂涌动！堕落英雄进度 +{amount}！",
 	},
+	"frenzy_totem": {
+		"en": "Frenzy Totem! All towers +{pct}% attack speed!",
+		"zh": "狂热图腾！所有塔攻速+{pct}%！",
+	},
 	"core_healed": {
 		"en": "Vital Surge! Hell's Core +{amount} HP!",
 		"zh": "生命涌动！地狱核心 +{amount} 生命！",
@@ -321,6 +325,8 @@ var _zh: Dictionary = {
 	"Sin Cache": "罪孽宝箱",
 	"Tower Blessing": "塔防祝福",
 	"Corruption Wave": "腐化之波",
+	"Vital Surge": "生命涌动",
+	"Frenzy Totem": "狂热图腾",
 	"Time Warp": "时间扭曲",
 	"Soul Surge": "灵魂涌动",
 	"Legendary Blueprint": "传说蓝图",

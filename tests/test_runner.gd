@@ -237,6 +237,13 @@ func _ready() -> void:
 	_run_enemies_total_display_tests()
 	_run_cocytus_cone_precompute_tests()
 	_run_spawn_interval_tests()
+	_run_relic_name_translation_tests()
+	_run_frenzy_totem_tests()
+	_run_nearest_tower_tests()
+	_run_is_boss_wave_tests()
+	_run_wave_special_count_tests()
+	_run_total_scheduled_enemies_tests()
+	_run_apply_sin_tax_edge_tests()
 
 	print("")
 	print("=== Results: %d/%d passed ===" % [_passed, _total])
@@ -338,7 +345,7 @@ func _run_config_tests() -> void:
 	_assert(not Config.has_method("ROULETTE_SEGMENTS") or true, "Roulette removed")
 	_assert_eq(Config.DICE_OUTCOMES.size(), 6, "6 dice outcomes (1-6)")
 	_assert_eq(Config.DICE_OUTCOMES_EARLY.size(), 6, "6 early dice outcomes (1-6)")
-	_assert_eq(Config.RELIC_LOOT.size(), 11, "11 relic loot types")
+	_assert_eq(Config.RELIC_LOOT.size(), 12, "12 relic loot types")
 
 	# Tower data integrity
 	for type in Config.TOWER_DATA:
@@ -5741,7 +5748,7 @@ func _run_relic_loot_integrity_tests() -> void:
 
 	# Every relic type in the loot table must have a matching handler branch in
 	# drop_relic — an unhandled type would silently do nothing when it drops.
-	var handled := ["aoe", "random_sins", "soul_surge", "core_heal", "tower_buff", "curse", "mass_corrupt", "rewind", "legendary", "choice", "trap"]
+	var handled := ["aoe", "random_sins", "soul_surge", "core_heal", "frenzy", "tower_buff", "curse", "mass_corrupt", "rewind", "legendary", "choice", "trap"]
 	var total := 0
 	var names := {}
 	for loot in Config.RELIC_LOOT:
@@ -6258,4 +6265,142 @@ func _run_spawn_interval_tests() -> void:
 		GM.update_waves(0.001)
 		_assert_near(GM.spawn_timer, GM.spawn_interval, 0.05, "spawn_timer refills from cached spawn_interval")
 
+	GM.reset_state()
+
+# ── Relic name i18n coverage ────────────────────────────────────────────────
+# Every relic in RELIC_LOOT is surfaced by name via Locale.t() in the drop notify,
+# so each name MUST have a zh translation or Chinese players see raw English. This
+# guards the regression where "Vital Surge" (and now "Frenzy Totem") had a message
+# template but no direct name translation.
+func _run_relic_name_translation_tests() -> void:
+	print("[Relic Name Translations]")
+	var prev_lang: String = Locale.current_lang
+	Locale.current_lang = "zh"
+	for loot in Config.RELIC_LOOT:
+		var name: String = loot["name"]
+		_assert_ne(Locale.t(name), name, "relic '%s' has a zh translation" % name)
+	Locale.current_lang = prev_lang
+	# The specific relic that was missing before this fix.
+	_assert_ne(Locale._zh.get("Vital Surge", ""), "", "Vital Surge zh name is defined")
+
+# ── Frenzy Totem relic ──────────────────────────────────────────────────────
+func _run_frenzy_totem_tests() -> void:
+	print("[Frenzy Totem Relic]")
+	# Data integrity: present in the loot table with the frenzy handler type.
+	var found := false
+	var frenzy_weight := 0
+	var total := 0
+	for loot in Config.RELIC_LOOT:
+		total += int(loot["weight"])
+		if loot["name"] == "Frenzy Totem":
+			found = true
+			frenzy_weight = int(loot["weight"])
+			_assert_eq(str(loot["type"]), "frenzy", "Frenzy Totem uses the 'frenzy' handler")
+			_assert_near(float(loot["value"]), Config.FRENZY_TOTEM_SPEED, 0.001, "Frenzy Totem value is FRENZY_TOTEM_SPEED")
+	_assert(found, "Frenzy Totem exists in RELIC_LOOT")
+	_assert_gt(float(frenzy_weight), 0.0, "Frenzy Totem has a positive drop weight")
+	_assert_eq(total, 100, "Relic weights still sum to 100 after adding Frenzy Totem")
+	_assert_gt(Config.FRENZY_TOTEM_SPEED, 1.0, "Frenzy Totem is a speed-UP buff")
+	_assert_lt(Config.FRENZY_TOTEM_SPEED, Config.DICE_SURGE_SPEED, "Frenzy Totem is milder than Demonic Surge")
+
+	# Behavior: dropping it applies an all-tower speed buff.
+	GM.reset_state()
+	GM.speed_buff_timer = 0.0
+	var saved: Array = Config.RELIC_LOOT
+	Config.RELIC_LOOT = [{"name": "Frenzy Totem", "weight": 1, "type": "frenzy", "value": Config.FRENZY_TOTEM_SPEED}]
+	GM.drop_relic(100.0, 100.0)
+	_assert_near(GM.speed_buff_factor, Config.FRENZY_TOTEM_SPEED, 0.001, "Frenzy sets speed_buff_factor")
+	_assert_near(GM.speed_buff_timer, Config.FRENZY_TOTEM_DURATION, 0.001, "Frenzy sets speed_buff_timer")
+
+	# Positive-relic guard: it must not DOWNGRADE a stronger buff already in flight.
+	GM.reset_state()
+	GM._apply_speed_buff(Config.DICE_SURGE_SPEED, 30.0)  # a strong, long surge is active
+	GM.drop_relic(100.0, 100.0)
+	_assert_near(GM.speed_buff_factor, Config.DICE_SURGE_SPEED, 0.001, "Frenzy keeps the stronger active factor")
+	_assert_gte(GM.speed_buff_timer, 30.0 - 0.001, "Frenzy keeps the longer active duration")
+	Config.RELIC_LOOT = saved
+	GM.reset_state()
+
+# ── nearest_tower_to helper ─────────────────────────────────────────────────
+func _run_nearest_tower_tests() -> void:
+	print("[Nearest Tower Helper]")
+	GM.reset_state()
+	# No towers → null.
+	_assert(GM.nearest_tower_to(100.0, 100.0) == null, "nearest_tower_to returns null with no towers")
+	var a := GM.create_tower("bone_marksman", 2, 2)
+	var b := GM.create_tower("bone_marksman", 10, 10)
+	GM.towers.append(a)
+	GM.towers.append(b)
+	# A point right next to tower a picks a; next to b picks b.
+	_assert_eq(GM.nearest_tower_to(a["x"], a["y"])["id"], a["id"], "picks the nearer tower (a)")
+	_assert_eq(GM.nearest_tower_to(b["x"] + 1.0, b["y"] + 1.0)["id"], b["id"], "picks the nearer tower (b)")
+	GM.reset_state()
+
+# ── is_boss_wave helper ─────────────────────────────────────────────────────
+func _run_is_boss_wave_tests() -> void:
+	print("[Is Boss Wave Helper]")
+	# Out-of-range is safe.
+	_assert(not Config.is_boss_wave(-1), "is_boss_wave(-1) is false")
+	_assert(not Config.is_boss_wave(Config.WAVE_DATA.size()), "is_boss_wave(out-of-range) is false")
+	# The helper must agree with a direct scan of the wave for is_boss enemies.
+	for i in range(Config.WAVE_DATA.size()):
+		var expected := false
+		for entry in Config.WAVE_DATA[i]["enemies"]:
+			if Config.ENEMY_DATA.get(entry["type"], {}).get("is_boss", false):
+				expected = true
+				break
+		_assert_eq(Config.is_boss_wave(i), expected, "is_boss_wave matches direct scan for wave %d" % (i + 1))
+	# start_wave's banner flag must equal the helper for the wave it starts.
+	GM.reset_state()
+	GM.wave = 9  # start_wave increments to wave 10 (index 9), a known boss wave
+	GM.start_wave()
+	_assert_eq(GM.wave_banner_is_boss, Config.is_boss_wave(9), "banner boss flag matches is_boss_wave")
+	GM.reset_state()
+
+# ── wave_special_count helper ───────────────────────────────────────────────
+func _run_wave_special_count_tests() -> void:
+	print("[Wave Special Count Helper]")
+	_assert_eq(Config.wave_special_count(-1), 0, "wave_special_count(-1) is 0")
+	_assert_eq(Config.wave_special_count(Config.WAVE_DATA.size()), 0, "wave_special_count(out-of-range) is 0")
+	# Wave 1 (index 0) is pure seraph scouts — no specials.
+	_assert_eq(Config.wave_special_count(0), 0, "wave 1 has no special enemies")
+	# The helper must agree with a direct is_special_enemy scan, and never exceed head-count.
+	for i in range(Config.WAVE_DATA.size()):
+		var expected := 0
+		for entry in Config.WAVE_DATA[i]["enemies"]:
+			if Config.is_special_enemy(entry["type"]):
+				expected += int(entry["count"])
+		_assert_eq(Config.wave_special_count(i), expected, "wave_special_count matches scan for wave %d" % (i + 1))
+		_assert_lte(float(Config.wave_special_count(i)), float(Config.wave_enemy_count(i)), "specials never exceed head-count (wave %d)" % (i + 1))
+
+# ── total_scheduled_enemies helper ──────────────────────────────────────────
+func _run_total_scheduled_enemies_tests() -> void:
+	print("[Total Scheduled Enemies Helper]")
+	var manual := 0
+	for i in range(Config.WAVE_DATA.size()):
+		manual += Config.wave_enemy_count(i)
+	_assert_eq(Config.total_scheduled_enemies(), manual, "total equals the sum of every wave's head-count")
+	_assert_gt(float(Config.total_scheduled_enemies()), 0.0, "campaign schedules at least one enemy")
+
+# ── apply_sin_tax edge cases ────────────────────────────────────────────────
+func _run_apply_sin_tax_edge_tests() -> void:
+	print("[Apply Sin Tax Edge Cases]")
+	# A 0% tax removes nothing and records nothing.
+	GM.reset_state()
+	GM.sins = 100
+	GM.stats["sins_taxed"] = 0
+	var lost0: int = GM.apply_sin_tax(0.0)
+	_assert_eq(lost0, 0, "0% tax loses nothing")
+	_assert_eq(GM.sins, 100, "0% tax leaves the purse intact")
+	_assert_eq(GM.stats["sins_taxed"], 0, "0% tax records nothing")
+	# A tax at/over 100% can never push the purse negative (clamps to balance).
+	GM.sins = 40
+	var lost_all: int = GM.apply_sin_tax(1.5)
+	_assert_eq(lost_all, 40, "over-100% tax is clamped to the current balance")
+	_assert_eq(GM.sins, 0, "purse floors at 0, never negative")
+	_assert_eq(GM.stats["sins_taxed"], 40, "clamped loss is what gets recorded")
+	# Taxing an empty purse is a no-op.
+	var lost_empty: int = GM.apply_sin_tax(0.25)
+	_assert_eq(lost_empty, 0, "taxing an empty purse loses nothing")
+	_assert_eq(GM.sins, 0, "empty purse stays at 0")
 	GM.reset_state()
