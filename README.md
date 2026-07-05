@@ -5,7 +5,7 @@
 <p align="center">
   <a href="https://godotengine.org/"><img src="https://img.shields.io/badge/Godot-4.6-478cbf?logo=godot-engine&logoColor=white" alt="Godot 4.6"/></a>
   <a href="LICENSE"><img src="https://img.shields.io/badge/License-MIT-green" alt="MIT License"/></a>
-  <img src="https://img.shields.io/badge/Tests-472%20passing-brightgreen" alt="Tests"/>
+  <img src="https://img.shields.io/badge/Tests-3568%20passing-brightgreen" alt="Tests"/>
   <img src="https://img.shields.io/badge/Audio-File%20%2B%20Procedural-blueviolet" alt="Hybrid Audio"/>
   <img src="https://img.shields.io/badge/Platform-Web%20%7C%20Windows%20%7C%20macOS%20%7C%20Linux-orange" alt="Platforms"/>
 </p>
@@ -34,7 +34,7 @@
 - **6 unique towers** — From the Bone Marksman's rapid bolts to Lucifer's global pulse, each fills an irreplaceable role
 - **KayKit 3D avatars** — Skeleton roster pre-rendered to directional sprites, each tower a distinct silhouette + signature color
 - **Hybrid audio** — CC0 music tiered by wave intensity, file-based SFX with a procedural synthesis fallback
-- **470+ automated tests** — Comprehensive test suite covering config, economy, combat, waves, and gambling
+- **3400+ automated tests** — Comprehensive test suite covering config, economy, combat, waves, and gambling
 
 ## Towers
 
@@ -182,7 +182,7 @@ assets/
   audio/                 # CC0 music (3 wave-tiered tracks) + SFX (see CREDITS.md)
   models/kaykit/         # KayKit 3D avatars pre-rendered to directional sprites
 tests/
-  test_runner.gd         # 472 automated tests
+  test_runner.gd         # 3568 automated tests
 ```
 
 ## Design Deep Dive

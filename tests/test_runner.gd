@@ -244,6 +244,23 @@ func _ready() -> void:
 	_run_wave_special_count_tests()
 	_run_total_scheduled_enemies_tests()
 	_run_apply_sin_tax_edge_tests()
+	_run_pact_of_ruin_tests()
+	_run_corruption_wave_no_downgrade_tests()
+	_run_wave_boss_count_tests()
+	_run_campaign_total_threat_tests()
+	_run_total_scheduled_bosses_tests()
+	_run_tower_count_helper_tests()
+	_run_cleric_heal_perf_tests()
+	_run_wave_boss_notify_tests()
+	_run_legacy_slow_no_downgrade_tests()
+	_run_tower_weaken_no_downgrade_tests()
+	_run_pact_of_thorns_tests()
+	_run_relic_drop_chance_tests()
+	_run_tower_count_of_type_tests()
+	_run_peak_threat_wave_tests()
+	_run_inferno_burn_cache_tests()
+	_run_dice_positive_chance_tests()
+	_run_sin_boost_no_downgrade_tests()
 
 	print("")
 	print("=== Results: %d/%d passed ===" % [_passed, _total])
@@ -1629,7 +1646,7 @@ func _run_fallen_hero_stat_tests() -> void:
 func _run_pact_config_tests() -> void:
 	print("[Pact Config]")
 
-	_assert_eq(Config.DEMONIC_PACTS.size(), 8, "8 demonic pacts defined")
+	_assert_eq(Config.DEMONIC_PACTS.size(), 10, "10 demonic pacts defined")
 
 	# Each pact has all required fields
 	var required_fields := ["name", "benefit", "benefit_desc", "cost", "cost_desc", "b_val", "b_dur", "c_val"]
@@ -6056,7 +6073,7 @@ func _run_pact_disable_count_tests() -> void:
 	print("[Pact Disable Count]")
 
 	_assert_eq(Config.PACT_DISABLE_COUNT, 2, "PACT_DISABLE_COUNT is 2")
-	_assert_eq(Config.DEMONIC_PACTS.size(), Config.PACT_POOL_SIZE, "DEMONIC_PACTS size matches PACT_POOL_SIZE (8)")
+	_assert_eq(Config.DEMONIC_PACTS.size(), Config.PACT_POOL_SIZE, "DEMONIC_PACTS size matches PACT_POOL_SIZE (10)")
 
 	# disable_random disables exactly PACT_DISABLE_COUNT towers when enough exist.
 	GM.reset_state()
@@ -6403,4 +6420,448 @@ func _run_apply_sin_tax_edge_tests() -> void:
 	var lost_empty: int = GM.apply_sin_tax(0.25)
 	_assert_eq(lost_empty, 0, "taxing an empty purse loses nothing")
 	_assert_eq(GM.sins, 0, "empty purse stays at 0")
+	GM.reset_state()
+
+# ── Pact of Ruin (new 9th pact) ──────────────────────────────────────────────
+func _run_pact_of_ruin_tests() -> void:
+	print("[Pact of Ruin]")
+	# The pact exists and carries the intended benefit/cost pairing.
+	var ruin: Dictionary = {}
+	for pact in Config.DEMONIC_PACTS:
+		if pact["name"] == "Pact of Ruin":
+			ruin = pact
+			break
+	_assert(not ruin.is_empty(), "Pact of Ruin exists in DEMONIC_PACTS")
+	_assert_eq(ruin["benefit"], "tower_dmg_boost", "Ruin's benefit is a permanent tower damage boost")
+	_assert_eq(ruin["cost"], "core_dmg", "Ruin's cost is Core HP")
+	_assert_near(float(ruin["b_val"]), 0.30, 0.0001, "Ruin grants +30% tower damage")
+	_assert_near(float(ruin["c_val"]), 20.0, 0.0001, "Ruin costs 20 Core HP")
+	# It's the strongest PERMANENT tower-damage pact (beats Infernal Forge's +20%).
+	var forge_val := 0.0
+	for pact in Config.DEMONIC_PACTS:
+		if pact["name"] == "Infernal Forge":
+			forge_val = float(pact["b_val"])
+	_assert_gt(float(ruin["b_val"]), forge_val, "Ruin's permanent buff exceeds Infernal Forge's")
+
+	# Behavior: accepting it buffs every tower's damage_mult and dents the Core.
+	GM.reset_state()
+	GM.wave = 5
+	var t1 := GM.create_tower("bone_marksman", 3, 3)
+	var t2 := GM.create_tower("soul_reaper", 5, 5)
+	GM.towers.append(t1)
+	GM.towers.append(t2)
+	var m1_before: float = t1["damage_mult"]
+	var m2_before: float = t2["damage_mult"]
+	GM.core_hp = 100.0
+	GM.pending_pact = ruin.duplicate()
+	GM.accept_pact()
+	_assert_near(t1["damage_mult"], m1_before + 0.30, 0.0001, "Ruin adds +0.30 to tower 1 damage_mult")
+	_assert_near(t2["damage_mult"], m2_before + 0.30, 0.0001, "Ruin adds +0.30 to tower 2 damage_mult")
+	_assert_near(GM.core_hp, 80.0, 0.0001, "Ruin costs 20 Core HP")
+	_assert(GM.pending_pact.is_empty(), "pact clears after acceptance")
+	# Core cost can never drop the Core below 1 HP (shared core_dmg floor).
+	GM.core_hp = 10.0
+	GM.pending_pact = ruin.duplicate()
+	GM.accept_pact()
+	_assert_gte(GM.core_hp, 1.0, "Ruin's core cost never kills the Core (floors at 1)")
+	GM.reset_state()
+
+# ── Corruption Wave relic: no-downgrade slow ─────────────────────────────────
+func _run_corruption_wave_no_downgrade_tests() -> void:
+	print("[Corruption Wave No-Downgrade]")
+	GM.reset_state()
+	# Drive the mass_corrupt branch directly via a forced relic table.
+	var saved: Array = Config.RELIC_LOOT
+	Config.RELIC_LOOT = [{"name": "Corruption Wave", "weight": 1, "type": "mass_corrupt", "value": Config.MASS_CORRUPT_SLOW}]
+
+	# A fresh (unslowed) enemy gets the corruption slow applied.
+	var e1 := GM.create_enemy("crusader")
+	GM.enemies.append(e1)
+	GM.drop_relic(50.0, 50.0)
+	_assert_near(e1["slow_amount"], Config.MASS_CORRUPT_SLOW, 0.0001, "unslowed enemy takes the corruption slow")
+	_assert_near(e1["slow_timer"], Config.MASS_CORRUPT_DURATION, 0.0001, "unslowed enemy gets the corruption timer")
+
+	# An enemy already MORE slowed (and for longer) must not be weakened/shortened.
+	GM.reset_state()
+	Config.RELIC_LOOT = [{"name": "Corruption Wave", "weight": 1, "type": "mass_corrupt", "value": Config.MASS_CORRUPT_SLOW}]
+	var e2 := GM.create_enemy("crusader")
+	e2["slow_amount"] = 0.6                       # stronger than MASS_CORRUPT_SLOW (0.3)
+	e2["slow_timer"] = Config.MASS_CORRUPT_DURATION + 5.0  # longer than the corruption timer
+	GM.enemies.append(e2)
+	GM.drop_relic(50.0, 50.0)
+	_assert_near(e2["slow_amount"], 0.6, 0.0001, "corruption keeps the stronger existing slow")
+	_assert_gt(e2["slow_timer"], Config.MASS_CORRUPT_DURATION, "corruption keeps the longer existing timer")
+
+	Config.RELIC_LOOT = saved
+	GM.reset_state()
+
+# ── wave_boss_count helper (+ is_boss_wave delegation) ───────────────────────
+func _run_wave_boss_count_tests() -> void:
+	print("[Wave Boss Count Helper]")
+	_assert_eq(Config.wave_boss_count(-1), 0, "wave_boss_count(-1) is 0")
+	_assert_eq(Config.wave_boss_count(Config.WAVE_DATA.size()), 0, "wave_boss_count(out-of-range) is 0")
+	_assert_eq(Config.wave_boss_count(0), 0, "wave 1 has no bosses")
+	# The helper must agree with a direct is_boss scan, and is_boss_wave must equal (count>0).
+	for i in range(Config.WAVE_DATA.size()):
+		var expected := 0
+		for entry in Config.WAVE_DATA[i]["enemies"]:
+			if Config.ENEMY_DATA.get(entry["type"], {}).get("is_boss", false):
+				expected += int(entry["count"])
+		_assert_eq(Config.wave_boss_count(i), expected, "wave_boss_count matches scan for wave %d" % (i + 1))
+		_assert_eq(Config.is_boss_wave(i), expected > 0, "is_boss_wave == (boss_count>0) for wave %d" % (i + 1))
+		# Bosses are a subset of specials, so boss count never exceeds special count.
+		_assert_lte(float(Config.wave_boss_count(i)), float(Config.wave_special_count(i)), "bosses subset of specials (wave %d)" % (i + 1))
+
+# ── campaign_total_threat helper ─────────────────────────────────────────────
+func _run_campaign_total_threat_tests() -> void:
+	print("[Campaign Total Threat Helper]")
+	var manual := 0
+	for i in range(Config.WAVE_DATA.size()):
+		manual += Config.wave_threat(i)
+	_assert_eq(Config.campaign_total_threat(), manual, "campaign threat equals the sum of every wave's threat")
+	_assert_gt(float(Config.campaign_total_threat()), 0.0, "campaign schedules some Core threat")
+
+# ── total_scheduled_bosses helper ────────────────────────────────────────────
+func _run_total_scheduled_bosses_tests() -> void:
+	print("[Total Scheduled Bosses Helper]")
+	var manual := 0
+	for i in range(Config.WAVE_DATA.size()):
+		manual += Config.wave_boss_count(i)
+	_assert_eq(Config.total_scheduled_bosses(), manual, "total bosses equals the sum of every wave's boss count")
+	_assert_gt(float(Config.total_scheduled_bosses()), 0.0, "campaign schedules at least one boss")
+	_assert_lte(float(Config.total_scheduled_bosses()), float(Config.total_scheduled_enemies()), "bosses never exceed total enemies")
+
+# ── active/disabled tower count helpers ──────────────────────────────────────
+func _run_tower_count_helper_tests() -> void:
+	print("[Tower Count Helpers]")
+	GM.reset_state()
+	_assert_eq(GM.active_tower_count(), 0, "no towers → 0 active")
+	_assert_eq(GM.disabled_tower_count(), 0, "no towers → 0 disabled")
+	var a := GM.create_tower("bone_marksman", 2, 2)
+	var b := GM.create_tower("bone_marksman", 4, 4)
+	var c := GM.create_tower("bone_marksman", 6, 6)
+	GM.towers.append(a)
+	GM.towers.append(b)
+	GM.towers.append(c)
+	_assert_eq(GM.active_tower_count(), 3, "all three towers active initially")
+	_assert_eq(GM.disabled_tower_count(), 0, "none disabled initially")
+	# Disable one — split shifts, total stays constant.
+	b["is_disabled"] = true
+	_assert_eq(GM.active_tower_count(), 2, "one disabled → 2 active")
+	_assert_eq(GM.disabled_tower_count(), 1, "one disabled → 1 disabled")
+	_assert_eq(GM.active_tower_count() + GM.disabled_tower_count(), GM.towers.size(), "active + disabled == roster size")
+	GM.reset_state()
+
+# ── Temple Cleric heal (post-hoist correctness) ──────────────────────────────
+func _run_cleric_heal_perf_tests() -> void:
+	print("[Cleric Heal Perf/Correctness]")
+	GM.reset_state()
+	GM.wave = 1
+	var cleric_data: Dictionary = Config.ENEMY_DATA["temple_cleric"]
+	# Cleric and a wounded ally sitting on top of it (well within aura radius).
+	var cleric := GM.create_enemy("temple_cleric")
+	cleric["x"] = 300.0
+	cleric["y"] = 300.0
+	cleric["heal_tick_timer"] = 0.0   # ready to heal on the next update
+	cleric["spawn_timer"] = 0.0
+	var ally := GM.create_enemy("crusader")
+	ally["x"] = 300.0
+	ally["y"] = 300.0
+	ally["spawn_timer"] = 0.0
+	var wounded: float = ally["max_hp"] * 0.5
+	ally["hp"] = wounded
+	GM.enemies.append(cleric)
+	GM.enemies.append(ally)
+	# One tick's worth of heal = max_hp * heal_aura_pct * CLERIC_HEAL_TICK.
+	GM.update_enemies(0.016)
+	var expected_heal: float = ally["max_hp"] * float(cleric_data["heal_aura_pct"]) * Config.CLERIC_HEAL_TICK
+	_assert_near(ally["hp"], wounded + expected_heal, 0.01, "in-range ally healed exactly one tick's worth")
+
+	# An ally far outside the aura radius receives no heal.
+	GM.reset_state()
+	GM.wave = 1
+	var cleric2 := GM.create_enemy("temple_cleric")
+	cleric2["x"] = 100.0
+	cleric2["y"] = 100.0
+	cleric2["heal_tick_timer"] = 0.0
+	cleric2["spawn_timer"] = 0.0
+	var far := GM.create_enemy("crusader")
+	far["x"] = 100.0 + cleric_data["heal_aura_radius"] * 3.0
+	far["y"] = 100.0
+	far["spawn_timer"] = 0.0
+	var far_hp: float = far["max_hp"] * 0.5
+	far["hp"] = far_hp
+	GM.enemies.append(cleric2)
+	GM.enemies.append(far)
+	GM.update_enemies(0.016)
+	_assert_near(far["hp"], far_hp, 0.001, "out-of-range ally receives no heal")
+	GM.reset_state()
+
+# ── Boss-count wave notification ─────────────────────────────────────────────
+func _run_wave_boss_notify_tests() -> void:
+	print("[Wave Boss Notify]")
+	# The template exists and formats the count.
+	_assert(Locale.has_template("wave_boss_notify"), "wave_boss_notify template is defined")
+	var msg: String = Locale.tf("wave_boss_notify", {"count": 3})
+	_assert(msg.find("3") != -1, "boss notify includes the boss count")
+
+	# A boss wave produces a boss notification; a non-boss wave does not.
+	# Wave index 9 (wave 10) is a known boss wave; index 0 (wave 1) is boss-free.
+	GM.reset_state()
+	GM.wave = 9   # start_wave increments to 10 → boss wave
+	GM.start_wave()
+	var boss_found := false
+	for n in GM.notifications:
+		if String(n["text"]).find("Boss") != -1 or String(n["text"]).find("首领") != -1:
+			boss_found = true
+			break
+	_assert(boss_found, "boss wave posts a boss notification")
+
+	GM.reset_state()
+	GM.wave = 0   # start_wave increments to 1 → no bosses
+	GM.start_wave()
+	var boss_found2 := false
+	for n in GM.notifications:
+		if String(n["text"]).find("Boss") != -1 or String(n["text"]).find("首领") != -1:
+			boss_found2 = true
+			break
+	_assert(not boss_found2, "non-boss wave posts no boss notification")
+	GM.reset_state()
+
+
+# ── Legacy tower slow must never DOWNGRADE a stronger/longer existing slow ────
+func _run_legacy_slow_no_downgrade_tests() -> void:
+	print("[Legacy Slow No-Downgrade]")
+	GM.reset_state()
+	GM.clear_alive_type_cache()
+
+	# An enemy already hard-slowed (0.5) for a long time (10s) — e.g. by a Corruption
+	# Wave relic — is hit by a weak legacy slow tower (slow_power 0.2). The stronger
+	# slow and longer timer must survive.
+	var e := GM.create_enemy("crusader")
+	e["hp"] = 9999.0            # keep it alive through the hit
+	e["slow_amount"] = 0.5
+	e["slow_timer"] = 10.0
+	var weak := GM.create_tower("bone_marksman", 3, 3)
+	weak["slow_power"] = 0.2
+	GM.combat_hit(e, 5.0, weak)
+	_assert_near(e["slow_amount"], 0.5, 0.001, "weak slow does not reduce a stronger existing slow")
+	_assert_near(e["slow_timer"], 10.0, 0.001, "weak slow does not shorten a longer existing timer")
+
+	# The reverse: a stronger legacy slow DOES upgrade a weaker existing one.
+	var e2 := GM.create_enemy("crusader")
+	e2["hp"] = 9999.0
+	e2["slow_amount"] = 0.1
+	e2["slow_timer"] = 0.5
+	var strong := GM.create_tower("bone_marksman", 4, 4)
+	strong["slow_power"] = 0.3
+	GM.combat_hit(e2, 5.0, strong)
+	_assert_near(e2["slow_amount"], 0.3, 0.001, "stronger slow upgrades a weaker existing slow")
+	_assert_near(e2["slow_timer"], Config.SLOW_DEBUFF_DURATION, 0.001, "stronger slow refreshes to full duration")
+	GM.reset_state()
+
+
+# ── tower_weaken pact COST must never shorten an active weaken penalty ────────
+func _run_tower_weaken_no_downgrade_tests() -> void:
+	print("[Tower Weaken No-Downgrade]")
+	GM.reset_state()
+
+	# Simulate a long weaken already ticking (5 waves left). Accepting a pact whose
+	# weaken cost is only 3 waves must NOT refund 2 of them.
+	GM.tower_weaken_waves = 5
+	GM.tower_weaken_mult = Config.TOWER_WEAKEN_MULT
+	GM.pending_pact = {"name": "T-Weaken", "benefit": "flat_sins", "benefit_desc": "", "cost": "tower_weaken", "cost_desc": "", "b_val": 0, "b_dur": 0, "c_val": 3}
+	GM.accept_pact()
+	_assert_eq(GM.tower_weaken_waves, 5, "shorter weaken cost does not shorten an active longer weaken")
+	_assert_near(GM.tower_weaken_mult, Config.TOWER_WEAKEN_MULT, 0.001, "weaken multiplier stays applied")
+
+	# The reverse: a longer weaken cost DOES extend a shorter active one.
+	GM.reset_state()
+	GM.tower_weaken_waves = 1
+	GM.tower_weaken_mult = Config.TOWER_WEAKEN_MULT
+	GM.pending_pact = {"name": "T-Weaken2", "benefit": "flat_sins", "benefit_desc": "", "cost": "tower_weaken", "cost_desc": "", "b_val": 0, "b_dur": 0, "c_val": 3}
+	GM.accept_pact()
+	_assert_eq(GM.tower_weaken_waves, 3, "longer weaken cost extends a shorter active weaken")
+	GM.reset_state()
+
+
+# ── New 10th Demonic Pact: Pact of Thorns (core_heal / tower_weaken) ──────────
+func _run_pact_of_thorns_tests() -> void:
+	print("[Pact of Thorns]")
+	# The pact exists in the pool with the intended benefit/cost wiring.
+	var thorns := {}
+	for p in Config.DEMONIC_PACTS:
+		if p["name"] == "Pact of Thorns":
+			thorns = p
+			break
+	_assert(not thorns.is_empty(), "Pact of Thorns is defined in DEMONIC_PACTS")
+	_assert_eq(thorns.get("benefit", ""), "core_heal", "Thorns benefit is core_heal")
+	_assert_eq(thorns.get("cost", ""), "tower_weaken", "Thorns cost is tower_weaken")
+	_assert_near(float(thorns.get("b_val", 0.0)), 35.0, 0.001, "Thorns heals 35 Core HP")
+	# It heals more than Dark Resilience (the other core_heal pact, +20).
+	var dark_heal := 0.0
+	for p in Config.DEMONIC_PACTS:
+		if p["name"] == "Dark Resilience":
+			dark_heal = float(p["b_val"])
+	_assert_gt(float(thorns["b_val"]), dark_heal, "Thorns is the largest single-pact Core heal")
+	# PACT_POOL_SIZE grew to cover the new entry, and never exceeds the pool.
+	_assert_lte(float(Config.PACT_POOL_SIZE), float(Config.DEMONIC_PACTS.size()), "PACT_POOL_SIZE never exceeds pact count")
+	_assert_eq(Config.PACT_POOL_SIZE, 10, "PACT_POOL_SIZE is 10 after adding Thorns")
+
+	# Accepting it: heals the Core (capped) and applies the weaken cost.
+	GM.reset_state()
+	GM.core_hp = 50.0
+	GM.core_max_hp = 100.0
+	GM.pending_pact = thorns.duplicate()
+	GM.accept_pact()
+	_assert_near(GM.core_hp, 85.0, 0.001, "Thorns restores 35 Core HP (50 -> 85)")
+	_assert_eq(GM.tower_weaken_waves, 3, "Thorns applies a 3-wave tower weaken")
+	_assert_lt(GM.tower_weaken_mult, 1.0, "Thorns weakens tower damage")
+	# Heal respects the Core cap.
+	GM.core_hp = 90.0
+	GM.pending_pact = thorns.duplicate()
+	GM.accept_pact()
+	_assert_near(GM.core_hp, GM.core_max_hp, 0.001, "Thorns heal never overflows the Core cap")
+
+	# Locale is wired for both languages.
+	var _saved_lang := Locale.current_lang
+	Locale.current_lang = "zh"
+	_assert_ne(Locale.t("Pact of Thorns"), "Pact of Thorns", "Pact of Thorns has a zh name")
+	_assert_ne(Locale.t("Restore 35 Core HP"), "Restore 35 Core HP", "Thorns benefit desc has a zh string")
+	Locale.current_lang = _saved_lang
+	GM.reset_state()
+
+
+# ── Config.relic_drop_chance / relic_total_weight ────────────────────────────
+func _run_relic_drop_chance_tests() -> void:
+	print("[Relic Drop Chance]")
+	var total: int = Config.relic_total_weight()
+	_assert_gt(float(total), 0.0, "relic table has positive total weight")
+	# Total weight equals a direct sum of the loot table.
+	var manual := 0
+	for entry in Config.RELIC_LOOT:
+		manual += int(entry["weight"])
+	_assert_eq(total, manual, "relic_total_weight matches a direct fold")
+
+	# A known relic's chance is its weight over the total.
+	var hb_weight := 0
+	for entry in Config.RELIC_LOOT:
+		if entry["name"] == "Hellfire Bomb":
+			hb_weight = int(entry["weight"])
+	_assert_near(Config.relic_drop_chance("Hellfire Bomb"), float(hb_weight) / float(total), 0.0001, "Hellfire Bomb chance = weight/total")
+
+	# Unknown relic → 0 probability.
+	_assert_near(Config.relic_drop_chance("Nonexistent Relic"), 0.0, 0.0001, "unknown relic has 0 drop chance")
+
+	# Every relic's chances sum to 1 (it's a proper distribution).
+	var sum := 0.0
+	for entry in Config.RELIC_LOOT:
+		sum += Config.relic_drop_chance(entry["name"])
+	_assert_near(sum, 1.0, 0.0001, "all relic drop chances sum to 1.0")
+
+
+# ── GM.tower_count_of_type ───────────────────────────────────────────────────
+func _run_tower_count_of_type_tests() -> void:
+	print("[Tower Count Of Type]")
+	GM.reset_state()
+	_assert_eq(GM.tower_count_of_type("bone_marksman"), 0, "no towers → 0 of a type")
+	GM.towers.append(GM.create_tower("bone_marksman", 2, 2))
+	GM.towers.append(GM.create_tower("bone_marksman", 4, 4))
+	GM.towers.append(GM.create_tower("hades", 6, 6))
+	_assert_eq(GM.tower_count_of_type("bone_marksman"), 2, "counts two bone marksmen")
+	_assert_eq(GM.tower_count_of_type("hades"), 1, "counts one hades")
+	_assert_eq(GM.tower_count_of_type("cocytus"), 0, "counts zero of an absent type")
+	# Disabled towers still count as BUILT.
+	GM.towers[0]["is_disabled"] = true
+	_assert_eq(GM.tower_count_of_type("bone_marksman"), 2, "disabled towers still count toward the type tally")
+	# The per-type tallies sum to the roster size.
+	var summed: int = GM.tower_count_of_type("bone_marksman") + GM.tower_count_of_type("hades")
+	_assert_eq(summed, GM.towers.size(), "per-type counts sum to roster size")
+	GM.reset_state()
+
+
+# ── Config.peak_threat_wave / average_wave_threat ────────────────────────────
+func _run_peak_threat_wave_tests() -> void:
+	print("[Peak / Average Wave Threat]")
+	var peak: int = Config.peak_threat_wave()
+	_assert_gte(float(peak), 0.0, "peak_threat_wave returns a valid index")
+	_assert_lt(float(peak), float(Config.wave_count()), "peak index is within range")
+	# The reported peak really is the maximum threat, and ties go to the earliest.
+	var max_threat: int = Config.wave_threat(0)
+	var expected_i := 0
+	for i in range(1, Config.wave_count()):
+		if Config.wave_threat(i) > max_threat:
+			max_threat = Config.wave_threat(i)
+			expected_i = i
+	_assert_eq(peak, expected_i, "peak_threat_wave points at the highest-threat wave")
+	_assert_eq(Config.wave_threat(peak), max_threat, "peak wave carries the max threat")
+	# Average matches campaign_total_threat / wave_count.
+	_assert_near(Config.average_wave_threat(), float(Config.campaign_total_threat()) / float(Config.wave_count()), 0.001, "average_wave_threat = total / count")
+	# Peak threat is at or above the average (a max is never below the mean).
+	_assert_gte(float(Config.wave_threat(peak)), Config.average_wave_threat(), "peak threat >= average threat")
+
+
+# ── Inferno burn config cache (perf refactor is behavior-preserving) ─────────
+func _run_inferno_burn_cache_tests() -> void:
+	print("[Inferno Burn Cache]")
+	GM.reset_state()
+	var idata: Dictionary = Config.TOWER_DATA["inferno_warlock"]
+	var e := GM.create_enemy("crusader")
+	var warlock := GM.create_tower("inferno_warlock", 3, 3)
+	_assert_eq(e["burn_stacks"], 0, "enemy starts with 0 burn stacks")
+	GM._apply_burn(e, warlock)
+	# Cached scalars now match the Config source of truth.
+	_assert_eq(GM._inferno_burn_stacks_per_hit, int(idata["burn_stacks_per_hit"]), "cached stacks-per-hit matches Config")
+	_assert_eq(GM._inferno_burn_stack_cap, int(idata["burn_stack_cap"]), "cached stack cap matches Config")
+	_assert_near(GM._inferno_burn_duration, float(idata["burn_duration"]), 0.001, "cached burn duration matches Config")
+	# Behavior after the cache: one hit adds stacks_per_hit and sets the timer.
+	_assert_eq(e["burn_stacks"], int(idata["burn_stacks_per_hit"]), "one burn hit adds stacks_per_hit")
+	_assert_near(e["burn_timer"], float(idata["burn_duration"]), 0.001, "burn timer set to duration")
+	# Repeated hits still cap at burn_stack_cap.
+	for _n in range(10):
+		GM._apply_burn(e, warlock)
+	_assert_eq(e["burn_stacks"], int(idata["burn_stack_cap"]), "burn stacks cap after repeated hits")
+	GM.reset_state()
+
+
+# ── Config.dice_positive_chance ──────────────────────────────────────────────
+func _run_dice_positive_chance_tests() -> void:
+	print("[Dice Positive Chance]")
+	# Early game: every die face is a positive outcome.
+	_assert_near(Config.dice_positive_chance(0), 1.0, 0.0001, "wave 0 roll is always positive")
+	_assert_near(Config.dice_positive_chance(Config.DICE_NEGATIVE_WAVE - 1), 1.0, 0.0001, "last early wave is still all-positive")
+	# From DICE_NEGATIVE_WAVE on: a clean 3-good / 3-bad split.
+	_assert_near(Config.dice_positive_chance(Config.DICE_NEGATIVE_WAVE), 0.5, 0.0001, "negatives start at DICE_NEGATIVE_WAVE (50% safe)")
+	_assert_near(Config.dice_positive_chance(20), 0.5, 0.0001, "late-game roll is 50% positive")
+	# Chance is computed from the real table's polarity, not a hard-coded fraction.
+	var late_pos := 0
+	for face in Config.DICE_OUTCOMES:
+		if Config.DICE_OUTCOMES[face]["positive"]:
+			late_pos += 1
+	_assert_near(Config.dice_positive_chance(10), float(late_pos) / float(Config.DICE_OUTCOMES.size()), 0.0001, "matches the actual late-table polarity")
+
+
+# ── sin_boost pact BENEFIT must never downgrade an active stronger boost ─────
+func _run_sin_boost_no_downgrade_tests() -> void:
+	print("[Sin Boost No-Downgrade]")
+	GM.reset_state()
+	# Strong boost active (×2.0 for 3 waves). A later weaker boost (×1.5 / 2 waves)
+	# must not reduce the multiplier or cut the remaining duration.
+	GM.pending_pact = {"name": "Strong", "benefit": "sin_boost", "benefit_desc": "", "cost": "core_dmg", "cost_desc": "", "b_val": 2.0, "b_dur": 3, "c_val": 0.0}
+	GM.accept_pact()
+	_assert_near(GM.sin_multiplier, 2.0, 0.001, "strong boost sets ×2.0")
+	_assert_eq(GM.sin_mult_waves, 3, "strong boost lasts 3 waves")
+	GM.pending_pact = {"name": "Weak", "benefit": "sin_boost", "benefit_desc": "", "cost": "core_dmg", "cost_desc": "", "b_val": 1.5, "b_dur": 2, "c_val": 0.0}
+	GM.accept_pact()
+	_assert_near(GM.sin_multiplier, 2.0, 0.001, "weaker boost does not reduce the active multiplier")
+	_assert_eq(GM.sin_mult_waves, 3, "weaker boost does not cut the remaining duration")
+
+	# The reverse: a stronger/longer boost DOES upgrade a weaker active one.
+	GM.reset_state()
+	GM.pending_pact = {"name": "Weak", "benefit": "sin_boost", "benefit_desc": "", "cost": "core_dmg", "cost_desc": "", "b_val": 1.5, "b_dur": 2, "c_val": 0.0}
+	GM.accept_pact()
+	GM.pending_pact = {"name": "Strong", "benefit": "sin_boost", "benefit_desc": "", "cost": "core_dmg", "cost_desc": "", "b_val": 2.0, "b_dur": 3, "c_val": 0.0}
+	GM.accept_pact()
+	_assert_near(GM.sin_multiplier, 2.0, 0.001, "stronger boost upgrades the multiplier")
+	_assert_eq(GM.sin_mult_waves, 3, "longer boost extends the duration")
 	GM.reset_state()

@@ -55,6 +55,10 @@ var _templates: Dictionary = {
 		"en": "⚠ Threat: {threat} Core damage incoming",
 		"zh": "⚠ 威胁: {threat} 点核心伤害来袭",
 	},
+	"wave_boss_notify": {
+		"en": "☠ {count} Boss enemy incoming!",
+		"zh": "☠ {count} 个首领来袭！",
+	},
 	"dice_count": {
 		"en": "Dice: {count} [D]",
 		"zh": "骰子: {count} [D]",
@@ -363,6 +367,8 @@ var _zh: Dictionary = {
 	"+50% Sin income for 2 waves": "+50%罪孽收入，持续2波",
 	"Lose 15 Core HP": "失去15核心生命值",
 	"All towers +20% damage permanently": "所有塔永久+20%伤害",
+	"All towers +30% damage permanently": "所有塔永久+30%伤害",
+	"Lose 20 Core HP": "失去20核心生命值",
 	"2 random towers disabled for 8s": "2座随机塔禁用8秒",
 	"Gain 120 Sins instantly": "立即获得120罪孽",
 	"Enemies +30% speed for 2 waves": "敌人速度+30%，持续2波",
@@ -382,7 +388,10 @@ var _zh: Dictionary = {
 	"Abyssal Gambit": "深渊赌局",
 	"Wrathful Bargain": "暴怒交易",
 	"Pact of Avarice": "贪婪契约",
+	"Pact of Ruin": "毁灭契约",
+	"Pact of Thorns": "荆棘契约",
 	"Double Sin income for 3 waves": "罪孽收入翻倍，持续3波",
+	"Restore 35 Core HP": "恢复35核心生命值",
 	"Lose 25 Core HP": "失去25核心生命值",
 
 	# --- HUD buttons ---

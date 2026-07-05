@@ -81,6 +81,15 @@ var pact_extra_enemies: int = 0  # extra War Titans to spawn next wave
 var tower_weaken_waves: int = 0  # Abyssal Gambit: -15% damage debuff duration
 var tower_weaken_mult: float = 1.0  # current weaken multiplier (applied in calc_damage)
 
+# Inferno Warlock burn parameters, lazily cached from Config.TOWER_DATA on first burn.
+# These are compile-time constants, so re-reading the nested Config Dictionary on every
+# single burn hit (a hot combat path for any inferno-heavy build) is pure waste. Cached
+# on first use — a negative sentinel means "not yet populated". No reset needed since the
+# underlying config never changes across a run.
+var _inferno_burn_stacks_per_hit: int = -1
+var _inferno_burn_stack_cap: int = 0
+var _inferno_burn_duration: float = 0.0
+
 # Wave announcement banner — cinematic title card shown when a wave starts.
 # Counts down from its initial value; game_world reads it each frame to draw
 # the sliding "WAVE N" overlay. Zero = no banner visible.
@@ -389,6 +398,17 @@ func has_tower_type(type: String) -> bool:
 			return true
 	return false
 
+## How many towers of a given type are on the field (disabled ones included — this
+## counts what the player has BUILT, not what's currently firing). The counting
+## companion to has_tower_type: UI that shows "Bone Marksman ×3", per-type build
+## caps, and synergy checks all want a tally rather than a yes/no. Pure scan.
+func tower_count_of_type(type: String) -> int:
+	var count := 0
+	for t in towers:
+		if t["type"] == type:
+			count += 1
+	return count
+
 ## True if at least one tower of `type` exists AND is currently active (not disabled).
 ## Used to skip per-frame work that only matters when such a tower can actually fire
 ## (e.g. only build the Hades-corruption cache when an active Cocytus is on the field).
@@ -397,6 +417,28 @@ func has_active_tower_type(type: String) -> bool:
 		if t["type"] == type and not t["is_disabled"]:
 			return true
 	return false
+
+## Number of towers currently able to fire (placed and not disabled). The mirror of
+## disabled_tower_count over the same roster. A single honest "how much of your defense
+## is actually online right now" figure for HUD/stats — distinct from towers.size(),
+## which counts disabled (Zeus-struck, cursed, Tremor'd, pact-disabled) towers too.
+func active_tower_count() -> int:
+	var count := 0
+	for t in towers:
+		if not t["is_disabled"]:
+			count += 1
+	return count
+
+## Number of towers currently disabled (Zeus lightning, Divine Curse, Tremor dice,
+## Infernal Forge pact, etc.). active_tower_count() + disabled_tower_count() always
+## equals towers.size(); exposed so UI/tests can pin the online/offline split without
+## re-scanning the roster.
+func disabled_tower_count() -> int:
+	var count := 0
+	for t in towers:
+		if t["is_disabled"]:
+			count += 1
+	return count
 
 ## Shared guard for the "is this a real tower Dictionary?" check that combat code
 ## repeats everywhere. AoE/dice/relic damage passes `null` as the source tower, and
@@ -631,6 +673,14 @@ func update_enemies(dt: float) -> void:
 	# Cache burn DPS lookup outside the per-enemy loop
 	var _burn_dps_per_stack: float = Config.TOWER_DATA["inferno_warlock"]["burn_dps_per_stack"]
 
+	# Cache Temple Cleric aura constants once — they're identical for every cleric and
+	# every tick, so there's no reason to re-read the config Dictionary and re-square the
+	# radius inside the per-enemy ability loop below.
+	var _cleric_data: Dictionary = Config.ENEMY_DATA["temple_cleric"]
+	var _cleric_aura_r2: float = _cleric_data["heal_aura_radius"] * _cleric_data["heal_aura_radius"]
+	# heal_aura_pct is a per-second rate; a tick heals CLERIC_HEAL_TICK seconds' worth.
+	var _cleric_tick_heal: float = float(_cleric_data["heal_aura_pct"]) * Config.CLERIC_HEAL_TICK
+
 	# Process Michael, Zeus, Raphael, and Temple Cleric abilities
 	for e in enemies:
 		if not e["alive"]:
@@ -649,17 +699,13 @@ func update_enemies(dt: float) -> void:
 			e["heal_tick_timer"] -= dt
 			if e["heal_tick_timer"] <= 0:
 				e["heal_tick_timer"] = Config.CLERIC_HEAL_TICK
-				var cleric_data: Dictionary = Config.ENEMY_DATA["temple_cleric"]
-				var aura_r2: float = cleric_data["heal_aura_radius"] * cleric_data["heal_aura_radius"]
-				var heal_rate: float = cleric_data["heal_aura_pct"]
-				var tick_heal_mult: float = Config.CLERIC_HEAL_TICK  # heal_rate is per-second
 				for ally in enemies:
 					if not ally["alive"] or ally == e:
 						continue
 					var adx: float = ally["x"] - e["x"]
 					var ady: float = ally["y"] - e["y"]
-					if adx * adx + ady * ady <= aura_r2:
-						var heal: float = ally["max_hp"] * heal_rate * tick_heal_mult
+					if adx * adx + ady * ady <= _cleric_aura_r2:
+						var heal: float = ally["max_hp"] * _cleric_tick_heal
 						ally["hp"] = minf(ally["hp"] + heal, ally["max_hp"])
 
 	var i := enemies.size() - 1
@@ -992,10 +1038,14 @@ func combat_hit(enemy: Dictionary, base_dmg: float, tower) -> void:
 	var ny: float = enemy["y"] - enemy.get("radius", Config.DMG_NUM_DEFAULT_ENEMY_RADIUS) - Config.DMG_NUM_Y_OFFSET
 	add_dmg_number(nx, ny, dmg, spark_col)
 
-	# Apply slow from towers with slow_power (legacy path; NEC uses aura now)
+	# Apply slow from towers with slow_power (legacy path; NEC uses aura now).
+	# Take the STRONGER slow and the LONGER remaining timer rather than clobbering
+	# whatever is already on the enemy — a weak legacy slow must never downgrade an
+	# enemy already harder-slowed (or slowed for longer) by a Corruption Wave relic,
+	# Cocytus frost, or a Frenzy source. Mirrors the mass_corrupt no-downgrade guard.
 	if _valid_tower(tower) and tower.get("slow_power", 0.0) > 0:
-		enemy["slow_amount"] = tower["slow_power"]
-		enemy["slow_timer"] = Config.SLOW_DEBUFF_DURATION
+		enemy["slow_amount"] = maxf(enemy.get("slow_amount", 0.0), tower["slow_power"])
+		enemy["slow_timer"] = maxf(enemy.get("slow_timer", 0.0), Config.SLOW_DEBUFF_DURATION)
 
 	# REDESIGN: MAG burn stacks on hit — track source tower for kill credit
 	if _valid_tower(tower) and tower.get("type", "") == "inferno_warlock":
@@ -1007,9 +1057,13 @@ func combat_hit(enemy: Dictionary, base_dmg: float, tower) -> void:
 ## Apply burn stacks from an Inferno Warlock hit.
 ## Separated from combat_hit for readability and potential reuse.
 func _apply_burn(enemy: Dictionary, tower: Dictionary) -> void:
-	var mdata: Dictionary = Config.TOWER_DATA["inferno_warlock"]
-	enemy["burn_stacks"] = mini(enemy["burn_stacks"] + int(mdata["burn_stacks_per_hit"]), int(mdata["burn_stack_cap"]))
-	enemy["burn_timer"] = float(mdata["burn_duration"])
+	if _inferno_burn_stacks_per_hit < 0:
+		var mdata: Dictionary = Config.TOWER_DATA["inferno_warlock"]
+		_inferno_burn_stacks_per_hit = int(mdata["burn_stacks_per_hit"])
+		_inferno_burn_stack_cap = int(mdata["burn_stack_cap"])
+		_inferno_burn_duration = float(mdata["burn_duration"])
+	enemy["burn_stacks"] = mini(enemy["burn_stacks"] + _inferno_burn_stacks_per_hit, _inferno_burn_stack_cap)
+	enemy["burn_timer"] = _inferno_burn_duration
 	enemy["burn_source"] = tower
 
 func combat_aoe(cx: float, cy: float, radius: float, base_dmg: float, tower) -> void:
@@ -1359,6 +1413,12 @@ func start_wave() -> void:
 	# Surface the wave's worst-case threat (total Core HP at risk if everything leaks)
 	# so the player can gauge how dangerous a wave is before committing to a roll/pact.
 	notify(Locale.tf("wave_threat_notify", {"threat": Config.wave_threat(wave - 1)}), Config.COLOR_NOTIFY_NEGATIVE)
+	# On boss waves, call out exactly how many bosses are inbound so the player can
+	# brace (and gauge whether to gamble). Only fires when there's at least one boss —
+	# regular waves stay quiet. wave_boss_count is the single source of the boss tally.
+	var _boss_count: int = Config.wave_boss_count(wave - 1)
+	if _boss_count > 0:
+		notify(Locale.tf("wave_boss_notify", {"count": _boss_count}), Config.COLOR_NOTIFY_DANGER)
 	# Cinematic wave announcement — snapshot the wave + desc so the banner
 	# draws a stable label even if mid-fade state mutates. Boss waves flag
 	# themselves for a red-tinted banner; the game_world renders the card.
@@ -1568,10 +1628,15 @@ func drop_relic(rx: float, ry: float) -> void:
 				strongest["disable_timer"] = Config.DIVINE_CURSE_DURATION
 				notify(Locale.tf("tower_cursed", {"name": Locale.t(strongest["name"])}), Config.COLOR_NOTIFY_DANGER)
 		"mass_corrupt":
+			# Take the stronger slow and the longer remaining timer rather than
+			# clobbering an already-active slow. Two overlapping Corruption Waves
+			# (or a future stronger slow source) must never DOWNGRADE an enemy that
+			# is already more slowed / slowed for longer — the positive relic can
+			# only ever help. Mirrors the Frenzy Totem no-downgrade guard.
 			for e in enemies:
 				if e["alive"]:
-					e["slow_amount"] = Config.MASS_CORRUPT_SLOW
-					e["slow_timer"] = Config.MASS_CORRUPT_DURATION
+					e["slow_amount"] = maxf(e.get("slow_amount", 0.0), Config.MASS_CORRUPT_SLOW)
+					e["slow_timer"] = maxf(e.get("slow_timer", 0.0), Config.MASS_CORRUPT_DURATION)
 			notify(Locale.t("Corruption Wave! All enemies slowed!"), Config.COLOR_NOTIFY_CORRUPT)
 		"rewind":
 			time_warp_timer = Config.TIME_WARP_DURATION
@@ -1656,8 +1721,14 @@ func accept_pact() -> void:
 	# Apply benefit
 	match pact["benefit"]:
 		"sin_boost":
-			sin_multiplier = float(pact["b_val"])
-			sin_mult_waves = int(pact["b_dur"])
+			# No-downgrade on the BENEFIT: accepting a weaker Sin-income boost while a
+			# stronger one is still running must never reduce the active multiplier or
+			# cut its remaining duration. Keep the better multiplier and the longer
+			# window independently, so e.g. Pact of Avarice (×2.0 / 3 waves) is never
+			# clobbered by a later Blood Tithe (×1.5 / 2 waves). Expiry still resets to
+			# 1.0 once sin_mult_waves runs out.
+			sin_multiplier = maxf(sin_multiplier, float(pact["b_val"]))
+			sin_mult_waves = maxi(sin_mult_waves, int(pact["b_dur"]))
 		"tower_dmg_boost":
 			for t in towers:
 				t["damage_mult"] += float(pact["b_val"])
@@ -1695,7 +1766,11 @@ func accept_pact() -> void:
 		"extra_enemies":
 			pact_extra_enemies += int(pact["c_val"])
 		"tower_weaken":
-			tower_weaken_waves = int(pact["c_val"])
+			# No-downgrade on the COST: re-taking a weaken pact (Abyssal Gambit, Pact
+			# of Thorns) while one is already active must never SHORTEN the remaining
+			# penalty — a cost the player agreed to shouldn't get quietly refunded by
+			# stacking another. Keep whichever weaken lasts longer.
+			tower_weaken_waves = maxi(tower_weaken_waves, int(pact["c_val"]))
 			tower_weaken_mult = Config.TOWER_WEAKEN_MULT
 
 	notify(Locale.t(pact["name"]) + " — " + Locale.t("Accepted!"), Config.COLOR_NOTIFY_PACT)

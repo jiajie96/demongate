@@ -146,7 +146,7 @@ const STARTING_SINS := 50
 const DICE_REPLENISH_PER_WAVE := 1       # gained each wave (capped at DICE_MAX_USES)
 
 # Pact variety — number of distinct pacts offered per random selection
-const PACT_POOL_SIZE := 8                # draw from all available pacts
+const PACT_POOL_SIZE := 10               # draw from all available pacts
 
 # Burn DoT kill credit — whether burn kills attribute to the tower that applied burn
 const BURN_CREDITS_TOWER := true         # track tower kill_count for burn deaths
@@ -674,6 +674,24 @@ var DEMONIC_PACTS := [
 	# bigger, longer bump (×2.0 / 3 waves). Reuses the existing sin_boost benefit and
 	# core_dmg cost handlers, so no new accept_pact branch is needed.
 	{"name": "Pact of Avarice", "benefit": "sin_boost", "benefit_desc": "Double Sin income for 3 waves", "cost": "core_dmg", "cost_desc": "Lose 25 Core HP", "b_val": 2.0, "b_dur": 3, "c_val": 25.0},
+	# Pact of Ruin — the "blood for power" gamble. It's the only pact that pairs the
+	# permanent tower-damage benefit with a Core-HP cost: Infernal Forge already grants
+	# a permanent damage buff but pays for it by disabling towers, while every other
+	# core_dmg cost (Blood Tithe, Pact of Avarice) buys a *temporary* Sin-income boost.
+	# Ruin buys the strongest permanent buff in the pool (+30%, vs Forge's +20%) for a
+	# flat 20 Core HP, giving all-in aggressive players a scaling payoff that survives
+	# past the wave it's taken. Reuses the existing tower_dmg_boost benefit and core_dmg
+	# cost handlers, so no new accept_pact branch is needed.
+	{"name": "Pact of Ruin", "benefit": "tower_dmg_boost", "benefit_desc": "All towers +30% damage permanently", "cost": "core_dmg", "cost_desc": "Lose 20 Core HP", "b_val": 0.3, "b_dur": 0, "c_val": 20.0},
+	# Pact of Thorns — the "turtle's bargain": a big one-shot Core heal (+35, the largest
+	# in the pool — Dark Resilience heals 20) paid for with a temporary tower-damage
+	# weaken (−15% for 3 waves). It's the mirror of Abyssal Gambit, which buys a free
+	# tower placement with the SAME weaken cost: Thorns instead buys survivability, giving
+	# a player who over-extended on Core HP a way to stabilise at the price of offensive
+	# tempo. Reuses the existing core_heal benefit and tower_weaken cost handlers, so no
+	# new accept_pact branch is needed. The tower_weaken cost is no-downgrade (maxi), so
+	# taking Thorns on top of an active Abyssal Gambit weaken can't shorten the penalty.
+	{"name": "Pact of Thorns", "benefit": "core_heal", "benefit_desc": "Restore 35 Core HP", "cost": "tower_weaken", "cost_desc": "All towers -15% damage for 3 waves", "b_val": 35.0, "b_dur": 0, "c_val": 3},
 ]
 
 # ═══════════════════════════════════════════════════════
@@ -830,18 +848,28 @@ func wave_special_count(wave_index: int) -> int:
 			total += int(entry["count"])
 	return total
 
-## True if a wave schedules at least one boss (is_boss) enemy. start_wave() runs
-## this exact check inline to red-tint the wave banner; exposing it as a pure helper
-## dedupes that loop and lets tests pin which waves are "boss waves" independently.
-## Returns false for an out-of-range index.
-func is_boss_wave(wave_index: int) -> bool:
+## Number of boss (is_boss) enemies a wave schedules — the head-count of true
+## bosses, a subset of wave_special_count (which also counts non-boss elites). Pure
+## data helper: a single "how many bosses this wave" figure for banners/UI and the
+## foundation is_boss_wave now delegates to (so "what is a boss wave" lives in exactly
+## one loop). Returns 0 for an out-of-range index rather than crashing.
+func wave_boss_count(wave_index: int) -> int:
 	if wave_index < 0 or wave_index >= WAVE_DATA.size():
-		return false
+		return 0
+	var total := 0
 	for entry in WAVE_DATA[wave_index]["enemies"]:
 		var edata: Dictionary = ENEMY_DATA.get(entry["type"], {})
 		if edata.get("is_boss", false):
-			return true
-	return false
+			total += int(entry["count"])
+	return total
+
+## True if a wave schedules at least one boss (is_boss) enemy. start_wave() runs
+## this exact check inline to red-tint the wave banner; exposing it as a pure helper
+## dedupes that loop and lets tests pin which waves are "boss waves" independently.
+## Delegates to wave_boss_count so the boss definition lives in one place.
+## Returns false for an out-of-range index.
+func is_boss_wave(wave_index: int) -> bool:
+	return wave_boss_count(wave_index) > 0
 
 ## Grand total of every enemy scheduled across ALL waves — the full size of the
 ## Divine Army the player will face in a run. Pure sum of wave_enemy_count over
@@ -851,3 +879,87 @@ func total_scheduled_enemies() -> int:
 	for i in range(WAVE_DATA.size()):
 		total += wave_enemy_count(i)
 	return total
+
+
+## Grand total worst-case Core threat across the whole campaign — the sum of every
+## wave's wave_threat (Core HP at risk if every enemy in that wave leaked). Mirrors
+## total_scheduled_enemies: a single honest "how punishing is the full run" figure
+## for menus/stats, and a pure fold over wave_threat so tests can pin it independently.
+func campaign_total_threat() -> int:
+	var total := 0
+	for i in range(WAVE_DATA.size()):
+		total += wave_threat(i)
+	return total
+
+## Grand total of boss (is_boss) enemies scheduled across the whole campaign — a pure
+## fold over wave_boss_count. Complements total_scheduled_enemies with a "how many true
+## bosses does a full run throw at you" figure for menus/stats.
+func total_scheduled_bosses() -> int:
+	var total := 0
+	for i in range(WAVE_DATA.size()):
+		total += wave_boss_count(i)
+	return total
+
+
+## Mean worst-case threat per wave across the campaign — campaign_total_threat spread
+## evenly over the wave count. A single "how punishing is an average wave" baseline that
+## UI can compare a given wave's wave_threat against ("this wave is well above average").
+## Returns 0.0 when there are no waves rather than dividing by zero.
+func average_wave_threat() -> float:
+	var n: int = WAVE_DATA.size()
+	if n <= 0:
+		return 0.0
+	return float(campaign_total_threat()) / float(n)
+
+## Index of the single most threatening wave (highest wave_threat), or -1 if there are
+## no waves. Ties resolve to the EARLIEST such wave (first strict-max wins), so the answer
+## is stable. Lets menus/tests point at "the scariest wave" without re-scanning WAVE_DATA.
+func peak_threat_wave() -> int:
+	if WAVE_DATA.is_empty():
+		return -1
+	var best_i := 0
+	var best_threat: int = wave_threat(0)
+	for i in range(1, WAVE_DATA.size()):
+		var t: int = wave_threat(i)
+		if t > best_threat:
+			best_threat = t
+			best_i = i
+	return best_i
+
+## Total selection weight of the relic loot table — the denominator every relic's
+## drop probability is measured against. Pure fold over RELIC_LOOT weights; exposed so
+## relic_drop_chance and tests don't each re-sum the table (and so a mis-weighted entry
+## has a single number to be caught against).
+func relic_total_weight() -> int:
+	var total := 0
+	for entry in RELIC_LOOT:
+		total += int(entry.get("weight", 0))
+	return total
+
+## Probability (0..1) that a given relic name is the one picked from a single weighted
+## RELIC_LOOT draw: that relic's weight over the table total. Returns 0.0 for an unknown
+## name or an empty/zero-weight table. Mirrors the runtime _weighted_pick math so UI can
+## honestly advertise loot odds and tests can pin the drop distribution.
+func relic_drop_chance(relic_name: String) -> float:
+	var total: int = relic_total_weight()
+	if total <= 0:
+		return 0.0
+	for entry in RELIC_LOOT:
+		if entry.get("name", "") == relic_name:
+			return float(int(entry.get("weight", 0))) / float(total)
+	return 0.0
+
+## Probability (0..1) that a Devil's Dice roll is a POSITIVE outcome at a given wave.
+## Early game (before DICE_NEGATIVE_WAVE) every face is positive → 1.0; from then on the
+## table is a clean 3-good/3-bad split → 0.5. Computed from the actual outcome table (not
+## a hard-coded fraction) so it stays honest if a face's polarity is ever retuned. Lets a
+## future UI show the player exactly how safe a roll is before they commit a die.
+func dice_positive_chance(current_wave: int) -> float:
+	var table: Dictionary = DICE_OUTCOMES_EARLY if current_wave < DICE_NEGATIVE_WAVE else DICE_OUTCOMES
+	if table.is_empty():
+		return 0.0
+	var positives := 0
+	for face in table:
+		if table[face].get("positive", false):
+			positives += 1
+	return float(positives) / float(table.size())
